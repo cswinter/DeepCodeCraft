@@ -46,7 +46,17 @@ def main():
     print("Starting game:", game_id)
     games.append(game_id)
 
+  log_interval = 5
+  frames = 0
+  last_time = time.time()
+
   while True:
+    elapsed = time.time() - last_time
+    if elapsed > log_interval:
+      logging.info(f"{frames/elapsed}fps")
+      frames = 0
+      last_time = time.time()
+
     for i in range(len(games)):
       game_id = games[i]
       observation = observe(game_id)
@@ -57,6 +67,7 @@ def main():
         games[i] = game_id
       else:
         act(game_id)
+      frames += 1
 
 
 if __name__== "__main__":
