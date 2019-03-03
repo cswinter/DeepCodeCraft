@@ -19,7 +19,19 @@ def create_game() -> int:
 
 def act(game_id: int):
   try:
-    requests.post(f'http://localhost:9000/act?gameID={game_id}&playerID=0')
+    # buildDrone: Option[Seq[Int]],
+    # move: Boolean,
+    # harvest: Boolean,
+    # transfer: Boolean,
+    # turn: Int /* -1, 0, 1 */
+    action = {
+      "buildDrone": [[0,1,0,0,0]],
+      "move": True,
+      "harvest": False,
+      "transfer": False,
+      "turn": -1,
+    }
+    requests.post(f'http://localhost:9000/act?gameID={game_id}&playerID=0', json=action)
   except requests.exceptions.ConnectionError:
     # For some reason, a small percentage of requests fails with
     # "connection error (errno 98, address already in use)"
