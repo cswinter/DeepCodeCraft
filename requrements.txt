@@ -1,1 +1,3 @@
 requests>=2.21
+gym
+tensorflow
