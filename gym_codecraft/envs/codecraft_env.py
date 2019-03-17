@@ -5,7 +5,7 @@ from gym.utils import seeding
 import codecraft
 
 
-class FooEnv(gym.Env):
+class CodeCraftEnv(gym.Env):
   metadata = {'render.modes': []}
 
   def __init__(self):
