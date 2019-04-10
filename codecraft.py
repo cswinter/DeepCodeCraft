@@ -86,4 +86,4 @@ def observe_batch(game_ids):
         except requests.exceptions.ConnectionError:
             retries -= 1
             logging.info(f"Connection error on observe_batch(), retrying")
-            time.sleep(1000)
+            time.sleep(10)

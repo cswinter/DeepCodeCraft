@@ -1,6 +1,8 @@
 import time
 import logging
 from baselines.ppo2 import ppo2
+import tensorflow as tf
+import tensorflow.contrib.layers as layers
 
 import codecraft
 from gym_codecraft import envs
@@ -40,7 +42,7 @@ def run_codecraft():
 def train():
   env = envs.CodeCraftVecEnv(64)
   ppo2.learn(
-    network="mlp",
+    network=network,
     env=env,
     gamma=0.9,
     nsteps=256,
@@ -49,6 +51,16 @@ def train():
     num_hidden=1024,
     num_layers=3,
     lr=3e-5)
+
+def network(input_tensor):
+    #with tf.variable_scope(scope, reuse=reuse):
+    out = input_tensor
+    for hidden in [1024, 1024, 1024]:
+        out = layers.fully_connected(out, num_outputs=hidden, activation_fn=None)
+        out = tf.nn.relu(out)
+    q_out = out
+    q_out = layers.fully_connected(out, num_outputs=6, activation_fn=None)
+    return q_out
 
 def main():
   logging.basicConfig(level=logging.INFO)
