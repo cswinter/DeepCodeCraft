@@ -1,11 +1,18 @@
-import time
 import logging
+import os
+import subprocess
+import time
+
 from baselines.ppo2 import ppo2
+from baselines import logger
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import codecraft
 from gym_codecraft import envs
+
+
+LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
 
 
 def run_codecraft():
@@ -46,7 +53,7 @@ def train():
     env=env,
     gamma=0.9,
     nsteps=256,
-    total_timesteps=1e9,
+    total_timesteps=1e8,
     log_interval=1,
     num_hidden=1024,
     num_layers=3,
@@ -63,8 +70,12 @@ def network(input_tensor):
     return q_out
 
 def main():
-  logging.basicConfig(level=logging.INFO)
-  train()
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("UTF-8")[:8]
+    t = time.strftime("%Y-%m-%d~%H:%M:%S")
+    logger.configure(dir=os.path.join(LOG_ROOT_DIR, f"{t}-{commit}"),
+                     format_strs=['stdout', 'log', 'csv', 'tensorboard'])
+    logging.basicConfig(level=logging.INFO)
+    train()
 
 
 if __name__== "__main__":
