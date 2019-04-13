@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import subprocess
@@ -13,6 +14,7 @@ from gym_codecraft import envs
 
 
 LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
+TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 
 
 def run_codecraft():
@@ -46,36 +48,70 @@ def run_codecraft():
       frames += 1
 
 
-def train():
+def train(hps):
   env = envs.CodeCraftVecEnv(64)
   ppo2.learn(
-    network=network,
+          network=lambda it: network(hps, it),
     env=env,
     gamma=0.9,
     nsteps=256,
     total_timesteps=1e8,
     log_interval=1,
-    num_hidden=1024,
-    num_layers=3,
-    lr=3e-5)
+    lr=hps["lr"])
 
-def network(input_tensor):
+def network(hps, input_tensor):
     #with tf.variable_scope(scope, reuse=reuse):
     out = input_tensor
-    for hidden in [1024, 1024, 1024]:
-        out = layers.fully_connected(out, num_outputs=hidden, activation_fn=None)
+    for _ in range(hps["nl"]):
+        out = layers.fully_connected(out, num_outputs=hps["nh"], activation_fn=None)
         out = tf.nn.relu(out)
     q_out = out
     q_out = layers.fully_connected(out, num_outputs=6, activation_fn=None)
     return q_out
 
+
+class Hyperparam:
+    def __init__(self, name, shortname, default):
+        self.name = name
+        self.shortname = shortname
+        self.default = default
+
+    def add_argument(self, parser):
+        parser.add_argument(f"--{self.shortname}", f"--{self.name}", type=type(self.default))
+
+
+HYPER_PARAMS = [
+    Hyperparam("learning-rate", "lr", 3e-5),
+    Hyperparam("num-layers", "nl", 3),
+    Hyperparam("num-hidden", "nh", 1024),
+]
+
+
+def args_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", action="store_true")
+    for hp in HYPER_PARAMS:
+        hp.add_argument(parser)
+    return parser
+
 def main():
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("UTF-8")[:8]
+    args = args_parser().parse_args()
+    args_dict = vars(args)
+
+    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
     t = time.strftime("%Y-%m-%d~%H:%M:%S")
-    logger.configure(dir=os.path.join(LOG_ROOT_DIR, f"{t}-{commit}"),
-                     format_strs=['stdout', 'log', 'csv', 'tensorboard'])
+    log_dir = os.path.join(TEST_LOG_ROOT_DIR if args.test else LOG_ROOT_DIR, f"{t}-{commit}")
+    hps = {}
+    for hp in HYPER_PARAMS:
+        if args_dict[hp.shortname] is not None:
+            hps[hp.shortname] = args_dict[hp.shortname]
+            log_dir += f"-{hp.shortname}{hps[hp.shortname]}"
+        else:
+            hps[hp.shortname] = hp.default
+
+    logger.configure(dir=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
     logging.basicConfig(level=logging.INFO)
-    train()
+    train(hps)
 
 
 if __name__== "__main__":
