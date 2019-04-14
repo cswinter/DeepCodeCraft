@@ -55,7 +55,7 @@ def train(hps):
     env=env,
     gamma=0.9,
     nsteps=256,
-    total_timesteps=1e8,
+    total_timesteps=hps["steps"],
     log_interval=1,
     lr=hps["lr"])
 
@@ -81,9 +81,10 @@ class Hyperparam:
 
 
 HYPER_PARAMS = [
-    Hyperparam("learning-rate", "lr", 3e-5),
+    Hyperparam("learning-rate", "lr", 3e-4),
     Hyperparam("num-layers", "nl", 3),
     Hyperparam("num-hidden", "nh", 1024),
+    Hyperparam("total-timesteps", "steps", 2e7)
 ]
 
 
