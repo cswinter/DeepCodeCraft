@@ -109,11 +109,12 @@ def main():
     for hp in HYPER_PARAMS:
         if args_dict[hp.shortname] is not None:
             hps[hp.shortname] = args_dict[hp.shortname]
-            log_dir += f"-{hp.shortname}{hps[hp.shortname]}"
+            if args.out_dir is None:
+                out_dir += f"-{hp.shortname}{hps[hp.shortname]}"
         else:
             hps[hp.shortname] = hp.default
 
-    logger.configure(dir=log_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
+    logger.configure(dir=out_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
     logging.basicConfig(level=logging.INFO)
     train(hps)
 
