@@ -13,7 +13,6 @@ import codecraft
 from gym_codecraft import envs
 
 
-LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
 TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 
 
@@ -90,7 +89,7 @@ HYPER_PARAMS = [
 
 def args_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--out-dir")
     for hp in HYPER_PARAMS:
         hp.add_argument(parser)
     return parser
@@ -99,9 +98,13 @@ def main():
     args = args_parser().parse_args()
     args_dict = vars(args)
 
-    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
-    t = time.strftime("%Y-%m-%d~%H:%M:%S")
-    log_dir = os.path.join(TEST_LOG_ROOT_DIR if args.test else LOG_ROOT_DIR, f"{t}-{commit}")
+    if args.out_dir:
+        out_dir = args.out_dir
+    else:
+        commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
+        t = time.strftime("%Y-%m-%d~%H:%M:%S")
+        out_dir = os.path.join(TEST_LOG_ROOT_DIR, f"{t}-{commit}")
+
     hps = {}
     for hp in HYPER_PARAMS:
         if args_dict[hp.shortname] is not None:
