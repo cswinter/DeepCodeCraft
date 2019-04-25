@@ -19,16 +19,19 @@ class CodeCraftVecEnv(VecEnv):
         self.games = []
         self.eplen = []
         self.eprew = []
+        self.score = []
 
     def reset(self):
         self.games = []
         self.eplen = []
+        self.score = []
         for _ in range(self.num_envs):
             game_id = codecraft.create_game()
             # print("Starting game:", game_id)
             self.games.append(game_id)
             self.eplen.append(1)
             self.eprew.append(1)
+            self.score.append(None)
         return self.observe()[0]
 
     def step_async(self, actions):
@@ -56,10 +59,13 @@ class CodeCraftVecEnv(VecEnv):
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
             game_id = self.games[i]
-            x = (observation['alliedDrones'][0]['xPos'] - 750) / 2000
-            y = (observation['alliedDrones'][0]['yPos']) / 2000
-            reward = 1 - np.sqrt((x * x + y * y))
-            reward *= 0.1
+            x = (observation['alliedDrones'][0]['xPos'] - 750)
+            y = (observation['alliedDrones'][0]['yPos'])
+            score = -np.sqrt(x * x + y * y)
+            if self.score[i] is None:
+                self.score[i] = score
+            reward = (score - self.score[i]) * 0.01
+            self.score[i] = score
             if len(observation['winner']) > 0:
                 # print(f'Game {game_id} won by {observation["winner"][0]}')
                 game_id = codecraft.create_game()
@@ -69,6 +75,7 @@ class CodeCraftVecEnv(VecEnv):
                 infos.append({'episode': { 'r': self.eprew[i], 'l': self.eplen[i]}})
                 self.eplen[i] = 1
                 self.eprew[i] = reward
+                self.score[i] = None
             else:
                 self.eplen[i] += 1
                 self.eprew[i] += reward
