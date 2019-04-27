@@ -7,13 +7,31 @@ import numpy as np
 import codecraft
 
 
+
 class CodeCraftVecEnv(VecEnv):
     def __init__(self, num_envs):
+        observations_low = []
+        observations_high = []
+        # Drone x, y
+        observations_low.extend([-3, -2])
+        observations_high.extend([3, 2])
+        # Drone orientation unit vector
+        observations_low.extend([-1, -1])
+        observations_high.extend([1, 1])
+        # 10 closest minerals
+        for _ in range(0, 10):
+            # x, y
+            observations_low.extend([-3, -2])
+            observations_high.extend([3, 2])
+            # size
+            observations_low.append(0)
+            observations_high.append(2)
+
         super().__init__(
             num_envs,
             spaces.Box(
-                low=np.array([-2.5, -2.5, 0]),
-                high=np.array([2.5, 2.5, np.pi * 2]),
+                low=np.array(observations_low),
+                high=np.array(observations_high),
                 dtype=np.float32),
             spaces.Discrete(6))
         self.games = []
@@ -58,13 +76,31 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
+
+            o = []
+            x = float(observation['alliedDrones'][0]['xPos'])
+            y = float(observation['alliedDrones'][0]['yPos'])
+            o.append(x / 1000.0)
+            o.append(x / 1000.0)
+            o.append(np.sin(float(observation['alliedDrones'][0]['orientation'])))
+            o.append(np.cos(float(observation['alliedDrones'][0]['orientation'])))
+            minerals = sorted(observation['minerals'], key=lambda m: dist2(m['xPos'], m['yPos'], x, y))
+            for m in range(0, 10):
+                if m < len(minerals):
+                    o.append(float(minerals[m]['xPos'] / 1000.0))
+                    o.append(float(minerals[m]['yPos'] / 1000.0))
+                    o.append(float(minerals[m]['size'] / 100.0))
+                else:
+                    o.extend([0.0, 0.0, 0.0])
+            obs.append(np.array(o))
+
             game_id = self.games[i]
-            x = (observation['alliedDrones'][0]['xPos'] - 750)
-            y = (observation['alliedDrones'][0]['yPos'])
-            score = -np.sqrt(x * x + y * y)
+            score = 0
+            if len(minerals) > 0:
+                score = np.maximum(0.0, 10.0 - np.sqrt(dist2(minerals[0]['xPos'], minerals[0]['yPos'], x, y)) / 50.0)
             if self.score[i] is None:
-                self.score[i] = score
-            reward = (score - self.score[i]) * 0.01
+                self.score[i] = 0
+            reward = score - self.score[i]
             self.score[i] = score
             if len(observation['winner']) > 0:
                 # print(f'Game {game_id} won by {observation["winner"][0]}')
@@ -81,11 +117,11 @@ class CodeCraftVecEnv(VecEnv):
                 self.eprew[i] += reward
                 dones.append(0.0)
 
-            obs.append(np.array([
-                float(observation['alliedDrones'][0]['xPos'] / 2000.0),
-                float(observation['alliedDrones'][0]['yPos'] / 2000.0),
-                float(observation['alliedDrones'][0]['orientation']),
-            ]))
             rews.append(reward)
 
         return np.array(obs), np.array(rews), np.array(dones), infos
+
+def dist2(x1, y1, x2, y2):
+    dx = x1 - x2
+    dy = y1 - y2
+    return dx * dx + dy * dy

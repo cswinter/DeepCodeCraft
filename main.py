@@ -53,7 +53,7 @@ def train(hps):
           network=lambda it: network(hps, it),
     env=env,
     gamma=0.9,
-    nsteps=256,
+    nsteps=hps["rosteps"],
     total_timesteps=hps["steps"],
     log_interval=1,
     lr=hps["lr"])
@@ -83,7 +83,8 @@ HYPER_PARAMS = [
     Hyperparam("learning-rate", "lr", 3e-4),
     Hyperparam("num-layers", "nl", 3),
     Hyperparam("num-hidden", "nh", 1024),
-    Hyperparam("total-timesteps", "steps", 2e7)
+    Hyperparam("total-timesteps", "steps", 2e7),
+    Hyperparam("sequential-rollout-steps", "rosteps", 256),
 ]
 
 
