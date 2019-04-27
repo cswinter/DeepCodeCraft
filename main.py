@@ -53,7 +53,7 @@ def train(hps):
     ppo2.learn(
         network=lambda it: network(hps, it),
         env=env,
-        gamma=0.9,
+        gamma=0.99,
         nsteps=hps["rosteps"],
         total_timesteps=hps["steps"],
         log_interval=1,
@@ -66,7 +66,7 @@ def network(hps, input_tensor):
         out = layers.fully_connected(out, num_outputs=hps["nh"], activation_fn=None)
         out = tf.nn.relu(out)
     q_out = out
-    q_out = layers.fully_connected(out, num_outputs=6, activation_fn=None)
+    q_out = layers.fully_connected(out, num_outputs=8, activation_fn=None)
     return q_out
 
 
@@ -81,7 +81,7 @@ class Hyperparam:
 
 
 HYPER_PARAMS = [
-    Hyperparam("learning-rate", "lr", 3e-4),
+    Hyperparam("learning-rate", "lr", 3e-5),
     Hyperparam("num-layers", "nl", 3),
     Hyperparam("num-hidden", "nh", 1024),
     Hyperparam("total-timesteps", "steps", 2e7),

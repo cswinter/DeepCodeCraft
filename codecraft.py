@@ -50,11 +50,11 @@ def act(game_id: int, move, turn):
 
 def act_batch(actions):
     payload = {}
-    for (game_id, move, turn) in actions:
+    for (game_id, move, turn, buildSpec, harvest) in actions:
         action = {
-            "buildDrone": [],
+            "buildDrone": buildSpec,
             "move": move,
-            "harvest": False,
+            "harvest": True,#harvest,
             "transfer": False,
             "turn": turn,
         }

@@ -18,6 +18,12 @@ class CodeCraftVecEnv(VecEnv):
         # Drone orientation unit vector
         observations_low.extend([-1, -1])
         observations_high.extend([1, 1])
+        # Drone resources
+        observations_low.append(0)
+        observations_high.append(2)
+        # Is constructing, is harvesting
+        observations_low.extend([-1, -1])
+        observations_high.extend([1, 1])
         # 10 closest minerals
         for _ in range(0, 10):
             # x, y
@@ -32,7 +38,7 @@ class CodeCraftVecEnv(VecEnv):
                 low=np.array(observations_low),
                 high=np.array(observations_high),
                 dtype=np.float32),
-            spaces.Discrete(6))
+            spaces.Discrete(8))
 
         self.games = []
         self.eplen = []
@@ -57,15 +63,26 @@ class CodeCraftVecEnv(VecEnv):
     def step_async(self, actions):
         game_actions = []
         for (game_id, action) in zip(self.games, actions):
+            # 0-5: turn/movement
+            # 6: build [0,1,0,0,0] drone (if minerals > 5)
+            # 7: harvest
             move = False
+            harvest = False
             turn = 0
+            build = []
             if action == 0 or action == 1 or action == 2:
                 move = True
             if action == 0 or action == 3:
                 turn = -1
             if action == 2 or action == 5:
                 turn = 1
-            game_actions.append((game_id, move, turn))
+            if action == 3:
+                action
+            if action == 6:
+                build = [[0, 1, 0, 0, 0]]
+            if action == 7:
+                harvest = True
+            game_actions.append((game_id, move, turn, build, harvest))
 
         codecraft.act_batch(game_actions)
 
@@ -78,7 +95,6 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
-
             o = []
             x = float(observation['alliedDrones'][0]['xPos'])
             y = float(observation['alliedDrones'][0]['yPos'])
@@ -86,6 +102,9 @@ class CodeCraftVecEnv(VecEnv):
             o.append(x / 1000.0)
             o.append(np.sin(float(observation['alliedDrones'][0]['orientation'])))
             o.append(np.cos(float(observation['alliedDrones'][0]['orientation'])))
+            o.append(float(observation['alliedDrones'][0]['storedResources']) / 50.0)
+            o.append(1.0 if observation['alliedDrones'][0]['isConstructing'] else -1.0)
+            o.append(1.0 if observation['alliedDrones'][0]['isHarvesting'] else -1.0)
             minerals = sorted(observation['minerals'], key=lambda m: dist2(m['xPos'], m['yPos'], x, y))
             for m in range(0, 10):
                 if m < len(minerals):
@@ -97,13 +116,13 @@ class CodeCraftVecEnv(VecEnv):
             obs.append(np.array(o))
 
             game_id = self.games[i]
-            score = 0
-            if len(minerals) > 0:
-                score = np.maximum(0.0, 10.0 - np.sqrt(dist2(minerals[0]['xPos'], minerals[0]['yPos'], x, y)) / 50.0)
+
+            score = float(observation['alliedScore']) * 0.1
             if self.score[i] is None:
-                self.score[i] = 0
+                self.score[i] = score
             reward = score - self.score[i]
             self.score[i] = score
+
             if len(observation['winner']) > 0:
                 # print(f'Game {game_id} won by {observation["winner"][0]}')
                 game_id = codecraft.create_game()
