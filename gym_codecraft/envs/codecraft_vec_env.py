@@ -9,7 +9,7 @@ import codecraft
 
 
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs):
+    def __init__(self, num_envs, game_length):
         observations_low = []
         observations_high = []
         # Drone x, y
@@ -26,7 +26,6 @@ class CodeCraftVecEnv(VecEnv):
             # size
             observations_low.append(0)
             observations_high.append(2)
-
         super().__init__(
             num_envs,
             spaces.Box(
@@ -34,17 +33,20 @@ class CodeCraftVecEnv(VecEnv):
                 high=np.array(observations_high),
                 dtype=np.float32),
             spaces.Discrete(6))
+
         self.games = []
         self.eplen = []
         self.eprew = []
         self.score = []
+        self.game_length = game_length
 
     def reset(self):
         self.games = []
         self.eplen = []
         self.score = []
-        for _ in range(self.num_envs):
-            game_id = codecraft.create_game()
+        for i in range(self.num_envs):
+            # spread out initial game lengths to stagger start times
+            game_id = codecraft.create_game((self.game_length * (i + 1) // self.num_envs))
             # print("Starting game:", game_id)
             self.games.append(game_id)
             self.eplen.append(1)

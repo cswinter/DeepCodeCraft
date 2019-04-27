@@ -48,15 +48,16 @@ def run_codecraft():
 
 
 def train(hps):
-  env = envs.CodeCraftVecEnv(64)
-  ppo2.learn(
-          network=lambda it: network(hps, it),
-    env=env,
-    gamma=0.9,
-    nsteps=hps["rosteps"],
-    total_timesteps=hps["steps"],
-    log_interval=1,
-    lr=hps["lr"])
+    num_envs = 64 * 128 // hps["rosteps"]
+    env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60)
+    ppo2.learn(
+        network=lambda it: network(hps, it),
+        env=env,
+        gamma=0.9,
+        nsteps=hps["rosteps"],
+        total_timesteps=hps["steps"],
+        log_interval=1,
+        lr=hps["lr"])
 
 def network(hps, input_tensor):
     #with tf.variable_scope(scope, reuse=reuse):

@@ -9,9 +9,12 @@ from requests.packages.urllib3.util.retry import Retry
 
 RETRIES = 100
 
-def create_game() -> int:
+def create_game(game_length = None) -> int:
     try:
-        response = requests.post('http://localhost:9000/start-game').json()
+        if game_length:
+            response = requests.post(f'http://localhost:9000/start-game?maxTicks={game_length}').json()
+        else:
+            response = requests.post('http://localhost:9000/start-game').json()
         return int(response['id'])
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on create_game, retrying")
