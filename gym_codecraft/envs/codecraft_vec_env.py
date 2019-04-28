@@ -26,9 +26,9 @@ class CodeCraftVecEnv(VecEnv):
         observations_high.extend([1, 1])
         # 10 closest minerals
         for _ in range(0, 10):
-            # x, y
-            observations_low.extend([-3, -2])
-            observations_high.extend([3, 2])
+            # relative x, y and distance
+            observations_low.extend([-3, -2, 0])
+            observations_high.extend([3, 2, 8])
             # size
             observations_low.append(0)
             observations_high.append(2)
@@ -108,11 +108,14 @@ class CodeCraftVecEnv(VecEnv):
             minerals = sorted(observation['minerals'], key=lambda m: dist2(m['xPos'], m['yPos'], x, y))
             for m in range(0, 10):
                 if m < len(minerals):
-                    o.append(float(minerals[m]['xPos'] / 1000.0))
-                    o.append(float(minerals[m]['yPos'] / 1000.0))
+                    mx = float(minerals[m]['xPos'])
+                    my = float(minerals[m]['yPos'])
+                    o.append((mx - x) / 1000.0)
+                    o.append((my - y) / 1000.0)
+                    o.append(dist(mx, my, x, y) / 1000.0)
                     o.append(float(minerals[m]['size'] / 100.0))
                 else:
-                    o.extend([0.0, 0.0, 0.0])
+                    o.extend([0.0, 0.0, 0.0, 0.0])
             obs.append(np.array(o))
 
             game_id = self.games[i]
@@ -146,3 +149,8 @@ def dist2(x1, y1, x2, y2):
     dx = x1 - x2
     dy = y1 - y2
     return dx * dx + dy * dy
+
+def dist(x1, y1, x2, y2):
+    dx = x1 - x2
+    dy = y1 - y2
+    return np.sqrt(dx * dx + dy * dy)
