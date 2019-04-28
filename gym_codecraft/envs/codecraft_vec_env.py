@@ -99,7 +99,7 @@ class CodeCraftVecEnv(VecEnv):
             x = float(observation['alliedDrones'][0]['xPos'])
             y = float(observation['alliedDrones'][0]['yPos'])
             o.append(x / 1000.0)
-            o.append(x / 1000.0)
+            o.append(y / 1000.0)
             o.append(np.sin(float(observation['alliedDrones'][0]['orientation'])))
             o.append(np.cos(float(observation['alliedDrones'][0]['orientation'])))
             o.append(float(observation['alliedDrones'][0]['storedResources']) / 50.0)
