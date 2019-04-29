@@ -81,10 +81,10 @@ class Hyperparam:
 
 
 HYPER_PARAMS = [
-    Hyperparam("learning-rate", "lr", 3e-5),
-    Hyperparam("num-layers", "nl", 3),
+    Hyperparam("learning-rate", "lr", 1e-4),
+    Hyperparam("num-layers", "nl", 4),
     Hyperparam("num-hidden", "nh", 1024),
-    Hyperparam("total-timesteps", "steps", 2e7),
+    Hyperparam("total-timesteps", "steps", 1e7),
     Hyperparam("sequential-rollout-steps", "rosteps", 256),
 ]
 
