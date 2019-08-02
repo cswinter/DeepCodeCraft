@@ -12,39 +12,38 @@ import tensorflow.contrib.layers as layers
 import codecraft
 from gym_codecraft import envs
 
-
 TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 
 
 def run_codecraft():
-  games = []
-  for i in range(5):
-    game_id = codecraft.create_game()
-    print("Starting game:", game_id)
-    games.append(game_id)
-
-  log_interval = 5
-  frames = 0
-  last_time = time.time()
-
-  while True:
-    elapsed = time.time() - last_time
-    if elapsed > log_interval:
-      logging.info(f"{frames/elapsed}fps")
-      frames = 0
-      last_time = time.time()
-
-    for i in range(len(games)):
-      game_id = games[i]
-      observation = codecraft.observe(game_id)
-      if len(observation['winner']) > 0:
-        print(f'Game {game_id} won by {observation["winner"][0]}')
+    games = []
+    for i in range(5):
         game_id = codecraft.create_game()
         print("Starting game:", game_id)
-        games[i] = game_id
-      else:
-        codecraft.act(game_id)
-      frames += 1
+        games.append(game_id)
+
+    log_interval = 5
+    frames = 0
+    last_time = time.time()
+
+    while True:
+        elapsed = time.time() - last_time
+        if elapsed > log_interval:
+            logging.info(f"{frames / elapsed}fps")
+            frames = 0
+            last_time = time.time()
+
+        for i in range(len(games)):
+            game_id = games[i]
+            observation = codecraft.observe(game_id)
+            if len(observation['winner']) > 0:
+                print(f'Game {game_id} won by {observation["winner"][0]}')
+                game_id = codecraft.create_game()
+                print("Starting game:", game_id)
+                games[i] = game_id
+            else:
+                codecraft.act(game_id)
+            frames += 1
 
 
 def train(hps):
@@ -59,8 +58,9 @@ def train(hps):
         log_interval=1,
         lr=hps["lr"])
 
+
 def network(hps, input_tensor):
-    #with tf.variable_scope(scope, reuse=reuse):
+    # with tf.variable_scope(scope, reuse=reuse):
     out = input_tensor
     for _ in range(hps["nl"]):
         out = layers.fully_connected(out, num_outputs=hps["nh"], activation_fn=None)
@@ -96,6 +96,7 @@ def args_parser():
         hp.add_argument(parser)
     return parser
 
+
 def main():
     args = args_parser().parse_args()
     args_dict = vars(args)
@@ -121,6 +122,5 @@ def main():
     train(hps)
 
 
-if __name__== "__main__":
-  main()
-
+if __name__ == "__main__":
+    main()

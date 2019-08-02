@@ -7,7 +7,6 @@ import numpy as np
 import codecraft
 
 
-
 class CodeCraftVecEnv(VecEnv):
     def __init__(self, num_envs, game_length):
         observations_low = []
@@ -132,7 +131,7 @@ class CodeCraftVecEnv(VecEnv):
                 # print("Starting game:", game_id)
                 self.games[i] = game_id
                 dones.append(1.0)
-                infos.append({'episode': { 'r': self.eprew[i], 'l': self.eplen[i]}})
+                infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i]}})
                 self.eplen[i] = 1
                 self.eprew[i] = reward
                 self.score[i] = None
@@ -145,10 +144,12 @@ class CodeCraftVecEnv(VecEnv):
 
         return np.array(obs), np.array(rews), np.array(dones), infos
 
+
 def dist2(x1, y1, x2, y2):
     dx = x1 - x2
     dy = y1 - y2
     return dx * dx + dy * dy
+
 
 def dist(x1, y1, x2, y2):
     dx = x1 - x2
