@@ -4,6 +4,11 @@ import os
 import subprocess
 import time
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+
 from baselines.ppo2 import ppo2
 from baselines import logger
 import tensorflow as tf
@@ -26,6 +31,8 @@ def run_codecraft():
     frames = 0
     last_time = time.time()
 
+    policy = Policy()
+
     while True:
         elapsed = time.time() - last_time
         if elapsed > log_interval:
@@ -42,7 +49,9 @@ def run_codecraft():
                 print("Starting game:", game_id)
                 games[i] = game_id
             else:
-                codecraft.act(game_id)
+                obs_np = codecraft.observation_to_np(observation)
+                action = codecraft.one_hot_to_action(policy.evaluate(obs_np))
+                codecraft.act(game_id, action)
             frames += 1
 
 
@@ -68,6 +77,24 @@ def network(hps, input_tensor):
     q_out = out
     q_out = layers.fully_connected(out, num_outputs=8, activation_fn=None)
     return q_out
+
+
+class Policy(nn.Module):
+    def __init__(self):
+        super(Policy, self).__init__()
+        self.dense1 = nn.Linear(47, 100)
+        self.dense_final = nn.Linear(100, 8)
+
+    def evaluate(self, observation):
+        observation = torch.unsqueeze(torch.tensor(observation), 0)
+        probs = self.forward(observation)
+        action = np.random.choice(8, 1, p=probs.detach().numpy()[0])
+        return action
+
+    def forward(self, x):
+        x = F.relu(self.dense1(x))
+        x = F.softmax(self.dense_final(x), dim=1)
+        return x
 
 
 class Hyperparam:
@@ -98,6 +125,8 @@ def args_parser():
 
 
 def main():
+    run_codecraft()
+
     args = args_parser().parse_args()
     args_dict = vars(args)
 

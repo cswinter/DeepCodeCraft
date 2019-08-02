@@ -62,7 +62,7 @@ class CodeCraftVecEnv(VecEnv):
     def step_async(self, actions):
         game_actions = []
         for (game_id, action) in zip(self.games, actions):
-            # 0-5: turn/movement
+            # 0-5: turn/movement (4 is no turn, no movement)
             # 6: build [0,1,0,0,0] drone (if minerals > 5)
             # 7: harvest
             move = False
@@ -75,8 +75,6 @@ class CodeCraftVecEnv(VecEnv):
                 turn = -1
             if action == 2 or action == 5:
                 turn = 1
-            if action == 3:
-                action
             if action == 6:
                 build = [[0, 1, 0, 0, 0]]
             if action == 7:
@@ -94,30 +92,7 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
-            o = []
-            x = float(observation['alliedDrones'][0]['xPos'])
-            y = float(observation['alliedDrones'][0]['yPos'])
-            o.append(x / 1000.0)
-            o.append(y / 1000.0)
-            o.append(np.sin(float(observation['alliedDrones'][0]['orientation'])))
-            o.append(np.cos(float(observation['alliedDrones'][0]['orientation'])))
-            o.append(float(observation['alliedDrones'][0]['storedResources']) / 50.0)
-            o.append(1.0 if observation['alliedDrones'][0]['isConstructing'] else -1.0)
-            o.append(1.0 if observation['alliedDrones'][0]['isHarvesting'] else -1.0)
-            minerals = sorted(observation['minerals'], key=lambda m: dist2(m['xPos'], m['yPos'], x, y))
-            for m in range(0, 10):
-                if m < len(minerals):
-                    mx = float(minerals[m]['xPos'])
-                    my = float(minerals[m]['yPos'])
-                    o.append((mx - x) / 1000.0)
-                    o.append((my - y) / 1000.0)
-                    o.append(dist(mx, my, x, y) / 1000.0)
-                    o.append(float(minerals[m]['size'] / 100.0))
-                else:
-                    o.extend([0.0, 0.0, 0.0, 0.0])
-            obs.append(np.array(o))
-
-            game_id = self.games[i]
+            obs.append(codecraft.observation_to_np(observation))
 
             score = float(observation['alliedScore']) * 0.1
             if self.score[i] is None:
