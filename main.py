@@ -7,13 +7,10 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim
+import torch.optim as optim
 import numpy as np
 
-from baselines.ppo2 import ppo2
 from baselines import logger
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 import codecraft
 from gym_codecraft import envs
@@ -57,17 +54,25 @@ def run_codecraft():
 
 
 def train(rollout_steps: int = 256, batch_size: int = 64 * 128) -> None:
-    games = []
     num_envs = batch_size // rollout_steps
     env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60)
     policy = Policy()
+    optimizer = optim.SGD(policy.parameters(), lr=0.1, momentum=0.9)
 
     obs = env.reset()
     while True:
+        all_obs = []
+
+        # Rollout
         for step in range(rollout_steps):
             actions = policy.evaluate(obs)
+            all_obs.extend(obs)
             obs, rews, dones, infos = env.step(actions)
 
+        # Policy Update
+        optimizer.zero_grad()
+        policy.backprop(np.array(all_obs))
+        optimizer.step()
 
 
 class Policy(nn.Module):
@@ -85,9 +90,20 @@ class Policy(nn.Module):
             actions.append(np.random.choice(8, 1, p=probs[i].numpy()))
         return actions
 
+    def backprop(self, obs):
+        obs = torch.tensor(obs)
+        logits = self.logits(obs)
+        target = torch.LongTensor([1]).repeat(obs.size()[0])
+        loss = F.cross_entropy(logits, target)
+        print(loss)
+        loss.backward()
+
     def forward(self, x):
+        return F.softmax(self.logits(x), dim=1)
+
+    def logits(self, x):
         x = F.relu(self.dense1(x))
-        x = F.softmax(self.dense_final(x), dim=1)
+        x = self.dense_final(x)
         return x
 
 
