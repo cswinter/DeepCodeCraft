@@ -7,6 +7,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim
 import numpy as np
 
 from baselines.ppo2 import ppo2
@@ -55,28 +56,18 @@ def run_codecraft():
             frames += 1
 
 
-def train(hps):
-    num_envs = 64 * 128 // hps["rosteps"]
+def train(rollout_steps: int = 256, batch_size: int = 64 * 128) -> None:
+    games = []
+    num_envs = batch_size // rollout_steps
     env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60)
-    ppo2.learn(
-        network=lambda it: network(hps, it),
-        env=env,
-        gamma=0.99,
-        nsteps=hps["rosteps"],
-        total_timesteps=hps["steps"],
-        log_interval=1,
-        lr=hps["lr"])
+    policy = Policy()
 
+    obs = env.reset()
+    while True:
+        for step in range(rollout_steps):
+            actions = policy.evaluate(obs)
+            obs, rews, dones, infos = env.step(actions)
 
-def network(hps, input_tensor):
-    # with tf.variable_scope(scope, reuse=reuse):
-    out = input_tensor
-    for _ in range(hps["nl"]):
-        out = layers.fully_connected(out, num_outputs=hps["nh"], activation_fn=None)
-        out = tf.nn.relu(out)
-    q_out = out
-    q_out = layers.fully_connected(out, num_outputs=8, activation_fn=None)
-    return q_out
 
 
 class Policy(nn.Module):
@@ -86,10 +77,13 @@ class Policy(nn.Module):
         self.dense_final = nn.Linear(100, 8)
 
     def evaluate(self, observation):
-        observation = torch.unsqueeze(torch.tensor(observation), 0)
+        observation = torch.tensor(observation)
         probs = self.forward(observation)
-        action = np.random.choice(8, 1, p=probs.detach().numpy()[0])
-        return action
+        actions = []
+        probs.detach_()
+        for i in range(probs.size()[0]):
+            actions.append(np.random.choice(8, 1, p=probs[i].numpy()))
+        return actions
 
     def forward(self, x):
         x = F.relu(self.dense1(x))
@@ -125,7 +119,7 @@ def args_parser():
 
 
 def main():
-    run_codecraft()
+    train()
 
     args = args_parser().parse_args()
     args_dict = vars(args)

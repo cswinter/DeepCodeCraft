@@ -117,7 +117,7 @@ class CodeCraftVecEnv(VecEnv):
 
             rews.append(reward)
 
-        return np.array(obs), np.array(rews), np.array(dones), infos
+        return np.array(obs, dtype=np.float32), np.array(rews), np.array(dones), infos
 
 
 def dist2(x1, y1, x2, y2):
