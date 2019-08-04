@@ -1,6 +1,5 @@
-import gym
 from baselines.common.vec_env import VecEnv
-from gym.utils import seeding
+from enum import Enum
 from gym import spaces
 import numpy as np
 
@@ -8,7 +7,9 @@ import codecraft
 
 
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, game_length):
+    def __init__(self, num_envs, game_length, objective):
+        self.objective = objective
+
         observations_low = []
         observations_high = []
         # Drone x, y
@@ -94,7 +95,15 @@ class CodeCraftVecEnv(VecEnv):
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
             obs.append(codecraft.observation_to_np(observation))
 
-            score = float(observation['alliedScore']) * 0.1
+            if self.objective == Objective.ALLIED_WEALTH:
+                score = float(observation['alliedScore']) * 0.1
+            elif self.objective == Objective.DISTANCE_TO_ORIGIN:
+                score = -dist(observation['alliedDrones'][0]['xPos'] / 1000.0,
+                              observation['alliedDrones'][0]['yPos'] / 1000.0,
+                              0.0, 0.0)
+            else:
+                raise Exception(f"Unknown objective {self.objective}")
+
             if self.score[i] is None:
                 self.score[i] = score
             reward = score - self.score[i]
@@ -118,6 +127,11 @@ class CodeCraftVecEnv(VecEnv):
             rews.append(reward)
 
         return np.array(obs, dtype=np.float32), np.array(rews), np.array(dones), infos
+
+
+class Objective(Enum):
+    ALLIED_WEALTH = 0
+    DISTANCE_TO_ORIGIN = 1
 
 
 def dist2(x1, y1, x2, y2):

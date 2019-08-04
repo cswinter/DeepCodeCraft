@@ -53,32 +53,57 @@ def run_codecraft():
             frames += 1
 
 
-def train(rollout_steps: int = 256, batch_size: int = 64 * 128) -> None:
-    num_envs = batch_size // rollout_steps
-    env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60)
+def train(sequential_rollout_steps: int = 256,
+          total_rollout_steps: int = 256 * 64,
+          optimizer_batch_size: int = 256,
+          gamma: int = 0.9) -> None:
+    assert(total_rollout_steps % optimizer_batch_size == 0)
+    num_envs = total_rollout_steps // sequential_rollout_steps
+    env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60, envs.Objective.DISTANCE_TO_ORIGIN)
     policy = Policy()
     optimizer = optim.SGD(policy.parameters(), lr=0.1, momentum=0.9)
 
-    obs = env.reset()
+    last_obs = env.reset()
     while True:
+        episode_start = time.time()
         all_obs = []
+        all_actions = []
+        all_rewards = []
 
         # Rollout
-        for step in range(rollout_steps):
-            actions = policy.evaluate(obs)
-            all_obs.extend(obs)
-            obs, rews, dones, infos = env.step(actions)
+        for step in range(sequential_rollout_steps):
+            actions = policy.evaluate(last_obs)
+
+            all_obs.extend(last_obs)
+            all_actions.extend(actions)
+
+            last_obs, rews, dones, infos = env.step(actions)
+
+            all_rewards.extend(rews)
 
         # Policy Update
-        optimizer.zero_grad()
-        policy.backprop(np.array(all_obs))
-        optimizer.step()
+        # TODO: shuffle
+        episode_loss = 0
+        for batch in range(int(total_rollout_steps / optimizer_batch_size)):
+            start = optimizer_batch_size * batch
+            end = optimizer_batch_size * (batch + 1)
+
+            obs = torch.tensor(all_obs[start:end])
+            actions = torch.tensor(all_actions[start:end])
+            returns = torch.tensor(all_rewards[start:end])
+
+            optimizer.zero_grad()
+            episode_loss += policy.backprop(obs, actions, returns)
+            optimizer.step()
+        print(f'{total_rollout_steps / (time.time() - episode_start)} samples/s')
+        print(episode_loss)
 
 
 class Policy(nn.Module):
-    def __init__(self):
+    def __init__(self, layers, nhidden):
         super(Policy, self).__init__()
         self.dense1 = nn.Linear(47, 100)
+        # TODO: init to 0
         self.dense_final = nn.Linear(100, 8)
 
     def evaluate(self, observation):
@@ -87,16 +112,14 @@ class Policy(nn.Module):
         actions = []
         probs.detach_()
         for i in range(probs.size()[0]):
-            actions.append(np.random.choice(8, 1, p=probs[i].numpy()))
+            actions.append(np.random.choice(8, 1, p=probs[i].numpy())[0])
         return actions
 
-    def backprop(self, obs):
-        obs = torch.tensor(obs)
+    def backprop(self, obs, actions, returns):
         logits = self.logits(obs)
-        target = torch.LongTensor([1]).repeat(obs.size()[0])
-        loss = F.cross_entropy(logits, target)
-        print(loss)
+        loss = torch.sum(returns * F.cross_entropy(logits, actions))
         loss.backward()
+        return loss.data.tolist()
 
     def forward(self, x):
         return F.softmax(self.logits(x), dim=1)
