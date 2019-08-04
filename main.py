@@ -60,8 +60,11 @@ def train(sequential_rollout_steps: int = 256,
     assert(total_rollout_steps % optimizer_batch_size == 0)
     num_envs = total_rollout_steps // sequential_rollout_steps
     env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60, envs.Objective.DISTANCE_TO_ORIGIN)
-    policy = Policy()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    policy = Policy(4, 1024)
+    policy.to(device)
     optimizer = optim.SGD(policy.parameters(), lr=0.1, momentum=0.9)
+
 
     last_obs = env.reset()
     while True:
@@ -72,7 +75,8 @@ def train(sequential_rollout_steps: int = 256,
 
         # Rollout
         for step in range(sequential_rollout_steps):
-            actions = policy.evaluate(last_obs)
+            obs = torch.tensor(last_obs).to(device)
+            actions = policy.evaluate(obs)
 
             all_obs.extend(last_obs)
             all_actions.extend(actions)
@@ -88,31 +92,32 @@ def train(sequential_rollout_steps: int = 256,
             start = optimizer_batch_size * batch
             end = optimizer_batch_size * (batch + 1)
 
-            obs = torch.tensor(all_obs[start:end])
-            actions = torch.tensor(all_actions[start:end])
-            returns = torch.tensor(all_rewards[start:end])
+            obs = torch.tensor(all_obs[start:end]).to(device)
+            actions = torch.tensor(all_actions[start:end]).to(device)
+            returns = torch.tensor(all_rewards[start:end]).to(device)
 
             optimizer.zero_grad()
             episode_loss += policy.backprop(obs, actions, returns)
             optimizer.step()
-        print(f'{total_rollout_steps / (time.time() - episode_start)} samples/s')
+        print(f'{int(total_rollout_steps / (time.time() - episode_start))} samples/s')
         print(episode_loss)
 
 
 class Policy(nn.Module):
     def __init__(self, layers, nhidden):
         super(Policy, self).__init__()
-        self.dense1 = nn.Linear(47, 100)
+        self.fc_layers = nn.ModuleList([nn.Linear(47, nhidden)])
+        for layer in range(layers - 1):
+            self.fc_layers.append(nn.Linear(nhidden, nhidden))
         # TODO: init to 0
-        self.dense_final = nn.Linear(100, 8)
+        self.dense_final = nn.Linear(nhidden, 8)
 
     def evaluate(self, observation):
-        observation = torch.tensor(observation)
         probs = self.forward(observation)
         actions = []
         probs.detach_()
         for i in range(probs.size()[0]):
-            actions.append(np.random.choice(8, 1, p=probs[i].numpy())[0])
+            actions.append(np.random.choice(8, 1, p=probs[i].cpu().numpy())[0])
         return actions
 
     def backprop(self, obs, actions, returns):
@@ -125,9 +130,9 @@ class Policy(nn.Module):
         return F.softmax(self.logits(x), dim=1)
 
     def logits(self, x):
-        x = F.relu(self.dense1(x))
-        x = self.dense_final(x)
-        return x
+        for fc in self.fc_layers:
+            x = F.relu(fc(x))
+        return self.dense_final(x)
 
 
 class Hyperparam:
