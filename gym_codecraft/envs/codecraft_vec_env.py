@@ -56,7 +56,7 @@ class CodeCraftVecEnv(VecEnv):
             # print("Starting game:", game_id)
             self.games.append(game_id)
             self.eplen.append(1)
-            self.eprew.append(1)
+            self.eprew.append(0)
             self.score.append(None)
         return self.observe()[0]
 
@@ -130,8 +130,8 @@ class CodeCraftVecEnv(VecEnv):
 
 
 class Objective(Enum):
-    ALLIED_WEALTH = 0
-    DISTANCE_TO_ORIGIN = 1
+    ALLIED_WEALTH = 'ALLIED_WEALTH'
+    DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
 
 
 def dist2(x1, y1, x2, y2):

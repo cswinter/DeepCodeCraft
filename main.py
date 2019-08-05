@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
+import wandb
 from baselines import logger
 
 import codecraft
@@ -55,18 +56,42 @@ def run_codecraft():
 
 def train(sequential_rollout_steps: int = 256,
           total_rollout_steps: int = 256 * 64,
-          optimizer_batch_size: int = 256,
+          optimizer_batch_size: int = 4096,
           gamma: int = 0.9) -> None:
     assert(total_rollout_steps % optimizer_batch_size == 0)
+
+    lr = 0.1
+    momentum = 0.9
+    optimizer = 'SGD'
+    game_length = 3 * 60 * 60
+    objective = envs.Objective.DISTANCE_TO_ORIGIN
+    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
+    wandb.config.update({
+        'sequential_rollout_steps': sequential_rollout_steps,
+        'total_rollout_steps': total_rollout_steps,
+        'optimizer_batch_size': optimizer_batch_size,
+        'gamma': gamma,
+        'lr': lr,
+        'momentum': momentum,
+        'optimizer': optimizer,
+        'objective': objective,
+        'commit': commit,
+    })
+
     num_envs = total_rollout_steps // sequential_rollout_steps
-    env = envs.CodeCraftVecEnv(num_envs, 3 * 60 * 60, envs.Objective.DISTANCE_TO_ORIGIN)
+    env = envs.CodeCraftVecEnv(num_envs, game_length, envs.Objective.DISTANCE_TO_ORIGIN)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     policy = Policy(4, 1024)
     policy.to(device)
     optimizer = optim.SGD(policy.parameters(), lr=0.1, momentum=0.9)
 
+    wandb.watch(policy)
 
+    total_steps = 0
+    epoch = 0
     last_obs = env.reset()
+    eprewmean = 0
+    eplenmean = 0
     while True:
         episode_start = time.time()
         all_obs = []
@@ -82,6 +107,9 @@ def train(sequential_rollout_steps: int = 256,
             all_actions.extend(actions)
 
             last_obs, rews, dones, infos = env.step(actions)
+            for info in infos:
+                eprewmean = eprewmean * 0.95 + 0.05 * info['episode']['r']
+                eplenmean = eplenmean * 0.95 + 0.05 * info['episode']['l']
 
             all_rewards.extend(rews)
 
@@ -99,7 +127,20 @@ def train(sequential_rollout_steps: int = 256,
             optimizer.zero_grad()
             episode_loss += policy.backprop(obs, actions, returns)
             optimizer.step()
-        print(f'{int(total_rollout_steps / (time.time() - episode_start))} samples/s')
+
+        epoch += 1
+        total_steps += total_rollout_steps
+        throughput = int(total_rollout_steps / (time.time() - episode_start))
+
+        wandb.log({
+            'step': total_steps,
+            'loss': episode_loss,
+            'throughput': throughput,
+            'eprewmean': eprewmean,
+            'eplenmean': eplenmean,
+        })
+
+        print(f'{throughput} samples/s')
         print(episode_loss)
 
 
@@ -163,6 +204,7 @@ def args_parser():
 
 
 def main():
+    wandb.init(project="deep-codecraft")
     train()
 
     args = args_parser().parse_args()
