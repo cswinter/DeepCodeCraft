@@ -94,6 +94,7 @@ def train(sequential_rollout_steps: int = 256,
     eplenmean = 0
     while True:
         episode_start = time.time()
+        entropies = []
         all_obs = []
         all_actions = []
         all_rewards = []
@@ -101,7 +102,9 @@ def train(sequential_rollout_steps: int = 256,
         # Rollout
         for step in range(sequential_rollout_steps):
             obs = torch.tensor(last_obs).to(device)
-            actions = policy.evaluate(obs)
+            actions, entropy = policy.evaluate(obs)
+
+            entropies.append(entropy)
 
             all_obs.extend(last_obs)
             all_actions.extend(actions)
@@ -138,6 +141,7 @@ def train(sequential_rollout_steps: int = 256,
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
+            'entropy': sum(entropies) / len(entropies),
         })
 
         print(f'{throughput} samples/s')
@@ -159,7 +163,7 @@ class Policy(nn.Module):
         probs.detach_()
         for i in range(probs.size()[0]):
             actions.append(np.random.choice(8, 1, p=probs[i].cpu().numpy())[0])
-        return actions
+        return actions, self.entropy(probs)
 
     def backprop(self, obs, actions, returns):
         logits = self.logits(obs)
@@ -174,6 +178,12 @@ class Policy(nn.Module):
         for fc in self.fc_layers:
             x = F.relu(fc(x))
         return self.dense_final(x)
+
+    def entropy(self, dist):
+        logs = torch.log2(dist)
+        logs[logs == float('inf')] = 0
+        entropy = -torch.dot(dist.view(-1), logs.view(-1)) / dist.size()[0]
+        return entropy
 
 
 class Hyperparam:
