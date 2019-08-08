@@ -23,7 +23,9 @@ class Policy(nn.Module):
 
     def backprop(self, obs, actions, returns):
         logits = self.logits(obs)
-        loss = torch.sum(returns * F.cross_entropy(logits, actions))
+        # TODO: should this use probability value at rollout time before policy updates?
+        p = torch.clamp_min(F.softmax(logits.data, dim=1).gather(1, actions.view(-1, 1)), 1).view(-1)
+        loss = torch.sum(returns * F.cross_entropy(logits, actions) / p)
         loss.backward()
         return loss.data.tolist()
 
