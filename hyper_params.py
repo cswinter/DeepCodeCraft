@@ -8,7 +8,7 @@ class HyperParams:
         self.optimizer = 'SGD'      # Optimizer
         self.lr = 0.1               # Learning rate
         self.momentum = 0.9         # Momentum
-        self.bs = 4096              # Batch size during optimization
+        self.bs = 256               # Batch size during optimization
 
         # Policy
         self.depth = 3              # Number of hidden layers
