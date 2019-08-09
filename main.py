@@ -102,8 +102,12 @@ def train(hps: HyperParams) -> None:
                 if all_dones[t * num_envs + i] == 1:
                     ret[i] = 0
 
+        perm = np.random.permutation(len(all_obs))
+        all_obs = np.array(all_obs)[perm]
+        all_returns = all_returns[perm]
+        all_actions = np.array(all_actions)[perm]
+
         # Policy Update
-        # TODO: shuffle
         episode_loss = 0
         for batch in range(int(hps.rosteps / hps.bs)):
             start = hps.bs * batch
