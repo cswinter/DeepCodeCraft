@@ -5,6 +5,7 @@ import os
 
 import torch
 import torch.optim as optim
+import numpy as np
 
 import wandb
 
@@ -101,6 +102,15 @@ def train(hps: HyperParams) -> None:
 
             all_rewards.extend(rews)
 
+        all_returns = np.zeros(len(all_rewards), dtype=np.float32)
+        ret = np.zeros(num_envs)
+        retscale = 1.0 - hps.gamma
+        for t in reversed(range(hps.seq_rosteps)):
+            # TODO: correction at end of rollout
+            for i in range(num_envs):
+                ret[i] = hps.gamma * ret[i] + all_rewards[t * num_envs + i]
+                all_returns[t * num_envs + i] = ret[i] * retscale
+
         # Policy Update
         # TODO: shuffle
         episode_loss = 0
@@ -110,7 +120,7 @@ def train(hps: HyperParams) -> None:
 
             obs = torch.tensor(all_obs[start:end]).to(device)
             actions = torch.tensor(all_actions[start:end]).to(device)
-            returns = torch.tensor(all_rewards[start:end]).to(device)
+            returns = torch.tensor(all_returns[start:end]).to(device)
 
             optimizer.zero_grad()
             episode_loss += policy.backprop(obs, actions, returns)
