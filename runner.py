@@ -33,6 +33,9 @@ class JobQueue:
         while True:
             for job_file in os.listdir(self.queue_dir):
                 if job_file not in self.known_jobs:
+                    if job_file.startswith("."):
+                        logging.info(f"Ignoring hidden file {job_file}")
+                        continue
                     logging.info(f"Found new job file {job_file}")
                     self.process_job_file(job_file)
             
