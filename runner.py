@@ -18,12 +18,14 @@ logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%
 
 
 class JobQueue:
-    def __init__(self, queue_dir, concurrency):
+    def __init__(self, queue_dir, concurrency, devices):
         self.queue_dir = queue_dir
+        self.devices = devices
         self.concurrency = concurrency
         self.known_jobs = {}
         self.queue = queue.Queue()
         self.active_jobs = 0
+        self.active_jobs_per_device = {device: 0 for device in range(devices)}
         self.lock = threading.Lock()
 
     
@@ -42,13 +44,24 @@ class JobQueue:
             self.lock.acquire()
             while self.queue.qsize() > 0 and self.active_jobs < self.concurrency:
                 job = self.queue.get()
+
+                min_load = self.concurrency
+                min_device = -1
+                for device, load in self.active_jobs_per_device.items():
+                    if load < min_load:
+                        min_load = load
+                        min_device = device
+
                 self.active_jobs += 1
+                self.active_jobs_per_device[min_device] += 1
+                job.set_device(min_device)
                 threading.Thread(target=self.run_job, args=(job,)).start()
-                logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs}")
-                time.sleep(2)
+
+                logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
+                time.sleep(0.1)
             self.lock.release()
 
-            time.sleep(1)
+            time.sleep(0.1)
 
     
     def run_job(self, job):
@@ -134,12 +147,18 @@ class Job:
         self.revision = revision
         self.params = params
         self.handle = handle
+        self.device = None
+
+    def set_device(self, device):
+        self.device = device
+        self.params['device'] = device
 
 
 @click.command()
-@click.option("--concurrency", default=2, help="Maximum number of jobs running at the same time.")
+@click.option("--concurrency", default=8, help="Maximum number of jobs running at the same time.")
 def main(concurrency):
-    job_queue = JobQueue("/home/clemens/xprun/queue", concurrency)
+    gpus = len(subprocess.check_output(["nvidia-smi", "-L"]).decode("UTF-8").split("\n")) - 1
+    job_queue = JobQueue("/home/clemens/xprun/queue", concurrency, gpus)
     job_queue.run()
 
 
