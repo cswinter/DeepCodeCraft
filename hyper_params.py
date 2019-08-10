@@ -16,8 +16,8 @@ class HyperParams:
 
         # RL
         self.steps = 4e6            # Total number of timesteps
-        self.seq_rosteps = 256      # Number of sequential steps per rollout
-        self.rosteps = 256 * 64     # Number of total rollout steps
+        self.seq_rosteps = 64       # Number of sequential steps per rollout
+        self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
 
         # Task
