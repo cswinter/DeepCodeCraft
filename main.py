@@ -85,6 +85,7 @@ def train(hps: HyperParams) -> None:
         all_obs = []
         all_actions = []
         all_rewards = []
+        all_dones = []
 
         # Rollout
         for step in range(hps.seq_rosteps):
@@ -99,6 +100,7 @@ def train(hps: HyperParams) -> None:
             obs, rews, dones, infos = env.step(actions)
 
             all_rewards.extend(rews)
+            all_dones.extend(dones)
 
             for info in infos:
                 ema = min(95, completed_episodes * 10) / 100.0
@@ -110,11 +112,12 @@ def train(hps: HyperParams) -> None:
         ret = np.zeros(num_envs)
         retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
-            # TODO: correction at end of rollout
-            # TODO: episode boundaries
+            # TODO: correction at end of rollout/episode
             for i in range(num_envs):
                 ret[i] = hps.gamma * ret[i] + all_rewards[t * num_envs + i]
                 all_returns[t * num_envs + i] = ret[i] * retscale
+                if all_dones[t * num_envs + i] == 1:
+                    ret[i] = 0
 
         # Policy Update
         # TODO: shuffle
@@ -123,12 +126,12 @@ def train(hps: HyperParams) -> None:
             start = hps.bs * batch
             end = hps.bs * (batch + 1)
 
-            obs = torch.tensor(all_obs[start:end]).to(device)
+            o = torch.tensor(all_obs[start:end]).to(device)
             actions = torch.tensor(all_actions[start:end]).to(device)
             returns = torch.tensor(all_returns[start:end]).to(device)
 
             optimizer.zero_grad()
-            episode_loss += policy.backprop(obs, actions, returns)
+            episode_loss += policy.backprop(o, actions, returns)
             optimizer.step()
 
         epoch += 1
