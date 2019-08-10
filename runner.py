@@ -89,6 +89,7 @@ class JobQueue:
 
             job_desc = f"{job.repo_path} at {job.revision} with {job.params}"
             args = [f"--{name}={value}" for name, value in job.params.items()]
+            args.append(f"--descriptor={job.descriptor}")
             logpath = os.path.join(out_dir, "out.txt")
 
             logging.info(f"Running {job_desc}")
@@ -106,13 +107,13 @@ class JobQueue:
         self.known_jobs[job.handle] -= 1
         self.active_jobs_per_device[job.device] -= 1
         if self.known_jobs[job.handle] == 0:
-            os.remove(os.path.join(self.queue_dir, job.handle))
             del self.known_jobs[job.handle]
         self.lock.release()
 
 
     def process_job_file(self, job_file):
-        job = yaml.safe_load(open(os.path.join(self.queue_dir, job_file), "r"))
+        filepath = os.path.join(self.queue_dir, job_file)
+        job = yaml.safe_load(open(filepath, "r"))
         param_sets = []
         for param_set in job["params"]:
             param_sets.extend(self.all_combinations(param_set))
@@ -122,10 +123,17 @@ class JobQueue:
 
         for param_set in param_sets:
             self.queue.put(Job(job["repo-path"], job["revision"], param_set, job_file))
+        os.remove(filepath)
 
 
     def all_combinations(self, params_dict):
         param_sets = [{}]
+        if 'repeat' in params_dict:
+            repetitions = params_dict['repeat']
+            del(params_dict['repeat'])
+        else:
+            repetitions = 1
+
         for name, values in params_dict.items():
             if type(values) is list:
                 new_sets = []
@@ -139,7 +147,7 @@ class JobQueue:
                 for param_set in param_sets:
                     param_set[name] = values
 
-        return param_sets
+        return param_sets * repetitions
 
 
 class Job:
@@ -149,6 +157,7 @@ class Job:
         self.params = params
         self.handle = handle
         self.device = None
+        self.descriptor = revision + '-' + "-".join([f'{k}{v}' for k, v in params.items()])
 
     def set_device(self, device):
         self.device = device

@@ -55,10 +55,6 @@ def run_codecraft():
 def train(hps: HyperParams) -> None:
     assert(hps.rosteps % hps.bs == 0)
 
-    config = vars(hps)
-    config['commit'] = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
-    wandb.config.update(config)
-
     num_envs = hps.rosteps // hps.seq_rosteps
     env = envs.CodeCraftVecEnv(num_envs, hps.game_length, hps.objective)
     if torch.cuda.is_available():
@@ -154,15 +150,20 @@ def main():
     wandb.init(project="deep-codecraft")
 
     hps = HyperParams()
-
     args_parser = hps.args_parser()
     args_parser.add_argument("--out-dir")
     args_parser.add_argument("--device", default=0)
+    args_parser.add_argument("--descriptor", default="none")
     args = args_parser.parse_args()
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
+
+    config = vars(hps)
+    config['commit'] = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
+    config['descriptor'] = vars(args)['descriptor']
+    wandb.config.update(config)
 
     train(hps)
 
