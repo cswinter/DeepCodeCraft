@@ -104,6 +104,7 @@ class JobQueue:
         self.lock.acquire()
         self.active_jobs -= 1
         self.known_jobs[job.handle] -= 1
+        self.active_jobs_per_device[job.device] -= 1
         if self.known_jobs[job.handle] == 0:
             os.remove(os.path.join(self.queue_dir, job.handle))
             del self.known_jobs[job.handle]
