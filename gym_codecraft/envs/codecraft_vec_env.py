@@ -98,9 +98,10 @@ class CodeCraftVecEnv(VecEnv):
             if self.objective == Objective.ALLIED_WEALTH:
                 score = float(observation['alliedScore']) * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
-                score = -dist(observation['alliedDrones'][0]['xPos'] / 1000.0,
-                              observation['alliedDrones'][0]['yPos'] / 1000.0,
-                              0.0, 0.0)
+                x = observation['alliedDrones'][0]['xPos'] / 1000.0
+                y = observation['alliedDrones'][0]['yPos'] / 1000.0
+                # print(f"(x,y,r)=({x},{y},{observation['alliedDrones'][0]['orientation']})")
+                score = -dist(x, y, 0.0, 0.0)
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 

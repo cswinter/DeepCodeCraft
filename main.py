@@ -75,9 +75,10 @@ def train(hps: HyperParams) -> None:
 
     total_steps = 0
     epoch = 0
-    last_obs = env.reset()
+    obs = env.reset()
     eprewmean = 0
     eplenmean = 0
+    completed_episodes = 0
     while total_steps < hps.steps:
         episode_start = time.time()
         entropies = []
@@ -87,26 +88,30 @@ def train(hps: HyperParams) -> None:
 
         # Rollout
         for step in range(hps.seq_rosteps):
-            obs = torch.tensor(last_obs).to(device)
-            actions, entropy = policy.evaluate(obs)
+            obs_tensor = torch.tensor(obs).to(device)
+            actions, entropy = policy.evaluate(obs_tensor)
 
             entropies.append(entropy)
 
-            all_obs.extend(last_obs)
+            all_obs.extend(obs)
             all_actions.extend(actions)
 
-            last_obs, rews, dones, infos = env.step(actions)
-            for info in infos:
-                eprewmean = eprewmean * 0.95 + 0.05 * info['episode']['r']
-                eplenmean = eplenmean * 0.95 + 0.05 * info['episode']['l']
+            obs, rews, dones, infos = env.step(actions)
 
             all_rewards.extend(rews)
+
+            for info in infos:
+                ema = min(95, completed_episodes * 10) / 100.0
+                eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
+                eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
+                completed_episodes += 1
 
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         ret = np.zeros(num_envs)
         retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correction at end of rollout
+            # TODO: episode boundaries
             for i in range(num_envs):
                 ret[i] = hps.gamma * ret[i] + all_rewards[t * num_envs + i]
                 all_returns[t * num_envs + i] = ret[i] * retscale

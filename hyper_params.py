@@ -18,7 +18,7 @@ class HyperParams:
         self.steps = 4e6            # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.rosteps = 256 * 64     # Number of total rollout steps
-        self.gamma = 0.9            # Discount factor
+        self.gamma = 0.8            # Discount factor
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_ORIGIN
