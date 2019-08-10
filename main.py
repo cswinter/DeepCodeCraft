@@ -139,8 +139,8 @@ def train(hps: HyperParams) -> None:
         throughput = int(hps.rosteps / (time.time() - episode_start))
 
         wandb.log({
-            'step': total_steps,
-            'loss': episode_loss,
+            'Step': total_steps,
+            'loss': episode_loss / hps.rosteps,
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
