@@ -10,8 +10,9 @@ class Policy(nn.Module):
         self.fc_layers = nn.ModuleList([nn.Linear(47, nhidden)])
         for layer in range(layers - 1):
             self.fc_layers.append(nn.Linear(nhidden, nhidden))
-        # TODO: init to 0
         self.dense_final = nn.Linear(nhidden, 8)
+        # TODO: init to 0?
+        # self.dense_final.weight.data.fill_(0.0)
 
     def evaluate(self, observation):
         probs = self.forward(observation)

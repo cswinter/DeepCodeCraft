@@ -36,13 +36,13 @@ def act(game_id: int, action):
             time.sleep(1)
 
 
-def act_batch(actions):
+def act_batch(actions, disable_harvest: bool = False):
     payload = {}
     for (game_id, move, turn, buildSpec, harvest) in actions:
         action = {
             "buildDrone": buildSpec,
             "move": move,
-            "harvest": True,#harvest,
+            "harvest": not disable_harvest,#harvest,
             "transfer": False,
             "turn": turn,
         }

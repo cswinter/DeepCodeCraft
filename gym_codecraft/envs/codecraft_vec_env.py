@@ -83,7 +83,7 @@ class CodeCraftVecEnv(VecEnv):
                 harvest = True
             game_actions.append((game_id, move, turn, build, harvest))
 
-        codecraft.act_batch(game_actions)
+        codecraft.act_batch(game_actions, disable_harvest=self.objective == Objective.DISTANCE_TO_CRYSTAL)
 
     def step_wait(self):
         return self.observe()
@@ -95,13 +95,18 @@ class CodeCraftVecEnv(VecEnv):
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
 
+            x = observation['alliedDrones'][0]['xPos'] / 1000.0
+            y = observation['alliedDrones'][0]['yPos'] / 1000.0
             if self.objective == Objective.ALLIED_WEALTH:
                 score = float(observation['alliedScore']) * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
-                x = observation['alliedDrones'][0]['xPos'] / 1000.0
-                y = observation['alliedDrones'][0]['yPos'] / 1000.0
                 # print(f"(x,y,r)=({x},{y},{observation['alliedDrones'][0]['orientation']})")
                 score = -dist(x, y, 0.0, 0.0)
+            elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
+                score = 0
+                for crystal in observation['minerals']:
+                    nearness = 0.5 - dist(crystal['xPos'] / 1000.0, crystal['yPos'] / 1000.0, x, y)
+                    score = max(score, 0.2 * nearness * crystal['size'])
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
@@ -133,6 +138,7 @@ class CodeCraftVecEnv(VecEnv):
 
 class Objective(Enum):
     ALLIED_WEALTH = 'ALLIED_WEALTH'
+    DISTANCE_TO_CRYSTAL = 'DISTANCE_TO_CRYSTAL'
     DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
 
 
