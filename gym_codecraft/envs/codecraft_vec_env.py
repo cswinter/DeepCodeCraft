@@ -53,8 +53,7 @@ class CodeCraftVecEnv(VecEnv):
         self.score = []
         for i in range(self.num_envs):
             # spread out initial game lengths to stagger start times
-            # game_id = codecraft.create_game(self.game_length * (i + 1) // self.num_envs, self.action_delay)
-            game_id = codecraft.create_game(self.game_length, self.action_delay)
+            game_id = codecraft.create_game(self.game_length * (i + 1) // self.num_envs, self.action_delay)
             # print("Starting game:", game_id)
             self.games.append(game_id)
             self.eplen.append(1)
