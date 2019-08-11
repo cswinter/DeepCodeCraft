@@ -52,6 +52,8 @@ class JobQueue:
                         min_load = load
                         min_device = device
                 job.set_device(min_device)
+                self.active_jobs += 1
+                self.active_jobs_per_device[job.device] += 1
                 threading.Thread(target=self.run_job, args=(job,)).start()
                 logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
                 time.sleep(0.1)
@@ -61,68 +63,66 @@ class JobQueue:
 
     
     def run_job(self, job):
-        with tempfile.TemporaryDirectory() as dir:
+        try:
+            with tempfile.TemporaryDirectory() as dir:
 
-            def git(args, workdir=dir):
-                FNULL = open(os.devnull, 'w')
-                cmd = ["git"]
-                if workdir is not None:
-                    cmd.extend(["-C", dir])
-                cmd.extend(args)
-                subprocess.check_call(cmd, stdout=FNULL, stderr=subprocess.STDOUT)
+                def git(args, workdir=dir):
+                    FNULL = open(os.devnull, 'w')
+                    cmd = ["git"]
+                    if workdir is not None:
+                        cmd.extend(["-C", dir])
+                    cmd.extend(args)
+                    subprocess.check_call(cmd, stdout=FNULL, stderr=subprocess.STDOUT)
 
-            git(["clone", job.repo_path, dir], workdir=None)
-            git(["reset", "--hard", "HEAD"])
-            git(["clean", "-fd"])
-            try:
-                git(["checkout", job.revision])
-            except subprocess.CalledProcessError:
-                logging.error(f"Failed to checkout revision {job.revision}! Aborting.")
-                return
+                git(["clone", job.repo_path, dir], workdir=None)
+                git(["reset", "--hard", "HEAD"])
+                git(["clean", "-fd"])
+                try:
+                    git(["checkout", job.revision])
+                except subprocess.CalledProcessError:
+                    logging.error(f"Failed to checkout revision {job.revision}! Aborting.")
+                    return
 
-            revision = subprocess.check_output(
-                    ["git", "-C", dir, "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
+                revision = subprocess.check_output(
+                        ["git", "-C", dir, "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
 
-            out_dir = os.path.join(OUT_ROOT_DIR, f'{time.strftime("%Y-%m-%d~%H:%M:%S")}-{revision}')
-            for name, value in job.params.items():
-                out_dir += f"-{name}{value}"
-            pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+                out_dir = os.path.join(OUT_ROOT_DIR, f'{time.strftime("%Y-%m-%d~%H:%M:%S")}-{revision}')
+                for name, value in job.params.items():
+                    out_dir += f"-{name}{value}"
+                pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-            job_desc = f"{job.repo_path} at {job.revision} with {job.params}"
-            args = []
-            for name, value in job.params.items():
-                if isinstance(value, bool):
-                    if value:
-                        args.append(f'--{name}')
+                job_desc = f"{job.repo_path} at {job.revision} with {job.params}"
+                args = []
+                for name, value in job.params.items():
+                    if isinstance(value, bool):
+                        if value:
+                            args.append(f'--{name}')
+                        else:
+                            args.append(f'--no-{name}')
                     else:
-                        args.append(f'--no-{name}')
+                        args.append(f"--{name}={value}")
+                args.append(f"--descriptor={job.descriptor}")
+
+                logpath = os.path.join(out_dir, "out.txt")
+
+                logging.info(f"Running {job_desc}")
+                logging.info(f"Output in {logpath}")
+
+                with open(logpath, "w+") as outfile:
+                    retcode = subprocess.call(["python3", "main.py", "--out-dir", out_dir] + args,
+                                              stdout=outfile, stderr=outfile, cwd=dir)
+                if retcode != 0:
+                    logging.warning(f"Command {job_desc} returned non-zero exit status {retcode}. Logs: {logpath}")
                 else:
-                    args.append(f"--{name}={value}")
-            args.append(f"--descriptor={job.descriptor}")
-
-            logpath = os.path.join(out_dir, "out.txt")
-
-            logging.info(f"Running {job_desc}")
-            logging.info(f"Output in {logpath}")
-
-            self.active_jobs += 1
-            self.active_jobs_per_device[job.device] += 1
-
-            with open(logpath, "w+") as outfile:
-                retcode = subprocess.call(["python3", "main.py", "--out-dir", out_dir] + args,
-                                          stdout=outfile, stderr=outfile, cwd=dir)
-            if retcode != 0:
-                logging.warning(f"Command {job_desc} returned non-zero exit status {retcode}. Logs: {logpath}")
-            else:
-                logging.info(f"Success: {job_desc}")
-
-        self.lock.acquire()
-        self.active_jobs -= 1
-        self.known_jobs[job.handle] -= 1
-        self.active_jobs_per_device[job.device] -= 1
-        if self.known_jobs[job.handle] == 0:
-            del self.known_jobs[job.handle]
-        self.lock.release()
+                    logging.info(f"Success: {job_desc}")
+        finally:
+            self.lock.acquire()
+            self.active_jobs -= 1
+            self.known_jobs[job.handle] -= 1
+            self.active_jobs_per_device[job.device] -= 1
+            if self.known_jobs[job.handle] == 0:
+                del self.known_jobs[job.handle]
+            self.lock.release()
 
 
     def process_job_file(self, job_file):
