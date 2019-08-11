@@ -16,16 +16,18 @@ class Policy(nn.Module):
     def evaluate(self, observation):
         probs = self.forward(observation)
         actions = []
+        ps = []
         probs.detach_()
         for i in range(probs.size()[0]):
-            actions.append(np.random.choice(8, 1, p=probs[i].cpu().numpy())[0])
-        return actions, self.entropy(probs)
+            probs_np = probs[i].cpu().numpy()
+            action = np.random.choice(8, 1, p=probs_np)[0]
+            actions.append(action)
+            ps.append(probs_np[action])
+        return actions, ps, self.entropy(probs)
 
-    def backprop(self, obs, actions, returns):
+    def backprop(self, obs, actions, probs, returns):
         logits = self.logits(obs)
-        # TODO: should this use probability value at rollout time before policy updates?
-        p = torch.clamp_min(F.softmax(logits.data, dim=1).gather(1, actions.view(-1, 1)), 1).view(-1)
-        loss = torch.sum(returns * F.cross_entropy(logits, actions) / p)
+        loss = torch.sum(returns * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
         loss.backward()
         return loss.data.tolist()
 

@@ -66,18 +66,20 @@ def train(hps: HyperParams) -> None:
         entropies = []
         all_obs = []
         all_actions = []
+        all_probs = []
         all_rewards = []
         all_dones = []
 
         # Rollout
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
-            actions, entropy = policy.evaluate(obs_tensor)
+            actions, probs, entropy = policy.evaluate(obs_tensor)
 
             entropies.append(entropy)
 
             all_obs.extend(obs)
             all_actions.extend(actions)
+            all_probs.extend(probs)
 
             obs, rews, dones, infos = env.step(actions)
 
@@ -107,6 +109,7 @@ def train(hps: HyperParams) -> None:
             all_obs = np.array(all_obs)[perm]
             all_returns = all_returns[perm]
             all_actions = np.array(all_actions)[perm]
+            all_probs = np.array(all_probs)[perm]
 
         # Policy Update
         episode_loss = 0
@@ -116,10 +119,11 @@ def train(hps: HyperParams) -> None:
 
             o = torch.tensor(all_obs[start:end]).to(device)
             actions = torch.tensor(all_actions[start:end]).to(device)
+            probs = torch.tensor(all_probs[start:end]).to(device)
             returns = torch.tensor(all_returns[start:end]).to(device)
 
             optimizer.zero_grad()
-            episode_loss += policy.backprop(o, actions, returns)
+            episode_loss += policy.backprop(o, actions, probs, returns)
             optimizer.step()
 
         epoch += 1
