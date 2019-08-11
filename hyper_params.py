@@ -6,7 +6,7 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.1               # Learning rate
+        self.lr = 0.001             # Learning rate
         self.momentum = 0.9         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = False        # Shuffle samples collected during rollout before optimization
@@ -16,13 +16,13 @@ class HyperParams:
         self.width = 1024           # Number of activations on each hidden layer
 
         # RL
-        self.steps = 2e6            # Total number of timesteps
-        self.seq_rosteps = 64       # Number of sequential steps per rollout
-        self.rosteps = 64 * 32      # Number of total rollout steps
-        self.gamma = 0.8            # Discount factor
+        self.steps = 1e7            # Total number of timesteps
+        self.seq_rosteps = 256      # Number of sequential steps per rollout
+        self.rosteps = 256 * 32     # Number of total rollout steps
+        self.gamma = 0.99           # Discount factor
 
         # Task
-        self.objective = envs.Objective.DISTANCE_TO_ORIGIN
+        self.objective = envs.Objective.ALLIED_WEALTH
         self.game_length = 3 * 60 * 60
         self.action_delay = 0
 
