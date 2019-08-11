@@ -7,8 +7,9 @@ import codecraft
 
 
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, game_length, objective):
+    def __init__(self, num_envs, game_length, objective, action_delay):
         self.objective = objective
+        self.action_delay = action_delay
 
         observations_low = []
         observations_high = []
@@ -52,7 +53,7 @@ class CodeCraftVecEnv(VecEnv):
         self.score = []
         for i in range(self.num_envs):
             # spread out initial game lengths to stagger start times
-            game_id = codecraft.create_game((self.game_length * (i + 1) // self.num_envs))
+            game_id = codecraft.create_game(self.game_length * (i + 1) // self.num_envs, self.action_delay)
             # print("Starting game:", game_id)
             self.games.append(game_id)
             self.eplen.append(1)
@@ -112,7 +113,7 @@ class CodeCraftVecEnv(VecEnv):
 
             if len(observation['winner']) > 0:
                 # print(f'Game {game_id} won by {observation["winner"][0]}')
-                game_id = codecraft.create_game()
+                game_id = codecraft.create_game(self.game_length, self.action_delay)
                 # print("Starting game:", game_id)
                 self.games[i] = game_id
                 dones.append(1.0)

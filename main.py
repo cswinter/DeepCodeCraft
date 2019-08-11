@@ -18,45 +18,31 @@ TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 
 
 def run_codecraft():
-    games = []
-    for i in range(5):
-        game_id = codecraft.create_game()
-        print("Starting game:", game_id)
-        games.append(game_id)
+    nenv = 32
+    env = envs.CodeCraftVecEnv(nenv, 3 * 60 * 60, envs.Objective.DISTANCE_TO_ORIGIN, 1)
 
     log_interval = 5
     frames = 0
     last_time = time.time()
 
-    policy = Policy()
-
+    env.reset()
     while True:
         elapsed = time.time() - last_time
         if elapsed > log_interval:
-            logging.info(f"{frames / elapsed}fps")
+            print(f"{frames / elapsed}fps")
             frames = 0
             last_time = time.time()
 
-        for i in range(len(games)):
-            game_id = games[i]
-            observation = codecraft.observe(game_id)
-            if len(observation['winner']) > 0:
-                print(f'Game {game_id} won by {observation["winner"][0]}')
-                game_id = codecraft.create_game()
-                print("Starting game:", game_id)
-                games[i] = game_id
-            else:
-                obs_np = codecraft.observation_to_np(observation)
-                action = codecraft.one_hot_to_action(policy.evaluate(obs_np))
-                codecraft.act(game_id, action)
-            frames += 1
+        env.step_async([4]*nenv)
+        env.observe()
+        frames += nenv
 
 
 def train(hps: HyperParams) -> None:
     assert(hps.rosteps % hps.bs == 0)
 
     num_envs = hps.rosteps // hps.seq_rosteps
-    env = envs.CodeCraftVecEnv(num_envs, hps.game_length, hps.objective)
+    env = envs.CodeCraftVecEnv(num_envs, hps.game_length, hps.objective, hps.action_delay)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -109,6 +95,7 @@ def train(hps: HyperParams) -> None:
         retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correction at end of rollout/episode
+            # TODO: correct for action delay?
             for i in range(num_envs):
                 ret[i] = hps.gamma * ret[i] + all_rewards[t * num_envs + i]
                 all_returns[t * num_envs + i] = ret[i] * retscale
@@ -147,6 +134,7 @@ def train(hps: HyperParams) -> None:
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     wandb.init(project="deep-codecraft")
 
     hps = HyperParams()
@@ -185,7 +173,6 @@ def main():
             hps[hp.shortname] = hp.default
 
     logger.configure(dir=out_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
-    logging.basicConfig(level=logging.INFO)
     train(hps)
 """
 

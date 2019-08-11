@@ -8,12 +8,12 @@ import numpy as np
 RETRIES = 100
 
 
-def create_game(game_length = None) -> int:
+def create_game(game_length: int = None, action_delay: int = 0) -> int:
     try:
         if game_length:
-            response = requests.post(f'http://localhost:9000/start-game?maxTicks={game_length}').json()
+            response = requests.post(f'http://localhost:9000/start-game?maxTicks={game_length}&actionDelay={action_delay}').json()
         else:
-            response = requests.post('http://localhost:9000/start-game').json()
+            response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()
         return int(response['id'])
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on create_game, retrying")
