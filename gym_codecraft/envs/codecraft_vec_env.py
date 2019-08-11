@@ -94,7 +94,6 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
-            obs.append(codecraft.observation_to_np(observation))
 
             if self.objective == Objective.ALLIED_WEALTH:
                 score = float(observation['alliedScore']) * 0.1
@@ -112,10 +111,10 @@ class CodeCraftVecEnv(VecEnv):
             self.score[i] = score
 
             if len(observation['winner']) > 0:
-                # print(f'Game {game_id} won by {observation["winner"][0]}')
                 game_id = codecraft.create_game(self.game_length, self.action_delay)
-                # print("Starting game:", game_id)
                 self.games[i] = game_id
+                observation = codecraft.observe(game_id)
+
                 dones.append(1.0)
                 infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i]}})
                 self.eplen[i] = 1
@@ -127,6 +126,7 @@ class CodeCraftVecEnv(VecEnv):
                 dones.append(0.0)
 
             rews.append(reward)
+            obs.append(codecraft.observation_to_np(observation))
 
         return np.array(obs, dtype=np.float32), np.array(rews), np.array(dones), infos
 
