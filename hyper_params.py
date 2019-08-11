@@ -9,6 +9,7 @@ class HyperParams:
         self.lr = 0.1               # Learning rate
         self.momentum = 0.9         # Momentum
         self.bs = 128               # Batch size during optimization
+        self.shuffle = True
 
         # Policy
         self.depth = 3              # Number of hidden layers
