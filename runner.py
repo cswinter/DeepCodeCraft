@@ -51,12 +51,8 @@ class JobQueue:
                     if load < min_load:
                         min_load = load
                         min_device = device
-
-                self.active_jobs += 1
-                self.active_jobs_per_device[min_device] += 1
                 job.set_device(min_device)
                 threading.Thread(target=self.run_job, args=(job,)).start()
-
                 logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
                 time.sleep(0.1)
             self.lock.release()
@@ -78,7 +74,12 @@ class JobQueue:
             git(["clone", job.repo_path, dir], workdir=None)
             git(["reset", "--hard", "HEAD"])
             git(["clean", "-fd"])
-            git(["checkout", job.revision])
+            try:
+                git(["checkout", job.revision])
+            except subprocess.CalledProcessError:
+                logging.error(f"Failed to checkout revision {job.revision}! Aborting.")
+                return
+
             revision = subprocess.check_output(
                     ["git", "-C", dir, "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
 
@@ -102,7 +103,11 @@ class JobQueue:
             logpath = os.path.join(out_dir, "out.txt")
 
             logging.info(f"Running {job_desc}")
-            logging.info(f"Output in {logpath}") 
+            logging.info(f"Output in {logpath}")
+
+            self.active_jobs += 1
+            self.active_jobs_per_device[job.device] += 1
+
             with open(logpath, "w+") as outfile:
                 retcode = subprocess.call(["python3", "main.py", "--out-dir", out_dir] + args,
                                           stdout=outfile, stderr=outfile, cwd=dir)
