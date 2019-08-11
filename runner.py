@@ -88,15 +88,24 @@ class JobQueue:
             pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
             job_desc = f"{job.repo_path} at {job.revision} with {job.params}"
-            args = [f"--{name}={value}" for name, value in job.params.items()]
+            args = []
+            for name, value in job.params.items():
+                if isinstance(value, bool):
+                    if value:
+                        args.append(f'--{name}')
+                    else:
+                        args.append(f'--no-{name}')
+                else:
+                    args.append(f"--{name}={value}")
             args.append(f"--descriptor={job.descriptor}")
+
             logpath = os.path.join(out_dir, "out.txt")
 
             logging.info(f"Running {job_desc}")
             logging.info(f"Output in {logpath}") 
             with open(logpath, "w+") as outfile:
-                retcode = subprocess.call(["python3", os.path.join(dir, "main.py"), "--out-dir", out_dir] + args,
-                                           stdout=outfile, stderr=outfile)
+                retcode = subprocess.call(["python3", "main.py", "--out-dir", out_dir] + args,
+                                          stdout=outfile, stderr=outfile, cwd=dir)
             if retcode != 0:
                 logging.warning(f"Command {job_desc} returned non-zero exit status {retcode}. Logs: {logpath}")
             else:
@@ -157,7 +166,7 @@ class Job:
         self.params = params
         self.handle = handle
         self.device = None
-        self.descriptor = revision + '-' + "-".join([f'{k}{v}' for k, v in params.items()])
+        self.descriptor = "-".join([revision[:6]] + [f'{k}{v}' for k, v in params.items()])
 
     def set_device(self, device):
         self.device = device
