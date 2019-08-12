@@ -67,19 +67,21 @@ def train(hps: HyperParams) -> None:
         all_obs = []
         all_actions = []
         all_probs = []
+        all_values = []
         all_rewards = []
         all_dones = []
 
         # Rollout
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
-            actions, probs, entropy = policy.evaluate(obs_tensor)
+            actions, probs, entropy, values = policy.evaluate(obs_tensor)
 
             entropies.append(entropy)
 
             all_obs.extend(obs)
             all_actions.extend(actions)
             all_probs.extend(probs)
+            all_values.extend(values)
 
             obs, rews, dones, infos = env.step(actions)
 
@@ -104,6 +106,7 @@ def train(hps: HyperParams) -> None:
                 if all_dones[t * num_envs + i] == 1:
                     ret[i] = 0
 
+        explained_var = explained_variance(np.array(all_values), all_returns)
         if hps.shuffle:
             perm = np.random.permutation(len(all_obs))
             all_obs = np.array(all_obs)[perm]
@@ -113,6 +116,7 @@ def train(hps: HyperParams) -> None:
 
         # Policy Update
         episode_loss = 0
+        batch_value_loss = 0
         for batch in range(int(hps.rosteps / hps.bs)):
             start = hps.bs * batch
             end = hps.bs * (batch + 1)
@@ -123,7 +127,9 @@ def train(hps: HyperParams) -> None:
             returns = torch.tensor(all_returns[start:end]).to(device)
 
             optimizer.zero_grad()
-            episode_loss += policy.backprop(o, actions, probs, returns)
+            policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef)
+            episode_loss += policy_loss
+            batch_value_loss += value_loss
             optimizer.step()
 
         epoch += 1
@@ -132,14 +138,32 @@ def train(hps: HyperParams) -> None:
 
         wandb.log({
             'loss': episode_loss / hps.rosteps,
+            'value_loss': batch_value_loss / hps.rosteps,
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
             'entropy': sum(entropies) / len(entropies),
+            'explained variance': explained_var,
         }, step=total_steps)
 
         print(f'{throughput} samples/s')
         print(episode_loss)
+
+
+def explained_variance(ypred,y):
+    """
+    Computes fraction of variance that ypred explains about y.
+    Returns 1 - Var[y-ypred] / Var[y]
+    interpretation:
+        ev=0  =>  might as well have predicted zero
+        ev=1  =>  perfect prediction
+        ev<0  =>  worse than just predicting zero
+    """
+    assert y.ndim == 1 and ypred.ndim == 1
+    print(y)
+    print(ypred)
+    vary = np.var(y)
+    return np.nan if vary==0 else 1 - np.var(y-ypred)/vary
 
 
 def main():

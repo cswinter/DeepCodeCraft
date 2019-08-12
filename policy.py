@@ -10,12 +10,15 @@ class Policy(nn.Module):
         self.fc_layers = nn.ModuleList([nn.Linear(47, nhidden)])
         for layer in range(layers - 1):
             self.fc_layers.append(nn.Linear(nhidden, nhidden))
-        self.dense_final = nn.Linear(nhidden, 8)
+        self.policy_head = nn.Linear(nhidden, 8)
+        self.value_head = nn.Linear(nhidden, 1)
+        self.value_head.weight.data.fill_(0.0)
+        self.value_head.bias.data.fill_(0.0)
         # TODO: init to 0?
         # self.dense_final.weight.data.fill_(0.0)
 
     def evaluate(self, observation):
-        probs = self.forward(observation)
+        probs, v = self.forward(observation)
         actions = []
         ps = []
         probs.detach_()
@@ -24,21 +27,30 @@ class Policy(nn.Module):
             action = np.random.choice(8, 1, p=probs_np)[0]
             actions.append(action)
             ps.append(probs_np[action])
-        return actions, ps, self.entropy(probs)
+        return actions, ps, self.entropy(probs), v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, obs, actions, probs, returns):
-        logits = self.logits(obs)
-        loss = torch.sum(returns * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
-        loss.backward()
-        return loss.data.tolist()
+    def backprop(self, obs, actions, probs, returns, value_loss_scale):
+        x = self.forward_shared(obs)
+        logits = self.policy_head(x)
+        baseline = self.value_head(x)
+        policy_loss = torch.sum((returns - baseline.view(-1).data) * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
+        value_loss = torch.sum(F.mse_loss(returns, baseline.view(-1)))
+        (policy_loss + value_loss_scale * value_loss).backward()
+        return policy_loss.data.tolist(), value_loss.data.tolist()
 
     def forward(self, x):
-        return F.softmax(self.logits(x), dim=1)
+        x = self.forward_shared(x)
+        return F.softmax(self.policy_head(x), dim=1), self.value_head(x)
 
     def logits(self, x):
         for fc in self.fc_layers:
             x = F.relu(fc(x))
-        return self.dense_final(x)
+        return self.policy_head(x)
+
+    def forward_shared(self, x):
+        for fc in self.fc_layers:
+            x = F.relu(fc(x))
+        return x
 
     def entropy(self, dist):
         logs = torch.log2(dist)

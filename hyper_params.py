@@ -6,10 +6,11 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.1               # Learning rate
+        self.lr = 0.01              # Learning rate
         self.momentum = 0.9         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = False        # Shuffle samples collected during rollout before optimization
+        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
 
         # Policy
         self.depth = 3              # Number of hidden layers
