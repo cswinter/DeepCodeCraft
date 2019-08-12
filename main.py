@@ -117,6 +117,7 @@ def train(hps: HyperParams) -> None:
         # Policy Update
         episode_loss = 0
         batch_value_loss = 0
+        gradnorm = 0
         for batch in range(int(hps.rosteps / hps.bs)):
             start = hps.bs * batch
             end = hps.bs * (batch + 1)
@@ -130,7 +131,7 @@ def train(hps: HyperParams) -> None:
             policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef)
             episode_loss += policy_loss
             batch_value_loss += value_loss
-            torch.nn.utils.clip_grad_norm(policy.parameters(), hps.max_grad_norm)
+            gradnorm += torch.nn.utils.clip_grad_norm(policy.parameters(), hps.max_grad_norm)
             optimizer.step()
 
         epoch += 1
@@ -145,6 +146,7 @@ def train(hps: HyperParams) -> None:
             'eplenmean': eplenmean,
             'entropy': sum(entropies) / len(entropies),
             'explained variance': explained_var,
+            'gradnorm': gradnorm * hps.bs / hps.rosteps,
         }, step=total_steps)
 
         print(f'{throughput} samples/s')
