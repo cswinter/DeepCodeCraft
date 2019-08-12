@@ -130,6 +130,7 @@ def train(hps: HyperParams) -> None:
             policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef)
             episode_loss += policy_loss
             batch_value_loss += value_loss
+            torch.nn.utils.clip_grad_norm(policy.parameters(), hps.max_grad_norm)
             optimizer.step()
 
         epoch += 1

@@ -3,5 +3,5 @@ gym
 tensorflow
 logger
 numpy
-torch==1.1
+torch==1.2
 wandb
