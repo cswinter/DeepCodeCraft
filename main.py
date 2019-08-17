@@ -111,6 +111,7 @@ def train(hps: HyperParams) -> None:
                     ret[i] = 0
 
         all_values = np.array(all_values)
+        advantages = all_returns - all_values
         explained_var = explained_variance(all_values, all_returns)
         if hps.shuffle:
             perm = np.random.permutation(len(all_obs))
@@ -152,6 +153,7 @@ def train(hps: HyperParams) -> None:
             'entropy': sum(entropies) / len(entropies),
             'explained variance': explained_var,
             'gradnorm': gradnorm * hps.bs / hps.rosteps,
+            'advantages': wandb.Histogram(advantages),
             'values': wandb.Histogram(all_values),
             'meanval': all_values.mean(),
             'returns': wandb.Histogram(all_returns),
