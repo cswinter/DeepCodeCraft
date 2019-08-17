@@ -156,6 +156,7 @@ def train(hps: HyperParams) -> None:
             'meanval': all_values.mean(),
             'returns': wandb.Histogram(all_returns),
             'meanret': all_returns.mean(),
+            'actions': wandb.Histogram(np.array(all_actions)),
         }, step=total_steps)
 
         print(f'{throughput} samples/s')
