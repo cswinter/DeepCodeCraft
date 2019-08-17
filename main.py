@@ -110,7 +110,8 @@ def train(hps: HyperParams) -> None:
                 if all_dones[ti] == 1:
                     ret[i] = 0
 
-        explained_var = explained_variance(np.array(all_values), all_returns)
+        all_values = np.array(all_values)
+        explained_var = explained_variance(all_values, all_returns)
         if hps.shuffle:
             perm = np.random.permutation(len(all_obs))
             all_obs = np.array(all_obs)[perm]
@@ -151,6 +152,10 @@ def train(hps: HyperParams) -> None:
             'entropy': sum(entropies) / len(entropies),
             'explained variance': explained_var,
             'gradnorm': gradnorm * hps.bs / hps.rosteps,
+            'values': wandb.Histogram(all_values),
+            'meanval': all_values.mean(),
+            'returns': wandb.Histogram(all_returns),
+            'meanret': all_returns.mean(),
         }, step=total_steps)
 
         print(f'{throughput} samples/s')
