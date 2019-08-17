@@ -100,8 +100,9 @@ class CodeCraftVecEnv(VecEnv):
             if self.objective == Objective.ALLIED_WEALTH:
                 score = float(observation['alliedScore']) * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
-                # print(f"(x,y,r)=({x},{y},{observation['alliedDrones'][0]['orientation']})")
                 score = -dist(x, y, 0.0, 0.0)
+            elif self.objective == Objective.DISTANCE_TO_1000_500:
+                score = -dist(x, y, 1.0, 0.5)
             elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
                 score = 0
                 for crystal in observation['minerals']:
@@ -140,6 +141,7 @@ class Objective(Enum):
     ALLIED_WEALTH = 'ALLIED_WEALTH'
     DISTANCE_TO_CRYSTAL = 'DISTANCE_TO_CRYSTAL'
     DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
+    DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
 
 
 def dist2(x1, y1, x2, y2):

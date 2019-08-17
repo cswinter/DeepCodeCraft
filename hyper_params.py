@@ -24,7 +24,7 @@ class HyperParams:
         self.gamma = 0.8            # Discount factor
 
         # Task
-        self.objective = envs.Objective.DISTANCE_TO_ORIGIN
+        self.objective = envs.Objective.DISTANCE_TO_1000_500
         self.game_length = 3 * 60 * 60
         self.action_delay = 0
 
