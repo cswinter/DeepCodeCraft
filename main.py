@@ -94,16 +94,20 @@ def train(hps: HyperParams) -> None:
                 eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                 completed_episodes += 1
 
+        obs_tensor = torch.tensor(obs).to(device)
+        _, _, _, final_values = policy.evaluate(obs_tensor)
+
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-        ret = np.zeros(num_envs)
+        ret = np.array(final_values)
         retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correction at end of rollout/episode
             # TODO: correct for action delay?
             for i in range(num_envs):
-                ret[i] = hps.gamma * ret[i] + all_rewards[t * num_envs + i]
-                all_returns[t * num_envs + i] = ret[i] * retscale
-                if all_dones[t * num_envs + i] == 1:
+                ti = t * num_envs + i
+                ret[i] = hps.gamma * ret[i] + all_rewards[ti]
+                all_returns[ti] = ret[i] * retscale
+                if all_dones[ti] == 1:
                     ret[i] = 0
 
         explained_var = explained_variance(np.array(all_values), all_returns)
