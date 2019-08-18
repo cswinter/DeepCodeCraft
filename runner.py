@@ -161,6 +161,9 @@ class JobQueue:
                 for param_set in param_sets:
                     param_set[name] = values
 
+        result = []
+        for _ in range(repetitions):
+            result.extend(map(lambda x: x.copy(), param_sets))
         return param_sets * repetitions
 
 
