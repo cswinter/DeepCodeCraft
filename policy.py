@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributions as distributions
 import numpy as np
 
 
@@ -19,21 +20,17 @@ class Policy(nn.Module):
 
     def evaluate(self, observation):
         probs, v = self.forward(observation)
-        actions = []
-        ps = []
-        probs.detach_()
-        for i in range(probs.size()[0]):
-            probs_np = probs[i].cpu().numpy()
-            action = np.random.choice(8, 1, p=probs_np)[0]
-            actions.append(action)
-            ps.append(probs_np[action])
-        return actions, ps, self.entropy(probs), v.detach().view(-1).cpu().numpy()
+        action_dist = distributions.Categorical(probs)
+        actions = action_dist.sample()
+        entropy = action_dist.entropy()
+        return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, obs, actions, probs, returns, value_loss_scale, advantages):
+    def backprop(self, obs, actions, old_logprobs, returns, value_loss_scale, advantages):
         x = self.forward_shared(obs)
-        logits = self.policy_head(x)
+        probs = F.softmax(self.policy_head(x), dim=1)
+        logprobs = distributions.Categorical(probs).log_prob(actions)
         baseline = self.value_head(x)
-        policy_loss = torch.sum(advantages * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
+        policy_loss = torch.sum(advantages * torch.exp(old_logprobs - logprobs))
         value_loss = torch.sum(F.mse_loss(returns, baseline.view(-1)))
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
@@ -52,11 +49,4 @@ class Policy(nn.Module):
         for fc in self.fc_layers:
             x = F.relu(fc(x))
         return x
-
-    def entropy(self, dist):
-        logs = torch.log2(dist)
-        logs[logs == float('inf')] = 0
-        entropy = -torch.dot(dist.view(-1), logs.view(-1)) / dist.size()[0]
-        return entropy
-
 
