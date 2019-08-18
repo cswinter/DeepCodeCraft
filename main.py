@@ -75,11 +75,12 @@ def train(hps: HyperParams) -> None:
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
             actions, logprobs, entropy, values = policy.evaluate(obs_tensor)
+            actions = actions.cpu().numpy()
 
             entropies.extend(entropy.detach().cpu().numpy())
 
             all_obs.extend(obs)
-            all_actions.extend(actions.cpu().numpy())
+            all_actions.extend(actions)
             all_logprobs.extend(logprobs.detach().cpu().numpy())
             all_values.extend(values)
 
