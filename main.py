@@ -112,7 +112,7 @@ def train(hps: HyperParams) -> None:
         all_values = np.array(all_values)
         advantages = all_returns - all_values
         if hps.norm_advs:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            advantages = hps.advs_scale * (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         explained_var = explained_variance(all_values, all_returns)
         if hps.shuffle:
             perm = np.random.permutation(len(all_obs))

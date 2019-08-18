@@ -24,6 +24,7 @@ class HyperParams:
         self.gamma = 0.8            # Discount factor
         self.norm_advs = False      # Normalize advantage values
         self.rewscale = 1.0         # Scaling of reward values
+        self.advs_scale = 0.002     # Scaling of advantage values after normalization
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_ORIGIN
