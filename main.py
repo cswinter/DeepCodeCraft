@@ -112,6 +112,7 @@ def train(hps: HyperParams) -> None:
 
         all_values = np.array(all_values)
         advantages = all_returns - all_values
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         explained_var = explained_variance(all_values, all_returns)
         if hps.shuffle:
             perm = np.random.permutation(len(all_obs))
@@ -132,9 +133,10 @@ def train(hps: HyperParams) -> None:
             actions = torch.tensor(all_actions[start:end]).to(device)
             probs = torch.tensor(all_probs[start:end]).to(device)
             returns = torch.tensor(all_returns[start:end]).to(device)
+            advs = torch.tensor(advantages[start:end]).to(device)
 
             optimizer.zero_grad()
-            policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef)
+            policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef, advs)
             episode_loss += policy_loss
             batch_value_loss += value_loss
             gradnorm += torch.nn.utils.clip_grad_norm(policy.parameters(), hps.max_grad_norm)

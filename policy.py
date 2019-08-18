@@ -29,11 +29,11 @@ class Policy(nn.Module):
             ps.append(probs_np[action])
         return actions, ps, self.entropy(probs), v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, obs, actions, probs, returns, value_loss_scale):
+    def backprop(self, obs, actions, probs, returns, value_loss_scale, advantages):
         x = self.forward_shared(obs)
         logits = self.policy_head(x)
         baseline = self.value_head(x)
-        policy_loss = torch.sum((returns - baseline.view(-1).data) * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
+        policy_loss = torch.sum(advantages * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
         value_loss = torch.sum(F.mse_loss(returns, baseline.view(-1)))
         (policy_loss + value_loss_scale * value_loss).backward()
         return policy_loss.data.tolist(), value_loss.data.tolist()
