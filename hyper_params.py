@@ -32,8 +32,8 @@ class HyperParams:
         parser = argparse.ArgumentParser()
         for name, value in vars(self).items():
             if isinstance(value, bool):
-                parser.add_argument(f"--no-{name}", action='store_false', dest=name)
-                parser.add_argument(f"--{name}", action='store_true', dest=name)
+                parser.add_argument(f"--no-{name}", action='store_const', const=False, dest=name)
+                parser.add_argument(f"--{name}", action='store_const', const=True, dest=name)
             else:
                 parser.add_argument(f"--{name}", type=type(value))
         return parser
