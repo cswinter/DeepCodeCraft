@@ -99,7 +99,7 @@ def train(hps: HyperParams) -> None:
 
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         ret = np.array(final_values)
-        retscale = 1.0 - hps.gamma
+        retscale = (1.0 - hps.gamma) * hps.rewscale
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correct for action delay?
             for i in range(num_envs):

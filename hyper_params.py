@@ -23,6 +23,7 @@ class HyperParams:
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
         self.norm_advs = False      # Normalize advantage values
+        self.rewscale = 1.0         # Scaling of reward values
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_ORIGIN
