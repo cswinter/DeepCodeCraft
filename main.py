@@ -101,7 +101,6 @@ def train(hps: HyperParams) -> None:
         ret = np.array(final_values)
         retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
-            # TODO: correction at end of rollout/episode
             # TODO: correct for action delay?
             for i in range(num_envs):
                 ti = t * num_envs + i
@@ -120,6 +119,7 @@ def train(hps: HyperParams) -> None:
             all_returns = all_returns[perm]
             all_actions = np.array(all_actions)[perm]
             all_probs = np.array(all_probs)[perm]
+            advantages = advantages[perm]
 
         # Policy Update
         episode_loss = 0
