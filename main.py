@@ -99,16 +99,16 @@ def train(hps: HyperParams) -> None:
 
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         ret = np.array(final_values)
+        retscale = 1.0 - hps.gamma
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correct for action delay?
             for i in range(num_envs):
                 ti = t * num_envs + i
                 ret[i] = hps.gamma * ret[i] + all_rewards[ti]
-                all_returns[ti] = ret[i]
+                all_returns[ti] = ret[i] * retscale
                 if all_dones[ti] == 1:
                     ret[i] = 0
 
-        all_returns = all_returns / (all_returns.std() + 1e-8)
         all_values = np.array(all_values)
         advantages = all_returns - all_values
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
