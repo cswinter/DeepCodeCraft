@@ -7,10 +7,10 @@ class HyperParams:
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
         self.lr = 0.01              # Learning rate
-        self.momentum = 0.9         # Momentum
+        self.momentum = 0.8         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = False        # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
+        self.vf_coef = 0.0          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
@@ -22,6 +22,7 @@ class HyperParams:
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
+        self.norm_advs = False      # Normalize advantage values
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_ORIGIN

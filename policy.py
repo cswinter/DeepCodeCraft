@@ -35,7 +35,7 @@ class Policy(nn.Module):
         baseline = self.value_head(x)
         policy_loss = torch.sum(advantages * F.cross_entropy(logits, actions) / torch.clamp_min(probs, 0.01))
         value_loss = torch.sum(F.mse_loss(returns, baseline.view(-1)))
-        loss = (policy_loss + value_loss_scale * value_loss) / obs.size()[0]
+        loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist()
 
