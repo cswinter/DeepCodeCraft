@@ -10,7 +10,7 @@ class HyperParams:
         self.momentum = 0.8         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 0.0          # Weighting of value function loss in optimization objective
+        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
