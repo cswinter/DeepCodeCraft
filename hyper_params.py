@@ -18,7 +18,7 @@ class HyperParams:
         self.width = 1024           # Number of activations on each hidden layer
 
         # RL
-        self.steps = 2e6            # Total number of timesteps
+        self.steps = 5e6            # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
@@ -26,7 +26,7 @@ class HyperParams:
         self.rewscale = 1.0         # Scaling of reward values
 
         # Task
-        self.objective = envs.Objective.DISTANCE_TO_ORIGIN
+        self.objective = envs.Objective.DISTANCE_TO_CRYSTAL
         self.game_length = 3 * 60 * 60
         self.action_delay = 0
 
