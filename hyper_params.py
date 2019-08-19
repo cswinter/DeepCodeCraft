@@ -6,11 +6,11 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.03              # Learning rate
+        self.lr = 0.001             # Learning rate
         self.momentum = 0.8         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
+        self.vf_coef = 2            # Weighting of value function loss in optimization objective
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
@@ -22,9 +22,8 @@ class HyperParams:
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
-        self.norm_advs = False      # Normalize advantage values
+        self.norm_advs = True       # Normalize advantage values
         self.rewscale = 1.0         # Scaling of reward values
-        self.advs_scale = 0.002     # Scaling of advantage values after normalization
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_ORIGIN
