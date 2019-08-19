@@ -18,7 +18,7 @@ class HyperParams:
         self.width = 1024           # Number of activations on each hidden layer
 
         # RL
-        self.steps = 5e6            # Total number of timesteps
+        self.steps = 1e7            # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.8            # Discount factor
