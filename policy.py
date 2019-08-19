@@ -30,8 +30,8 @@ class Policy(nn.Module):
         probs = F.softmax(self.policy_head(x), dim=1)
         logprobs = distributions.Categorical(probs).log_prob(actions)
         baseline = self.value_head(x)
-        policy_loss = torch.sum(advantages * torch.exp(old_logprobs - logprobs))
-        value_loss = torch.sum(F.mse_loss(returns, baseline.view(-1)))
+        policy_loss = (advantages * torch.exp(old_logprobs - logprobs)).mean()
+        value_loss = F.mse_loss(returns, baseline.view(-1)).mean()
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist()
