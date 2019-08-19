@@ -14,7 +14,7 @@ class HyperParams:
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
-        self.depth = 3              # Number of hidden layers
+        self.depth = 2              # Number of hidden layers
         self.width = 1024           # Number of activations on each hidden layer
 
         # RL
