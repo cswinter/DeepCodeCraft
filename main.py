@@ -51,7 +51,10 @@ def train(hps: HyperParams) -> None:
 
     policy = Policy(hps.depth, hps.width, hps.conv)
     policy.to(device)
-    optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum)
+    if hps.optimizer == 'SGD':
+        optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum)
+    elif hps.optimizer == 'RMSProp':
+        optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum)
 
     wandb.watch(policy)
 
