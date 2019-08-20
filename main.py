@@ -157,7 +157,7 @@ def train(hps: HyperParams) -> None:
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
-            'entropy': sum(entropies) / len(entropies),
+            'entropy': sum(entropies) / len(entropies) / np.log(2),
             'explained variance': explained_var,
             'gradnorm': gradnorm * hps.bs / hps.rosteps,
             'advantages': wandb.Histogram(advantages),
