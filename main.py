@@ -52,9 +52,9 @@ def train(hps: HyperParams) -> None:
     policy = Policy(hps.depth, hps.width, hps.conv)
     policy.to(device)
     if hps.optimizer == 'SGD':
-        optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum)
+        optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'RMSProp':
-        optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum)
+        optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
 
     wandb.watch(policy)
 
@@ -151,7 +151,7 @@ def train(hps: HyperParams) -> None:
         total_steps += hps.rosteps
         throughput = int(hps.rosteps / (time.time() - episode_start))
 
-        wandb.log({
+        metrics = {
             'loss': episode_loss / hps.rosteps,
             'value_loss': batch_value_loss / hps.rosteps,
             'throughput': throughput,
@@ -167,7 +167,17 @@ def train(hps: HyperParams) -> None:
             'meanret': all_returns.mean(),
             'actions': wandb.Histogram(np.array(all_actions)),
             'observations': wandb.Histogram(np.array(all_obs)),
-        }, step=total_steps)
+        }
+        total_norm = 0.0
+        count = 0
+        for name, param in policy.named_parameters():
+            norm = param.data.norm()
+            metrics[f'weight_norm[{name}]'] = norm
+            count += 1
+            total_norm += norm
+        metrics['mean_weight_norm'] = total_norm / count
+
+        wandb.log(metrics, step=total_steps)
 
         print(f'{throughput} samples/s')
         print(episode_loss)

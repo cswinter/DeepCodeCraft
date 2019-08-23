@@ -8,6 +8,7 @@ class HyperParams:
         self.optimizer = 'SGD'      # Optimizer
         self.lr = 0.001             # Learning rate
         self.momentum = 0.9         # Momentum
+        self.weight_decay = 0.00001
         self.bs = 128               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.0005       # Weighting of value function loss in optimization objective
