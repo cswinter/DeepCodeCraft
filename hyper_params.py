@@ -10,7 +10,7 @@ class HyperParams:
         self.momentum = 0.9         # Momentum
         self.bs = 128               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
+        self.vf_coef = 0.0005       # Weighting of value function loss in optimization objective
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
@@ -19,12 +19,12 @@ class HyperParams:
         self.conv = True            # Use convolution to share weights on objects
 
         # RL
-        self.steps = 1e7            # Total number of timesteps
+        self.steps = 2e7            # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.9            # Discount factor
         self.norm_advs = True       # Normalize advantage values
-        self.rewscale = 1.0         # Scaling of reward values
+        self.rewscale = 20.0        # Scaling of reward values
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_CRYSTAL
