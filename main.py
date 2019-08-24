@@ -74,6 +74,8 @@ def train(hps: HyperParams) -> None:
         all_rewards = []
         all_dones = []
 
+        policy.eval()
+        torch.no_grad()
         # Rollout
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
@@ -130,6 +132,8 @@ def train(hps: HyperParams) -> None:
         episode_loss = 0
         batch_value_loss = 0
         gradnorm = 0
+        policy.train()
+        torch.enable_grad()
         for batch in range(int(hps.rosteps / hps.bs)):
             start = hps.bs * batch
             end = hps.bs * (batch + 1)
