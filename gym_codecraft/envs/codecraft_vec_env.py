@@ -89,25 +89,32 @@ class CodeCraftVecEnv(VecEnv):
         return self.observe()
 
     def observe(self):
-        obs = []
         rews = []
         dones = []
         infos = []
-        for (i, observation) in enumerate(codecraft.observe_batch(self.games)):
-
-            x = observation['alliedDrones'][0]['xPos'] / 1000.0
-            y = observation['alliedDrones'][0]['yPos'] / 1000.0
+        obs = codecraft.observe_batch_raw(self.games)
+        stride = 47
+        mstride = 4
+        for i in range(self.num_envs):
+            x = obs[stride * i + 0]
+            y = obs[stride * i + 1]
             if self.objective == Objective.ALLIED_WEALTH:
-                score = float(observation['alliedScore']) * 0.1
+                # score = float(observation['alliedScore']) * 0.1
+                raise Exception("Not implemented")
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
                 score = -dist(x, y, 0.0, 0.0)
             elif self.objective == Objective.DISTANCE_TO_1000_500:
                 score = -dist(x, y, 1.0, 0.5)
             elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
                 score = 0
-                for crystal in observation['minerals']:
-                    nearness = 0.5 - dist(crystal['xPos'] / 1000.0, crystal['yPos'] / 1000.0, x, y)
-                    score = max(score, 0.2 * nearness * crystal['size'])
+                for j in range(10):
+                    offset = stride * i + 7 + mstride * j
+                    distance = obs[offset + 2]
+                    size = obs[offset + 3]
+                    if size == 0:
+                        break
+                    nearness = 0.5 - distance
+                    score = max(score, 20 * nearness * size)
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
@@ -116,10 +123,12 @@ class CodeCraftVecEnv(VecEnv):
             reward = score - self.score[i]
             self.score[i] = score
 
-            if len(observation['winner']) > 0:
+            if obs[stride * self.num_envs + i] > 0:
                 game_id = codecraft.create_game(self.game_length, self.action_delay)
                 self.games[i] = game_id
                 observation = codecraft.observe(game_id)
+                # TODO
+                # obs[stride * i:stride * (i + 1)] = codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
                 infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i]}})
@@ -132,9 +141,11 @@ class CodeCraftVecEnv(VecEnv):
                 dones.append(0.0)
 
             rews.append(reward)
-            obs.append(codecraft.observation_to_np(observation))
 
-        return np.array(obs, dtype=np.float32), np.array(rews), np.array(dones), infos
+        return obs[:stride * self.num_envs].reshape(self.num_envs, -1),\
+               np.array(rews),\
+               np.array(dones),\
+               infos
 
 
 class Objective(Enum):

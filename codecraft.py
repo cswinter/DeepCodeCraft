@@ -82,6 +82,21 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
+def observe_batch_raw(game_ids):
+    retries = RETRIES
+    while retries > 0:
+        try:
+            response = requests.get(f'http://localhost:9000/batch-observation?json=false',
+                                    json=game_ids,
+                                    stream=True)
+            response_bytes = response.content
+            return np.frombuffer(response_bytes, dtype=np.float32)
+        except requests.exceptions.ConnectionError:
+            retries -= 1
+            logging.info(f"Connection error on observe_batch(), retrying")
+            time.sleep(10)
+
+
 def one_hot_to_action(action):
     # 0-5: turn/movement (4 is no turn, no movement)
     # 6: build [0,1,0,0,0] drone (if minerals > 5)
