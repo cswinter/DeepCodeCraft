@@ -19,8 +19,6 @@ class HyperParams:
         self.width = 1024           # Number of activations on each hidden layer
         self.conv = True            # Use convolution to share weights on objects
 
-        self.fp16 = True
-
         # RL
         self.steps = 2e7            # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout

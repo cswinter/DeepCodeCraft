@@ -177,6 +177,7 @@ def train(hps: HyperParams) -> None:
             'meanret': all_returns.mean(),
             'actions': wandb.Histogram(np.array(all_actions)),
             'observations': wandb.Histogram(np.array(all_obs)),
+            'rewards': wandb.Histogram(np.array(all_rewards)),
         }
         total_norm = 0.0
         count = 0
