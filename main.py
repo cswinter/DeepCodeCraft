@@ -191,7 +191,6 @@ def train(hps: HyperParams) -> None:
         wandb.log(metrics, step=total_steps)
 
         print(f'{throughput} samples/s')
-        print(episode_loss)
 
 
 def explained_variance(ypred,y):
@@ -204,10 +203,8 @@ def explained_variance(ypred,y):
         ev<0  =>  worse than just predicting zero
     """
     assert y.ndim == 1 and ypred.ndim == 1
-    print(y)
-    print(ypred)
     vary = np.var(y)
-    return np.nan if vary==0 else 1 - np.var(y-ypred)/vary
+    return np.nan if vary == 0 else 1 - np.var(y-ypred)/vary
 
 
 def main():

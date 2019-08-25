@@ -118,8 +118,11 @@ class CodeCraftVecEnv(VecEnv):
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
-            if self.score[i] is None:
+            # TODO: this is a workaround for reward spikes most likely caused by minerals not beeing visible until first movement
+            if self.eplen[i] < 3:
                 self.score[i] = score
+            # if self.score[i] is None:
+            #    self.score[i] = score
             reward = score - self.score[i]
             self.score[i] = score
 
