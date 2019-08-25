@@ -19,11 +19,14 @@ class HyperParams:
         self.width = 1024           # Number of activations on each hidden layer
         self.conv = True            # Use convolution to share weights on objects
 
+        self.fp16 = True
+
         # RL
         self.steps = 2e7            # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
         self.gamma = 0.9            # Discount factor
+        self.lamb = 0.9             # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 20.0        # Scaling of reward values
 
