@@ -151,7 +151,7 @@ def train(hps: HyperParams) -> None:
             advs = torch.tensor(advantages[start:end]).to(device)
 
             optimizer.zero_grad()
-            policy_loss, value_loss = policy.backprop(o, actions, probs, returns, hps.vf_coef, advs)
+            policy_loss, value_loss = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
             episode_loss += policy_loss
             batch_value_loss += value_loss
             gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)

@@ -33,13 +33,23 @@ class Policy(nn.Module):
         entropy = action_dist.entropy()
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, obs, actions, old_logprobs, returns, value_loss_scale, advantages):
+    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages):
         x = self.latents(obs)
         probs = F.softmax(self.policy_head(x), dim=1)
+
         logprobs = distributions.Categorical(probs).log_prob(actions)
+        # TODO: other code has `logprobs-old_logprobs` and negated loss?
+        ratios = torch.exp(old_logprobs - logprobs)
+        vanilla_policy_loss = advantages * ratios
+        if hps.ppo:
+            clipped_policy_loss = torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange) * advantages
+            policy_loss = torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
+        else:
+            policy_loss = vanilla_policy_loss.mean()
+
         baseline = self.value_head(x)
-        policy_loss = (advantages * torch.exp(old_logprobs - logprobs)).mean()
         value_loss = F.mse_loss(returns, baseline.view(-1)).mean()
+
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist()

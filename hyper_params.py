@@ -27,6 +27,8 @@ class HyperParams:
         self.lamb = 0.9             # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 20.0        # Scaling of reward values
+        self.ppo = False            # Use PPO-clip instead of vanilla policy gradients objective
+        self.cliprange = 0.2        # PPO cliprange
 
         # Task
         self.objective = envs.Objective.DISTANCE_TO_CRYSTAL
