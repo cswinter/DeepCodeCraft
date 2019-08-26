@@ -6,7 +6,7 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.001             # Learning rate
+        self.lr = 0.01              # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
         self.bs = 128               # Batch size during optimization
@@ -23,8 +23,8 @@ class HyperParams:
         self.steps = 15e6           # Total number of timesteps
         self.seq_rosteps = 64       # Number of sequential steps per rollout
         self.rosteps = 64 * 32      # Number of total rollout steps
-        self.gamma = 0.9            # Discount factor
-        self.lamb = 0.9             # Generalized advantage estimation parameter lambda
+        self.gamma = 0.99           # Discount factor
+        self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 20.0        # Scaling of reward values
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
