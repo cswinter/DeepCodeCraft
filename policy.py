@@ -38,18 +38,13 @@ class Policy(nn.Module):
         probs = F.softmax(self.policy_head(x), dim=1)
 
         logprobs = distributions.Categorical(probs).log_prob(actions)
-        if hps.inverted:
-            ratios = torch.exp(old_logprobs - logprobs)
-            policy_loss_sign = 1
-        else:
-            ratios = torch.exp(logprobs - old_logprobs)
-            policy_loss_sign = -1
+        ratios = torch.exp(old_logprobs - logprobs)
         vanilla_policy_loss = advantages * ratios
         if hps.ppo:
             clipped_policy_loss = torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange) * advantages
-            policy_loss = policy_loss_sign * torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
+            policy_loss = torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
         else:
-            policy_loss = policy_loss_sign * vanilla_policy_loss.mean()
+            policy_loss = vanilla_policy_loss.mean()
 
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()

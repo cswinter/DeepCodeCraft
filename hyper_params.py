@@ -30,8 +30,6 @@ class HyperParams:
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
 
-        self.inverted = False       # Invert probability ratio on objective (probably wrong? but empiric evidence that it works better under current hyperparameters ¯\_(ツ)_/¯)
-
         # Task
         self.objective = envs.Objective.DISTANCE_TO_CRYSTAL
         self.game_length = 3 * 60 * 60
