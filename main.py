@@ -135,12 +135,15 @@ def train(hps: HyperParams) -> None:
             advantages = advantages[perm]
 
         # Policy Update
-        episode_loss = 0
-        batch_value_loss = 0
+        policy_loss_sum = 0
+        value_loss_sum = 0
+        clipfrac_sum = 0
+        aproxkl_sum = 0
         gradnorm = 0
         policy.train()
         torch.enable_grad()
-        for batch in range(int(hps.rosteps / hps.bs)):
+        num_minibatches = int(hps.rosteps / hps.bs)
+        for batch in range(num_minibatches):
             start = hps.bs * batch
             end = hps.bs * (batch + 1)
 
@@ -151,9 +154,11 @@ def train(hps: HyperParams) -> None:
             advs = torch.tensor(advantages[start:end]).to(device)
 
             optimizer.zero_grad()
-            policy_loss, value_loss = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
-            episode_loss += policy_loss
-            batch_value_loss += value_loss
+            policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
+            policy_loss_sum += policy_loss
+            value_loss_sum += value_loss
+            aproxkl_sum += aproxkl
+            clipfrac_sum += clipfrac
             gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
             optimizer.step()
 
@@ -162,8 +167,10 @@ def train(hps: HyperParams) -> None:
         throughput = int(hps.rosteps / (time.time() - episode_start))
 
         metrics = {
-            'loss': episode_loss / hps.rosteps,
-            'value_loss': batch_value_loss / hps.rosteps,
+            'loss': policy_loss_sum / num_minibatches,
+            'value_loss': value_loss_sum / num_minibatches,
+            'clipfrac': clipfrac_sum / num_minibatches,
+            'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,

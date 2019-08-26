@@ -51,12 +51,15 @@ class Policy(nn.Module):
         else:
             policy_loss = policy_loss_sign * vanilla_policy_loss.mean()
 
+        approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
+        clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
+
         baseline = self.value_head(x)
         value_loss = F.mse_loss(returns, baseline.view(-1)).mean()
 
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
-        return policy_loss.data.tolist(), value_loss.data.tolist()
+        return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
     def forward(self, x):
         x = self.latents(x)
