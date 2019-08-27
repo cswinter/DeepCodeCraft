@@ -6,12 +6,12 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.01              # Learning rate
+        self.lr = 0.1               # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
-        self.bs = 128               # Batch size during optimization
+        self.bs = 512               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 0.5         # Weighting of value function loss in optimization objective
+        self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
 
         # Policy
@@ -20,10 +20,10 @@ class HyperParams:
         self.conv = True            # Use convolution to share weights on objects
 
         # RL
-        self.steps = 15e6           # Total number of timesteps
-        self.seq_rosteps = 64       # Number of sequential steps per rollout
-        self.rosteps = 64 * 32      # Number of total rollout steps
-        self.gamma = 0.99           # Discount factor
+        self.steps = 10e6           # Total number of timesteps
+        self.seq_rosteps = 256      # Number of sequential steps per rollout
+        self.rosteps = 256 * 64     # Number of total rollout steps
+        self.gamma = 0.9            # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 20.0        # Scaling of reward values
