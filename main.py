@@ -9,7 +9,6 @@ import numpy as np
 
 import wandb
 
-import codecraft
 from gym_codecraft import envs
 from hyper_params import HyperParams
 from policy import Policy

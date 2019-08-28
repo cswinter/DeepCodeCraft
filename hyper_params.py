@@ -12,7 +12,7 @@ class HyperParams:
         self.bs = 512               # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
-        self.max_grad_norm = 0.5    # Maximum gradient norm for gradient clipping
+        self.max_grad_norm = 1      # Maximum gradient norm for gradient clipping
 
         # Policy
         self.depth = 3              # Number of hidden layers
@@ -20,13 +20,13 @@ class HyperParams:
         self.conv = True            # Use convolution to share weights on objects
 
         # RL
-        self.steps = 10e6           # Total number of timesteps
+        self.steps = 6e6            # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.rosteps = 256 * 64     # Number of total rollout steps
         self.gamma = 0.9            # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
-        self.rewscale = 20.0        # Scaling of reward values
+        self.rewscale = 1.0         # Scaling of reward values
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
 
