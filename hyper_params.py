@@ -5,8 +5,8 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'SGD'      # Optimizer
-        self.lr = 0.1               # Learning rate
+        self.optimizer = 'RMSProp'  # Optimizer
+        self.lr = 0.0001            # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
         self.bs = 512               # Batch size during optimization
@@ -23,7 +23,7 @@ class HyperParams:
         self.steps = 6e6            # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.rosteps = 256 * 64     # Number of total rollout steps
-        self.gamma = 0.9            # Discount factor
+        self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 1.0         # Scaling of reward values
