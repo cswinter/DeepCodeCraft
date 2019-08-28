@@ -93,7 +93,7 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         obs = codecraft.observe_batch_raw(self.games)
-        global_features = 1
+        global_features = 2
         dstride = 7
         mstride = 4
         stride = global_features + dstride + 10 * mstride
@@ -101,8 +101,7 @@ class CodeCraftVecEnv(VecEnv):
             x = obs[stride * i + global_features + 0]
             y = obs[stride * i + global_features + 1]
             if self.objective == Objective.ALLIED_WEALTH:
-                # score = float(observation['alliedScore']) * 0.1
-                raise Exception("Not implemented")
+                score = obs[stride * i + 1] * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
                 score = -dist(x, y, 0.0, 0.0)
             elif self.objective == Objective.DISTANCE_TO_1000_500:

@@ -31,7 +31,7 @@ class HyperParams:
         self.cliprange = 0.2        # PPO cliprange
 
         # Task
-        self.objective = envs.Objective.DISTANCE_TO_CRYSTAL
+        self.objective = envs.Objective.ALLIED_WEALTH
         self.game_length = 3 * 60 * 60
         self.action_delay = 0
 
