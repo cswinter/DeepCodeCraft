@@ -93,11 +93,13 @@ class CodeCraftVecEnv(VecEnv):
         dones = []
         infos = []
         obs = codecraft.observe_batch_raw(self.games)
-        stride = 47
+        global_features = 1
+        dstride = 7
         mstride = 4
+        stride = global_features + dstride + 10 * mstride
         for i in range(self.num_envs):
-            x = obs[stride * i + 0]
-            y = obs[stride * i + 1]
+            x = obs[stride * i + global_features + 0]
+            y = obs[stride * i + global_features + 1]
             if self.objective == Objective.ALLIED_WEALTH:
                 # score = float(observation['alliedScore']) * 0.1
                 raise Exception("Not implemented")
@@ -108,7 +110,7 @@ class CodeCraftVecEnv(VecEnv):
             elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
                 score = 0
                 for j in range(10):
-                    offset = stride * i + 7 + mstride * j
+                    offset = stride * i + global_features + dstride + mstride * j
                     distance = obs[offset + 2]
                     size = obs[offset + 3]
                     if size == 0:
