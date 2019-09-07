@@ -54,6 +54,8 @@ def train(hps: HyperParams) -> None:
         optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'RMSProp':
         optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
+    elif hps.optimizer == 'Adam':
+        optimizer = optim.Adam(policy.parameters(), lr=hps.lr, weight_decay=hps.weight_decay, eps=1e-5)
 
     wandb.watch(policy)
 
