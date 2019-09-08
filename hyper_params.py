@@ -17,7 +17,8 @@ class HyperParams:
         # Policy
         self.depth = 4              # Number of hidden layers
         self.width = 1024           # Number of activations on each hidden layer
-        self.conv = False            # Use convolution to share weights on objects
+        self.conv = False           # Use convolution to share weights on objects
+        self.fp16 = False           # Whether to use half-precision floating point
 
         # RL
         self.steps = 20e6           # Total number of timesteps

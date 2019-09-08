@@ -6,9 +6,10 @@ import numpy as np
 
 
 class Policy(nn.Module):
-    def __init__(self, fc_layers, nhidden, conv):
+    def __init__(self, fc_layers, nhidden, conv, hps):
         super(Policy, self).__init__()
         self.conv = conv
+        self.fp16 = hps.fp16
         if conv:
             self.fc_drone = nn.Linear(9, nhidden // 2)
             self.conv_minerals1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 2, kernel_size=(1, 4))
@@ -34,6 +35,9 @@ class Policy(nn.Module):
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
     def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages):
+        if self.fp16:
+            advantages = advantages.half()
+            returns = returns.half()
         x = self.latents(obs)
         probs = F.softmax(self.policy_head(x), dim=1)
 
@@ -65,6 +69,8 @@ class Policy(nn.Module):
         return self.policy_head(x)
 
     def latents(self, x):
+        if self.fp16:
+            x = x.half()
         if self.conv:
             batch_size = x.size()[0]
             # x[0:9] is properties of drone 0 and global features

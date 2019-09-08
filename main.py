@@ -48,8 +48,9 @@ def train(hps: HyperParams) -> None:
         print("Running on CPU")
         device = "cpu"
 
-    policy = Policy(hps.depth, hps.width, hps.conv)
-    policy.to(device)
+    policy = Policy(hps.depth, hps.width, hps.conv, hps).to(device)
+    if hps.fp16:
+        policy = policy.half()
     if hps.optimizer == 'SGD':
         optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'RMSProp':
