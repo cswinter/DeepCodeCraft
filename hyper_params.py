@@ -8,11 +8,12 @@ class HyperParams:
         self.optimizer = 'Adam'     # Optimizer
         self.lr = 0.0001            # Learning rate
         self.momentum = 0.9         # Momentum
-        self.weight_decay = 0
+        self.weight_decay = 0.0
         self.bs = 2048              # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
-        self.max_grad_norm = 1      # Maximum gradient norm for gradient clipping
+        self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
+        self.sample_reuse = 1       # Number of optimizer passes over samples collected during rollout
 
         # Policy
         self.depth = 4              # Number of hidden layers
@@ -21,7 +22,7 @@ class HyperParams:
         self.fp16 = False           # Whether to use half-precision floating point
 
         # RL
-        self.steps = 20e6           # Total number of timesteps
+        self.steps = 15e6           # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.rosteps = 256 * 32     # Number of total rollout steps
         self.gamma = 0.99           # Discount factor

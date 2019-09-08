@@ -128,41 +128,47 @@ def train(hps: HyperParams) -> None:
         if hps.norm_advs:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         explained_var = explained_variance(all_values, all_returns)
-        if hps.shuffle:
-            perm = np.random.permutation(len(all_obs))
-            all_obs = np.array(all_obs)[perm]
-            all_returns = all_returns[perm]
-            all_actions = np.array(all_actions)[perm]
-            all_logprobs = np.array(all_logprobs)[perm]
-            advantages = advantages[perm]
 
-        # Policy Update
-        policy_loss_sum = 0
-        value_loss_sum = 0
-        clipfrac_sum = 0
-        aproxkl_sum = 0
-        gradnorm = 0
-        policy.train()
-        torch.enable_grad()
-        num_minibatches = int(hps.rosteps / hps.bs)
-        for batch in range(num_minibatches):
-            start = hps.bs * batch
-            end = hps.bs * (batch + 1)
+        all_actions = np.array(all_actions)
+        all_logprobs = np.array(all_logprobs)
+        all_obs = np.array(all_obs)
 
-            o = torch.tensor(all_obs[start:end]).to(device)
-            actions = torch.tensor(all_actions[start:end]).to(device)
-            probs = torch.tensor(all_logprobs[start:end]).to(device)
-            returns = torch.tensor(all_returns[start:end]).to(device)
-            advs = torch.tensor(advantages[start:end]).to(device)
+        for epoch in range(hps.sample_reuse):
+            if hps.shuffle:
+                perm = np.random.permutation(len(all_obs))
+                all_obs = all_obs[perm]
+                all_returns = all_returns[perm]
+                all_actions = all_actions[perm]
+                all_logprobs = all_logprobs[perm]
+                advantages = advantages[perm]
 
-            optimizer.zero_grad()
-            policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
-            policy_loss_sum += policy_loss
-            value_loss_sum += value_loss
-            aproxkl_sum += aproxkl
-            clipfrac_sum += clipfrac
-            gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
-            optimizer.step()
+            # Policy Update
+            policy_loss_sum = 0
+            value_loss_sum = 0
+            clipfrac_sum = 0
+            aproxkl_sum = 0
+            gradnorm = 0
+            policy.train()
+            torch.enable_grad()
+            num_minibatches = int(hps.rosteps / hps.bs)
+            for batch in range(num_minibatches):
+                start = hps.bs * batch
+                end = hps.bs * (batch + 1)
+
+                o = torch.tensor(all_obs[start:end]).to(device)
+                actions = torch.tensor(all_actions[start:end]).to(device)
+                probs = torch.tensor(all_logprobs[start:end]).to(device)
+                returns = torch.tensor(all_returns[start:end]).to(device)
+                advs = torch.tensor(advantages[start:end]).to(device)
+
+                optimizer.zero_grad()
+                policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
+                policy_loss_sum += policy_loss
+                value_loss_sum += value_loss
+                aproxkl_sum += aproxkl
+                clipfrac_sum += clipfrac
+                gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
+                optimizer.step()
 
         epoch += 1
         total_steps += hps.rosteps
