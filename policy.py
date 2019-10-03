@@ -4,6 +4,23 @@ import torch.nn.functional as F
 import torch.distributions as distributions
 import numpy as np
 
+from rlpyt.utils.tensor import infer_leading_dims, restore_leading_dims
+from rlpyt.agents.pg.categorical import CategoricalPgAgent
+
+
+class CodeCraftAgent(CategoricalPgAgent):
+    def __init__(self, hps):
+        super(CodeCraftAgent, self).__init__()
+        self.hps = hps
+
+    def make_env_to_model_kwargs(self, env_spaces):
+        print(f'make_env_to_model_kwargs({env_spaces})')
+        return {}
+
+    def ModelCls(self, **kwargs):
+        print(f'ModelCls({kwargs}')
+        return Policy(self.hps.depth, self.hps.width, self.hps.conv, self.hps)
+
 
 class Policy(nn.Module):
     def __init__(self, fc_layers, nhidden, conv, hps):
@@ -60,18 +77,35 @@ class Policy(nn.Module):
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
-    def forward(self, x):
-        x = self.latents(x)
-        return F.softmax(self.policy_head(x), dim=1), self.value_head(x)
+    def forward(self, x, prev_action, prev_rew):
+        #print(x.size())
+        # Infer (presence of) leading dimensions: [T,B], [B], or [].
+        lead_dim, T, B, img_shape = infer_leading_dims(x, 1)
+
+        x = self.latents(x, T, B)
+        pi, val = F.softmax(self.policy_head(x), dim=-1), self.value_head(x)
+        val = val.squeeze(-1)
+
+        #fc_out = self.conv(img.view(T * B, *img_shape))
+        #pi = F.softmax(self.pi(fc_out), dim=-1)
+        #v = self.value(fc_out).squeeze(-1)
+        #print(lead_dim, T, B, img_shape)
+
+        # Restore leading dimensions: [T,B], [B], or [], as input.
+        pi, val = restore_leading_dims((pi, val), lead_dim, T, B)
+
+        #print(f'pi size {pi.size()} val size {val.size()}')
+        return pi, val
 
     def logits(self, x):
         x = self.latents(x)
         return self.policy_head(x)
 
-    def latents(self, x):
+    def latents(self, x, T, B):
         if self.fp16:
             x = x.half()
         if self.conv:
+            x = x.reshape(T*B, -1)
             batch_size = x.size()[0]
             # x[0:9] is properties of drone 0 and global features
             xd = x[:, :9]

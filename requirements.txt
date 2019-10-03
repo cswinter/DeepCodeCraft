@@ -5,3 +5,9 @@ logger
 numpy
 torch==1.2
 wandb
+
+# rlpyt
+atari-py
+pyprind
+psutil
+opencv-python

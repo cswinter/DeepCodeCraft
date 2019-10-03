@@ -1,3 +1,5 @@
 from gym_codecraft.envs.codecraft_env import CodeCraftEnv
+from gym_codecraft.envs.codecraft_vec_env import CodeCraftRlpytEnv
 from gym_codecraft.envs.codecraft_vec_env import CodeCraftVecEnv
+from gym_codecraft.envs.codecraft_vec_env import SharedBatchingEnv
 from gym_codecraft.envs.codecraft_vec_env import Objective

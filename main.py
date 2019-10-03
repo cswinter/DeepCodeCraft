@@ -3,6 +3,13 @@ import subprocess
 import time
 import os
 
+from rlpyt.samplers.parallel.gpu.sampler import GpuSampler
+from rlpyt.envs.atari.atari_env import AtariEnv
+from rlpyt.algos.pg.ppo import PPO
+from rlpyt.agents.dqn.atari.atari_dqn_agent import AtariDqnAgent
+from rlpyt.runners.minibatch_rl import MinibatchRl, MinibatchRlEval
+from rlpyt.utils.logging.context import logger_context
+
 import torch
 import torch.optim as optim
 import numpy as np
@@ -11,7 +18,7 @@ import wandb
 
 from gym_codecraft import envs
 from hyper_params import HyperParams
-from policy import Policy
+from policy import Policy, CodeCraftAgent
 
 TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 
@@ -52,160 +59,66 @@ def train(hps: HyperParams) -> None:
     if hps.fp16:
         policy = policy.half()
     if hps.optimizer == 'SGD':
-        optimizer = optim.SGD(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
+        optimizer = optim.SGD
+        optim_kwargs = dict(momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'RMSProp':
-        optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
+        optimizer = optim.RMSprop
+        optim_kwargs = dict(momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'Adam':
-        optimizer = optim.Adam(policy.parameters(), lr=hps.lr, weight_decay=hps.weight_decay, eps=1e-5)
+        optimizer = optim.Adam
+        optim_kwargs = dict(weight_decay=hps.weight_decay, eps=1e-5)
 
     wandb.watch(policy)
 
-    total_steps = 0
-    epoch = 0
-    obs = env.reset()
-    eprewmean = 0
-    eplenmean = 0
-    completed_episodes = 0
-    while total_steps < hps.steps:
-        episode_start = time.time()
-        entropies = []
-        all_obs = []
-        all_actions = []
-        all_logprobs = []
-        all_values = []
-        all_rewards = []
-        all_dones = []
+    env = envs.SharedBatchingEnv(num_envs=num_envs,
+                                 game_length=hps.game_length,
+                                 objective=hps.objective,
+                                 action_delay=0)
 
-        policy.eval()
-        torch.no_grad()
-        # Rollout
-        for step in range(hps.seq_rosteps):
-            obs_tensor = torch.tensor(obs).to(device)
-            actions, logprobs, entropy, values = policy.evaluate(obs_tensor)
-            actions = actions.cpu().numpy()
-
-            entropies.extend(entropy.detach().cpu().numpy())
-
-            all_obs.extend(obs)
-            all_actions.extend(actions)
-            all_logprobs.extend(logprobs.detach().cpu().numpy())
-            all_values.extend(values)
-
-            obs, rews, dones, infos = env.step(actions)
-
-            all_rewards.extend(rews)
-            all_dones.extend(dones)
-
-            for info in infos:
-                ema = min(95, completed_episodes * 10) / 100.0
-                eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
-                eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
-                completed_episodes += 1
-
-        obs_tensor = torch.tensor(obs).to(device)
-        _, _, _, final_values = policy.evaluate(obs_tensor)
-
-        all_rewards = np.array(all_rewards) * hps.rewscale
-        all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-        all_values = np.array(all_values)
-        last_gae = np.zeros(num_envs)
-        for t in reversed(range(hps.seq_rosteps)):
-            # TODO: correct for action delay?
-            # TODO: vectorize
-            for i in range(num_envs):
-                ti = t * num_envs + i
-                tnext_i = (t + 1) * num_envs + i
-                nextnonterminal = 1.0 - all_dones[ti]
-                if t == hps.seq_rosteps - 1:
-                    next_value = final_values[i]
-                else:
-                    next_value = all_values[tnext_i]
-                td_error = all_rewards[ti] + hps.gamma * next_value * nextnonterminal - all_values[ti]
-                last_gae[i] = td_error + hps.gamma * hps.lamb * last_gae[i] * nextnonterminal
-                all_returns[ti] = last_gae[i] + all_values[ti]
-
-        advantages = all_returns - all_values
-        if hps.norm_advs:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        explained_var = explained_variance(all_values, all_returns)
-
-        all_actions = np.array(all_actions)
-        all_logprobs = np.array(all_logprobs)
-        all_obs = np.array(all_obs)
-
-        for epoch in range(hps.sample_reuse):
-            if hps.shuffle:
-                perm = np.random.permutation(len(all_obs))
-                all_obs = all_obs[perm]
-                all_returns = all_returns[perm]
-                all_actions = all_actions[perm]
-                all_logprobs = all_logprobs[perm]
-                advantages = advantages[perm]
-
-            # Policy Update
-            policy_loss_sum = 0
-            value_loss_sum = 0
-            clipfrac_sum = 0
-            aproxkl_sum = 0
-            gradnorm = 0
-            policy.train()
-            torch.enable_grad()
-            num_minibatches = int(hps.rosteps / hps.bs)
-            for batch in range(num_minibatches):
-                start = hps.bs * batch
-                end = hps.bs * (batch + 1)
-
-                o = torch.tensor(all_obs[start:end]).to(device)
-                actions = torch.tensor(all_actions[start:end]).to(device)
-                probs = torch.tensor(all_logprobs[start:end]).to(device)
-                returns = torch.tensor(all_returns[start:end]).to(device)
-                advs = torch.tensor(advantages[start:end]).to(device)
-
-                optimizer.zero_grad()
-                policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
-                policy_loss_sum += policy_loss
-                value_loss_sum += value_loss
-                aproxkl_sum += aproxkl
-                clipfrac_sum += clipfrac
-                gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
-                optimizer.step()
-
-        epoch += 1
-        total_steps += hps.rosteps
-        throughput = int(hps.rosteps / (time.time() - episode_start))
-
-        metrics = {
-            'loss': policy_loss_sum / num_minibatches,
-            'value_loss': value_loss_sum / num_minibatches,
-            'clipfrac': clipfrac_sum / num_minibatches,
-            'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
-            'throughput': throughput,
-            'eprewmean': eprewmean,
-            'eplenmean': eplenmean,
-            'entropy': sum(entropies) / len(entropies) / np.log(2),
-            'explained variance': explained_var,
-            'gradnorm': gradnorm * hps.bs / hps.rosteps,
-            'advantages': wandb.Histogram(advantages),
-            'values': wandb.Histogram(all_values),
-            'meanval': all_values.mean(),
-            'returns': wandb.Histogram(all_returns),
-            'meanret': all_returns.mean(),
-            'actions': wandb.Histogram(np.array(all_actions)),
-            'observations': wandb.Histogram(np.array(all_obs)),
-            'rewards': wandb.Histogram(np.array(all_rewards)),
-        }
-        total_norm = 0.0
-        count = 0
-        for name, param in policy.named_parameters():
-            norm = param.data.norm()
-            metrics[f'weight_norm[{name}]'] = norm
-            count += 1
-            total_norm += norm
-        metrics['mean_weight_norm'] = total_norm / count
-
-        wandb.log(metrics, step=total_steps)
-
-        print(f'{throughput} samples/s')
+        #dict()
+    sampler = GpuSampler(
+        EnvCls=env.create_env,
+        env_kwargs={},
+        #eval_env_kwargs={},
+        batch_T=hps.seq_rosteps,  # Four time-steps per sampler iteration.
+        batch_B=num_envs,
+        max_decorrelation_steps=0,
+        #eval_n_envs=0,
+        #eval_max_steps=int(10e3),
+        #eval_max_trajectories=2,
+    )
+    minibatches = hps.rosteps // hps.bs
+    algo = PPO(
+        discount=hps.gamma,
+        learning_rate=hps.lr,
+        value_loss_coeff=hps.vf_coef,
+        entropy_loss_coeff=0.001,
+        OptimCls=optimizer,
+        optim_kwargs=optim_kwargs,
+        clip_grad_norm=hps.max_grad_norm,
+        initial_optim_state_dict=None,
+        gae_lambda=hps.lamb,
+        minibatches=minibatches,
+        epochs=hps.sample_reuse,
+        ratio_clip=hps.cliprange,
+        linear_lr_schedule=True,  # TODO
+        normalize_advantage=hps.norm_advs,
+    )
+    # agent = AtariDqnAgent()
+    agent = CodeCraftAgent(hps)
+    runner = MinibatchRl(
+        algo=algo,
+        agent=agent,
+        sampler=sampler,
+        n_steps=hps.steps,
+        log_interval_steps=1e3,
+        affinity=dict(cuda_idx=0, workers_cpus=list(range(num_envs))),
+    )
+    config = dict(game="pong")
+    name = "dqn_pong"
+    log_dir = "example_1"
+    with logger_context(log_dir, "run_id", name, config, snapshot_mode="last"):
+        runner.train()
 
 
 def explained_variance(ypred,y):
@@ -224,7 +137,7 @@ def explained_variance(ypred,y):
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    wandb.init(project="deep-codecraft")
+    wandb.init(project="deep-codecraft-rlpyt")
 
     hps = HyperParams()
     args_parser = hps.args_parser()
