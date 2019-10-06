@@ -35,7 +35,7 @@ class Policy(nn.Module):
         entropy = action_dist.entropy()
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages):
+    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
@@ -45,8 +45,8 @@ class Policy(nn.Module):
         logprobs = distributions.Categorical(probs).log_prob(actions)
         ratios = torch.exp(logprobs - old_logprobs)
         vanilla_policy_loss = advantages * ratios
+        clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
-            clipped_policy_loss = torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange) * advantages
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
         else:
             policy_loss = -vanilla_policy_loss.mean()
@@ -54,8 +54,11 @@ class Policy(nn.Module):
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
 
-        baseline = self.value_head(x)
-        value_loss = F.mse_loss(returns, baseline.view(-1)).mean()
+        values = self.value_head(x).view(-1)
+        clipped_values = old_values + torch.clamp(values - old_values, -hps.cliprange, hps.cliprange)
+        vanilla_value_loss = (values - returns) ** 2
+        clipped_value_loss = (clipped_values - returns) ** 2
+        value_loss = torch.max(vanilla_value_loss, clipped_value_loss).mean()
 
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()

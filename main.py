@@ -160,9 +160,11 @@ def train(hps: HyperParams) -> None:
                 probs = torch.tensor(all_logprobs[start:end]).to(device)
                 returns = torch.tensor(all_returns[start:end]).to(device)
                 advs = torch.tensor(advantages[start:end]).to(device)
+                vals = torch.tensor(all_values[start:end]).to(device)
 
                 optimizer.zero_grad()
-                policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs)
+                policy_loss, value_loss, aproxkl, clipfrac =\
+                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals)
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
