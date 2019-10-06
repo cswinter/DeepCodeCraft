@@ -21,11 +21,12 @@ class Policy(nn.Module):
                 self.fc_layers.append(nn.Linear(nhidden, nhidden))
 
         self.policy_head = nn.Linear(nhidden, 8)
+        self.policy_head.weight.data *= 0.01
+        self.policy_head.bias.data.fill_(0.0)
+
         self.value_head = nn.Linear(nhidden, 1)
         self.value_head.weight.data.fill_(0.0)
         self.value_head.bias.data.fill_(0.0)
-        # TODO: init to 0?
-        # self.dense_final.weight.data.fill_(0.0)
 
     def evaluate(self, observation):
         probs, v = self.forward(observation)
