@@ -24,7 +24,7 @@ class HyperParams:
         # RL
         self.steps = 15e6           # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
-        self.rosteps = 256 * 32     # Number of total rollout steps
+        self.rosteps = 256 * 64     # Number of total rollout steps
         self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
