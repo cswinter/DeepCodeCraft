@@ -11,20 +11,24 @@ class Policy(nn.Module):
         self.conv = conv
         self.fp16 = hps.fp16
         if conv:
-            self.fc_drone = nn.Linear(9, nhidden // 2)
+            self.fc_drone = nn.Linear(8, nhidden // 2)
             self.conv_minerals1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 2, kernel_size=(1, 4))
             self.conv_minerals2 = nn.Conv2d(in_channels=nhidden // 2, out_channels=nhidden // 2, kernel_size=1)
             self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
         else:
-            self.fc_layers = nn.ModuleList([nn.Linear(49, nhidden)])
+            self.fc_layers = nn.ModuleList([nn.Linear(48, nhidden)])
             for _ in range(fc_layers - 1):
                 self.fc_layers.append(nn.Linear(nhidden, nhidden))
 
         self.policy_head = nn.Linear(nhidden, 8)
-        self.policy_head.weight.data *= 0.01
-        self.policy_head.bias.data.fill_(0.0)
+        if hps.small_init_pi:
+            self.policy_head.weight.data *= 0.01
+            self.policy_head.bias.data.fill_(0.0)
 
         self.value_head = nn.Linear(nhidden, 1)
+        if hps.zero_init_vf:
+            self.value_head.weight.data.fill_(0.0)
+            self.policy_head.bias.data.fill_(0.0)
 
     def evaluate(self, observation):
         probs, v = self.forward(observation)
@@ -56,7 +60,10 @@ class Policy(nn.Module):
         clipped_values = old_values + torch.clamp(values - old_values, -hps.cliprange, hps.cliprange)
         vanilla_value_loss = (values - returns) ** 2
         clipped_value_loss = (clipped_values - returns) ** 2
-        value_loss = torch.max(vanilla_value_loss, clipped_value_loss).mean()
+        if hps.clip_vf:
+            value_loss = torch.max(vanilla_value_loss, clipped_value_loss).mean()
+        else:
+            value_loss = vanilla_value_loss.mean()
 
         loss = policy_loss + value_loss_scale * value_loss
         loss.backward()
@@ -75,12 +82,12 @@ class Policy(nn.Module):
             x = x.half()
         if self.conv:
             batch_size = x.size()[0]
-            # x[0:9] is properties of drone 0 and global features
-            xd = x[:, :9]
+            # x[0:8] is properties of drone 0 and global features
+            xd = x[:, :8]
             xd = F.relu(self.fc_drone(xd))
 
             # x[9:49] are 10 x 4 properties concerning the closest minerals
-            xm = x[:, 9:].view(batch_size, 1, -1, 4)
+            xm = x[:, 8:].view(batch_size, 1, -1, 4)
             xm = F.relu(self.conv_minerals1(xm))
             xm = F.max_pool2d(F.relu(self.conv_minerals2(xm)), kernel_size=(10, 1))
             xm = xm.view(batch_size, -1)

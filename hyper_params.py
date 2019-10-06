@@ -5,11 +5,11 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'Adam'     # Optimizer
+        self.optimizer = 'RMSProp'     # Optimizer
         self.lr = 0.0001            # Learning rate
         self.momentum = 0.9         # Momentum
-        self.weight_decay = 0.0
-        self.bs = 2048              # Batch size during optimization
+        self.weight_decay = 0.0001
+        self.bs = 512              # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
@@ -18,11 +18,13 @@ class HyperParams:
         # Policy
         self.depth = 4              # Number of hidden layers
         self.width = 1024           # Number of activations on each hidden layer
-        self.conv = False           # Use convolution to share weights on objects
+        self.conv = True            # Use convolution to share weights on objects
         self.fp16 = False           # Whether to use half-precision floating point
+        self.zero_init_vf = True    # Set all initial weights for value function head to zero
+        self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
 
         # RL
-        self.steps = 15e6           # Total number of timesteps
+        self.steps = 10e6           # Total number of timesteps
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.rosteps = 256 * 64     # Number of total rollout steps
         self.gamma = 0.99           # Discount factor
@@ -31,6 +33,7 @@ class HyperParams:
         self.rewscale = 1.0         # Scaling of reward values
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
+        self.clip_vf = False        # Use clipped value function objective
 
         # Task
         self.objective = envs.Objective.ALLIED_WEALTH

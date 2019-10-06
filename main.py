@@ -140,6 +140,7 @@ def train(hps: HyperParams) -> None:
                 all_returns = all_returns[perm]
                 all_actions = all_actions[perm]
                 all_logprobs = all_logprobs[perm]
+                all_values = all_values[perm]
                 advantages = advantages[perm]
 
             # Policy Update
@@ -194,6 +195,8 @@ def train(hps: HyperParams) -> None:
             'meanret': all_returns.mean(),
             'actions': wandb.Histogram(np.array(all_actions)),
             'observations': wandb.Histogram(np.array(all_obs)),
+            'obs_max': all_obs.max(),
+            'obs_min': all_obs.min(),
             'rewards': wandb.Histogram(np.array(all_rewards)),
         }
         total_norm = 0.0
