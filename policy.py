@@ -25,8 +25,6 @@ class Policy(nn.Module):
         self.policy_head.bias.data.fill_(0.0)
 
         self.value_head = nn.Linear(nhidden, 1)
-        self.value_head.weight.data.fill_(0.0)
-        self.value_head.bias.data.fill_(0.0)
 
     def evaluate(self, observation):
         probs, v = self.forward(observation)
