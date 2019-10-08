@@ -212,6 +212,8 @@ def train(hps: HyperParams) -> None:
 
         print(f'{throughput} samples/s')
 
+    env.close()
+
 
 def explained_variance(ypred,y):
     """

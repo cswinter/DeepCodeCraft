@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from baselines.common.vec_env import VecEnv
 from enum import Enum
 from gym import spaces
@@ -151,6 +153,24 @@ class CodeCraftVecEnv(VecEnv):
                np.array(rews),\
                np.array(dones),\
                infos
+
+    def close(self):
+        # Run all games to completion
+        done = defaultdict(lambda: False)
+        running = len(self.games)
+        while running > 0:
+            game_actions = []
+            active_games = []
+            for game_id in self.games:
+                if not done[game_id]:
+                    active_games.append(game_id)
+                    game_actions.append((game_id, False, 0, [], False))
+            codecraft.act_batch(game_actions)
+            obs = codecraft.observe_batch(active_games)
+            for o, game_id in zip(obs, active_games):
+                if o['winner']:
+                    done[game_id] = True
+                    running -= 1
 
 
 class Objective(Enum):
