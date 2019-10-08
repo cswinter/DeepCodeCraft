@@ -28,7 +28,6 @@ class JobQueue:
         self.active_jobs_per_device = {device: 0 for device in range(devices)}
         self.lock = threading.Lock()
 
-    
     def run(self):
         logging.info(f"Watching {self.queue_dir} for new jobs...")
 
@@ -40,28 +39,26 @@ class JobQueue:
                         continue
                     logging.info(f"Found new job file {job_file}")
                     self.process_job_file(job_file)
-            
-            self.lock.acquire()
-            while self.queue.qsize() > 0 and self.active_jobs < self.concurrency:
-                job = self.queue.get()
 
-                min_load = self.concurrency
-                min_device = -1
-                for device, load in self.active_jobs_per_device.items():
-                    if load < min_load:
-                        min_load = load
-                        min_device = device
-                job.set_device(min_device)
-                self.active_jobs += 1
-                self.active_jobs_per_device[job.device] += 1
-                threading.Thread(target=self.run_job, args=(job,)).start()
-                logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
-                time.sleep(0.1)
-            self.lock.release()
+            while self.queue.qsize() > 0 and self.active_jobs < self.concurrency:
+                with self.lock:
+                    job = self.queue.get()
+
+                    min_load = self.concurrency
+                    min_device = -1
+                    for device, load in self.active_jobs_per_device.items():
+                        if load < min_load:
+                            min_load = load
+                            min_device = device
+                    job.set_device(min_device)
+                    self.active_jobs += 1
+                    self.active_jobs_per_device[job.device] += 1
+                    threading.Thread(target=self.run_job, args=(job,)).start()
+                    logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
+                    time.sleep(0.1)
 
             time.sleep(0.1)
 
-    
     def run_job(self, job):
         try:
             with tempfile.TemporaryDirectory() as dir:
@@ -124,7 +121,6 @@ class JobQueue:
                 del self.known_jobs[job.handle]
             self.lock.release()
 
-
     def process_job_file(self, job_file):
         filepath = os.path.join(self.queue_dir, job_file)
         job = yaml.safe_load(open(filepath, "r"))
@@ -138,7 +134,6 @@ class JobQueue:
         for param_set in param_sets:
             self.queue.put(Job(job["repo-path"], job["revision"], param_set, job_file))
         os.remove(filepath)
-
 
     def all_combinations(self, params_dict):
         param_sets = [{}]
@@ -165,7 +160,7 @@ class JobQueue:
         for param_set in param_sets:
             for _ in range(repetitions):
                 result.append(param_set.copy())
-        return param_sets * repetitions
+        return result
 
 
 class Job:
