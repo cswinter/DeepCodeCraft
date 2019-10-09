@@ -5,15 +5,15 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'RMSProp'     # Optimizer
+        self.optimizer = 'RMSProp'  # Optimizer
         self.lr = 0.0001            # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
-        self.bs = 512              # Batch size during optimization
+        self.bs = 2048              # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
-        self.sample_reuse = 1       # Number of optimizer passes over samples collected during rollout
+        self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
 
         # Policy
         self.depth = 4              # Number of hidden layers
