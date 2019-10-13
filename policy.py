@@ -6,27 +6,41 @@ import numpy as np
 
 
 class Policy(nn.Module):
-    def __init__(self, fc_layers, nhidden, conv, hps):
+    def __init__(self, fc_layers, nhidden, conv, small_init_pi, zero_init_vf, fp16):
         super(Policy, self).__init__()
+
+        self.kwargs = dict(
+            fc_layers=fc_layers,
+            nhidden=nhidden,
+            conv=conv,
+            small_init_pi=small_init_pi,
+            zero_init_vf=zero_init_vf,
+            fp16=fp16)
+
         self.conv = conv
-        self.fp16 = hps.fp16
+        self.fp16 = fp16
         if conv:
-            self.fc_drone = nn.Linear(8, nhidden // 2)
-            self.conv_minerals1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 2, kernel_size=(1, 4))
-            self.conv_minerals2 = nn.Conv2d(in_channels=nhidden // 2, out_channels=nhidden // 2, kernel_size=1)
+            self.fc_drone = nn.Linear(14, nhidden // 2)
+
+            self.conv_minerals1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 4, kernel_size=(1, 4))
+            self.conv_minerals2 = nn.Conv2d(in_channels=nhidden // 4, out_channels=nhidden // 4, kernel_size=1)
+
+            self.conv_enemies1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 4, kernel_size=(1, 13))
+            self.conv_enemies2 = nn.Conv2d(in_channels=nhidden // 4, out_channels=nhidden // 4, kernel_size=1)
+
             self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
         else:
-            self.fc_layers = nn.ModuleList([nn.Linear(48, nhidden)])
+            self.fc_layers = nn.ModuleList([nn.Linear(184, nhidden)])
             for _ in range(fc_layers - 1):
                 self.fc_layers.append(nn.Linear(nhidden, nhidden))
 
         self.policy_head = nn.Linear(nhidden, 8)
-        if hps.small_init_pi:
+        if small_init_pi:
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
         self.value_head = nn.Linear(nhidden, 1)
-        if hps.zero_init_vf:
+        if zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.policy_head.bias.data.fill_(0.0)
 
@@ -82,17 +96,23 @@ class Policy(nn.Module):
             x = x.half()
         if self.conv:
             batch_size = x.size()[0]
-            # x[0:8] is properties of drone 0 and global features
-            xd = x[:, :8]
+            # x[0:14] is properties of drone 0 and global features
+            xd = x[:, :14]
             xd = F.relu(self.fc_drone(xd))
 
-            # x[9:49] are 10 x 4 properties concerning the closest minerals
-            xm = x[:, 8:].view(batch_size, 1, -1, 4)
+            # x[8:48] are 10 x 4 properties concerning the closest minerals
+            xm = x[:, 14:54].view(batch_size, 1, -1, 4)
             xm = F.relu(self.conv_minerals1(xm))
             xm = F.max_pool2d(F.relu(self.conv_minerals2(xm)), kernel_size=(10, 1))
             xm = xm.view(batch_size, -1)
 
-            x = torch.cat((xd, xm), dim=1)
+            # x[48:118] are 10 x 13 properties of the closest enemies
+            xe = x[:, 54:184].view(batch_size, 1, -1, 13)
+            xe = F.relu(self.conv_enemies1(xe))
+            xe = F.max_pool2d(F.relu(self.conv_enemies2(xe)), kernel_size=(10, 1))
+            xe = xe.view(batch_size, -1)
+
+            x = torch.cat((xd, xm, xe), dim=1)
 
         for fc in self.fc_layers:
             x = F.relu(fc(x))

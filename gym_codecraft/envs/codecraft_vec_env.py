@@ -8,10 +8,49 @@ import numpy as np
 import codecraft
 
 
+def map_arena_tiny():
+    return {
+        'mapWidth': 1000,
+        'mapHeight': 1000,
+        'player1Drones': [
+            {
+                'xPos': np.random.randint(-450, 450),
+                'yPos': np.random.randint(-450, 450),
+                'resources': 0,
+                'storageModules': 1,
+                'missileBatteries': 0,
+                'constructors': 1,
+                'engines': 0,
+                'shieldGenerators': 0,
+            }
+        ],
+        'player2Drones': [
+            {
+                'xPos': np.random.randint(-450, 450),
+                'yPos': np.random.randint(-450, 450),
+                'resources': 0,
+                'storageModules': 0,
+                'missileBatteries': 1,
+                'constructors': 0,
+                'engines': 0,
+                'shieldGenerators': 3,
+            }
+        ]
+    }
+
+
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, game_length, objective, action_delay):
+    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True):
+        assert(num_envs >= 2 * num_self_play)
         self.objective = objective
         self.action_delay = action_delay
+        self.num_self_play = num_self_play
+        self.stagger = stagger
+        self.game_length = 3 * 60 * 60
+        self.custom_map = lambda: None
+        if objective == Objective.ARENA_TINY:
+            self.game_length = 1 * 60 * 60
+            self.custom_map = map_arena_tiny
 
         observations_low = []
         observations_high = []
@@ -47,25 +86,35 @@ class CodeCraftVecEnv(VecEnv):
         self.eplen = []
         self.eprew = []
         self.score = []
-        self.game_length = game_length
 
     def reset(self):
         self.games = []
         self.eplen = []
         self.score = []
-        for i in range(self.num_envs):
+        for i in range(self.num_envs - self.num_self_play):
             # spread out initial game lengths to stagger start times
-            game_id = codecraft.create_game(self.game_length * (i + 1) // self.num_envs, self.action_delay)
+            self_play = i < self.num_self_play
+            game_length = self.game_length * (i + 1) // (self.num_envs - self.num_self_play) if self.stagger else self.game_length
+            game_id = codecraft.create_game(
+                game_length,
+                self.action_delay,
+                self_play,
+                self.custom_map())
             # print("Starting game:", game_id)
-            self.games.append(game_id)
+            self.games.append((game_id, 0))
             self.eplen.append(1)
             self.eprew.append(0)
             self.score.append(None)
+            if self_play:
+                self.games.append((game_id, 1))
+                self.eplen.append(1)
+                self.eprew.append(0)
+                self.score.append(None)
         return self.observe()[0]
 
     def step_async(self, actions):
         game_actions = []
-        for (game_id, action) in zip(self.games, actions):
+        for ((game_id, player_id), action) in zip(self.games, actions):
             # 0-5: turn/movement (4 is no turn, no movement)
             # 6: build [0,1,0,0,0] drone (if minerals > 5)
             # 7: harvest
@@ -83,7 +132,7 @@ class CodeCraftVecEnv(VecEnv):
                 build = [[0, 1, 0, 0, 0]]
             if action == 7:
                 harvest = True
-            game_actions.append((game_id, move, turn, build, harvest))
+            game_actions.append((game_id, player_id, move, turn, build, harvest))
 
         codecraft.act_batch(game_actions, disable_harvest=self.objective == Objective.DISTANCE_TO_CRYSTAL)
 
@@ -96,14 +145,18 @@ class CodeCraftVecEnv(VecEnv):
         infos = []
         obs = codecraft.observe_batch_raw(self.games)
         global_features = 1
-        nonobs_features = 2
-        dstride = 7
+        nonobs_features = 3
+        dstride = 13
         mstride = 4
-        stride = global_features + dstride + 10 * mstride
+        stride = global_features + dstride + 10 * mstride + 10 * dstride
         for i in range(self.num_envs):
             x = obs[stride * i + global_features + 0]
             y = obs[stride * i + global_features + 1]
-            if self.objective == Objective.ALLIED_WEALTH:
+            if self.objective == Objective.ARENA_TINY:
+                allied_score = obs[stride * self.num_envs + i * nonobs_features + 1]
+                enemy_score = obs[stride * self.num_envs + i * nonobs_features + 2]
+                score = 2 * allied_score / (allied_score + enemy_score + 1e-8)
+            elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * self.num_envs + i * nonobs_features + 1] * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
                 score = -dist(x, y, 0.0, 0.0)
@@ -131,16 +184,24 @@ class CodeCraftVecEnv(VecEnv):
             self.score[i] = score
 
             if obs[stride * self.num_envs + i * nonobs_features] > 0:
-                game_id = codecraft.create_game(self.game_length, self.action_delay)
-                self.games[i] = game_id
-                observation = codecraft.observe(game_id)
+                (game_id, pid) = self.games[i]
+                if pid == 0:
+                    self_play = i // 2 < self.num_self_play
+                    game_id = codecraft.create_game(self.game_length,
+                                                    self.action_delay,
+                                                    self_play,
+                                                    self.custom_map())
+                    self.games[i] = (game_id, 0)
+                    if self_play:
+                        self.games[i + 1] = (game_id, 1)
+                observation = codecraft.observe(game_id, pid)
                 # TODO
                 # obs[stride * i:stride * (i + 1)] = codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
-                infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i]}})
+                infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i], 'index': i}})
                 self.eplen[i] = 1
-                self.eprew[i] = reward
+                self.eprew[i] = 0
                 self.score[i] = None
             else:
                 self.eplen[i] += 1
@@ -161,13 +222,13 @@ class CodeCraftVecEnv(VecEnv):
         while running > 0:
             game_actions = []
             active_games = []
-            for game_id in self.games:
+            for (game_id, player_id) in self.games:
                 if not done[game_id]:
-                    active_games.append(game_id)
-                    game_actions.append((game_id, False, 0, [], False))
+                    active_games.append((game_id, player_id))
+                    game_actions.append((game_id, player_id, False, 0, [], False))
             codecraft.act_batch(game_actions)
             obs = codecraft.observe_batch(active_games)
-            for o, game_id in zip(obs, active_games):
+            for o, (game_id, _) in zip(obs, active_games):
                 if o['winner']:
                     done[game_id] = True
                     running -= 1
@@ -178,6 +239,7 @@ class Objective(Enum):
     DISTANCE_TO_CRYSTAL = 'DISTANCE_TO_CRYSTAL'
     DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
     DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
+    ARENA_TINY = 'ARENA_TINY'
 
 
 def dist2(x1, y1, x2, y2):

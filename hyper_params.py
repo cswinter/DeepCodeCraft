@@ -23,10 +23,16 @@ class HyperParams:
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
 
+        # Eval
+        self.eval_envs = 64
+        self.eval_timesteps = 360
+        self.eval_frequency = 1e5
+
         # RL
         self.steps = 10e6           # Total number of timesteps
+        self.num_envs = 64          # Number of environments
+        self.num_self_play = 32     # Number of self-play environments (each provides two environments)
         self.seq_rosteps = 256      # Number of sequential steps per rollout
-        self.rosteps = 256 * 64     # Number of total rollout steps
         self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
@@ -35,9 +41,10 @@ class HyperParams:
         self.cliprange = 0.2        # PPO cliprange
         self.clip_vf = False        # Use clipped value function objective
 
+        self.rosteps = self.num_envs * self.seq_rosteps
+
         # Task
-        self.objective = envs.Objective.ALLIED_WEALTH
-        self.game_length = 3 * 60 * 60
+        self.objective = envs.Objective.ARENA_TINY
         self.action_delay = 0
 
     def args_parser(self) -> argparse.ArgumentParser:

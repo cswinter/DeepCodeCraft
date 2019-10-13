@@ -10,7 +10,7 @@ import click
 import yaml
 
 
-QUEUE_DIR = "192.168.0.102:/home/clemens/xprun/queue"
+QUEUE_DIR = "192.168.0.100:/home/clemens/xprun/queue"
 
 
 @click.command()
