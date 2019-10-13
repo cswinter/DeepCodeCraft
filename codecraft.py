@@ -8,17 +8,24 @@ import numpy as np
 RETRIES = 100
 
 
-def create_game(game_length: int = None, action_delay: int = 0) -> int:
+def create_game(game_length: int = None, action_delay: int = 0, self_play: bool = False, custom_map=None) -> int:
+    if custom_map is None:
+        custom_map = ''
     try:
+        scripted_opponent = 'false' if self_play else 'true'
         if game_length:
-            response = requests.post(f'http://localhost:9000/start-game?maxTicks={game_length}&actionDelay={action_delay}').json()
+            response = requests.post(f'http://localhost:9000/start-game'
+                                     f'?maxTicks={game_length}'
+                                     f'&actionDelay={action_delay}'
+                                     f'&scriptedOpponent={scripted_opponent}',
+                                     json=custom_map).json()
         else:
             response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()
         return int(response['id'])
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on create_game, retrying")
         time.sleep(1)
-        return create_game()
+        return create_game(game_length, action_delay, self_play)
 
 
 def act(game_id: int, action):
@@ -38,7 +45,7 @@ def act(game_id: int, action):
 
 def act_batch(actions, disable_harvest: bool = False):
     payload = {}
-    for (game_id, move, turn, buildSpec, harvest) in actions:
+    for (game_id, player_id, move, turn, buildSpec, harvest) in actions:
         action = {
             "buildDrone": buildSpec,
             "move": move,
@@ -46,7 +53,7 @@ def act_batch(actions, disable_harvest: bool = False):
             "transfer": False,
             "turn": turn,
         }
-        payload[game_id] = action
+        payload[f'{game_id}.{player_id}'] = action
 
     retries = 100
     while retries > 0:
@@ -62,13 +69,13 @@ def act_batch(actions, disable_harvest: bool = False):
             time.sleep(1)
 
 
-def observe(game_id: int):
+def observe(game_id: int, player_id: int = 0):
     try:
-        return requests.get(f'http://localhost:9000/observation?gameID={game_id}&playerID=0').json()
+        return requests.get(f'http://localhost:9000/observation?gameID={game_id}&playerID={player_id}').json()
     except requests.exceptions.ConnectionError:
-        logging.info(f"Connection error on observe({game_id}), retrying")
+        logging.info(f"Connection error on observe({game_id}.{player_id}), retrying")
         time.sleep(1)
-        return observe(game_id)
+        return observe(game_id, player_id)
 
 
 def observe_batch(game_ids):

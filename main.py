@@ -14,11 +14,13 @@ from hyper_params import HyperParams
 from policy import Policy
 
 TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
+LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
+EVAL_MODELS_PATH = '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models/v1'
 
 
 def run_codecraft():
     nenv = 32
-    env = envs.CodeCraftVecEnv(nenv, 3 * 60 * 60, envs.Objective.DISTANCE_TO_ORIGIN, 1)
+    env = envs.CodeCraftVecEnv(nenv, envs.Objective.DISTANCE_TO_ORIGIN, 1, action_delay=0)
 
     log_interval = 5
     frames = 0
@@ -39,16 +41,21 @@ def run_codecraft():
 
 def train(hps: HyperParams) -> None:
     assert(hps.rosteps % hps.bs == 0)
+    assert(hps.eval_envs % 4 == 0)
 
-    num_envs = hps.rosteps // hps.seq_rosteps
-    env = envs.CodeCraftVecEnv(num_envs, hps.game_length, hps.objective, hps.action_delay)
+    next_eval = 0
+
+    env = envs.CodeCraftVecEnv(hps.num_envs,
+                               hps.num_self_play,
+                               hps.objective,
+                               hps.action_delay)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
         print("Running on CPU")
         device = "cpu"
 
-    policy = Policy(hps.depth, hps.width, hps.conv, hps).to(device)
+    policy = Policy(hps.depth, hps.width, hps.conv, hps.small_init_pi, hps.zero_init_vf, hps.fp16).to(device)
     if hps.fp16:
         policy = policy.half()
     if hps.optimizer == 'SGD':
@@ -57,6 +64,8 @@ def train(hps: HyperParams) -> None:
         optimizer = optim.RMSprop(policy.parameters(), lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay)
     elif hps.optimizer == 'Adam':
         optimizer = optim.Adam(policy.parameters(), lr=hps.lr, weight_decay=hps.weight_decay, eps=1e-5)
+    else:
+        raise Exception(f'Invalid optimizer name `{hps.optimizer}`')
 
     wandb.watch(policy)
 
@@ -67,6 +76,12 @@ def train(hps: HyperParams) -> None:
     eplenmean = 0
     completed_episodes = 0
     while total_steps < hps.steps:
+        if total_steps >= next_eval and hps.eval_envs > 0:
+            eval_return = eval(policy, hps, device)
+            print(f'Eval: {eval_return}')
+            wandb.log({'eval_return': eval_return}, step=total_steps)
+            next_eval += hps.eval_frequency
+
         episode_start = time.time()
         entropies = []
         all_obs = []
@@ -108,13 +123,13 @@ def train(hps: HyperParams) -> None:
         all_rewards = np.array(all_rewards) * hps.rewscale
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         all_values = np.array(all_values)
-        last_gae = np.zeros(num_envs)
+        last_gae = np.zeros(hps.num_envs)
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correct for action delay?
             # TODO: vectorize
-            for i in range(num_envs):
-                ti = t * num_envs + i
-                tnext_i = (t + 1) * num_envs + i
+            for i in range(hps.num_envs):
+                ti = t * hps.num_envs + i
+                tnext_i = (t + 1) * hps.num_envs + i
                 nextnonterminal = 1.0 - all_dones[ti]
                 if t == hps.seq_rosteps - 1:
                     next_value = final_values[i]
@@ -213,6 +228,75 @@ def train(hps: HyperParams) -> None:
         print(f'{throughput} samples/s')
 
     env.close()
+
+    if hps.eval_envs > 0:
+        eval_return = eval(policy, hps, device)
+        print(f'Final eval: {eval_return}')
+        wandb.log({'eval_return': eval_return}, step=total_steps)
+
+    t = time.strftime("%Y-%m-%d~%H:%M:%S")
+    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
+    out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
+    os.mkdir(out_dir)
+    model_path = os.path.join(out_dir, 'model.pt')
+    print(f'Saving final policy to {model_path}')
+    torch.save({
+        'model_state_dict': policy.state_dict(),
+        'model_kwargs': policy.kwargs,
+    }, model_path)
+
+
+def eval(policy, hps, device) -> float:
+    opp_hps = HyperParams()
+    opp_hps.depth = 4
+    opp_hps.width = 1024
+    opp_hps.conv = True
+    opp_hps.fp16 = False
+    opp_hps.small_init_pi = False
+    opp_hps.zero_init_vf = True
+
+    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, '21011a1-1M.pt'))
+    opponent = Policy(**checkpoint['model_kwargs']).to(device)
+    opponent.load_state_dict(checkpoint['model_state_dict'])
+
+    policy.eval()
+    opponent.eval()
+
+    env = envs.CodeCraftVecEnv(hps.eval_envs,
+                               hps.eval_envs // 2,
+                               hps.objective,
+                               hps.action_delay,
+                               stagger=False)
+
+    returns = []
+    lengths = []
+    obs = env.reset()
+    evens = list([2 * i for i in range(hps.eval_envs // 2)])
+    odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
+    policy_envs = evens[:hps.eval_envs // 4] + odds[hps.eval_envs // 4:]
+    opponent_envs = odds[:hps.eval_envs // 4] + evens[hps.eval_envs // 4:]
+    for step in range(hps.eval_timesteps):
+        obs_tensor = torch.tensor(obs).to(device)
+        obs_policy = obs_tensor[policy_envs]
+        obs_opponent = obs_tensor[opponent_envs]
+        actionsp, _, _, _ = policy.evaluate(obs_policy)
+        actionso, _, _, _ = opponent.evaluate(obs_opponent)
+
+        actions = np.zeros(hps.eval_envs, dtype=np.int)
+        actions[policy_envs] = actionsp.cpu()
+        actions[opponent_envs] = actionso.cpu()
+
+        obs, rews, dones, infos = env.step(actions)
+
+        for info in infos:
+            index = info['episode']['index']
+            if index in policy_envs:
+                returns.append(info['episode']['r'])
+                lengths.append(info['episode']['l'])
+
+    env.close()
+
+    return np.array(returns).mean()
 
 
 def explained_variance(ypred,y):
