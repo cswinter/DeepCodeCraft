@@ -48,7 +48,8 @@ def train(hps: HyperParams) -> None:
     env = envs.CodeCraftVecEnv(hps.num_envs,
                                hps.num_self_play,
                                hps.objective,
-                               hps.action_delay)
+                               hps.action_delay,
+                               randomize=True)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -77,9 +78,7 @@ def train(hps: HyperParams) -> None:
     completed_episodes = 0
     while total_steps < hps.steps:
         if total_steps >= next_eval and hps.eval_envs > 0:
-            eval_return = eval(policy, hps, device)
-            print(f'Eval: {eval_return}')
-            wandb.log({'eval_return': eval_return}, step=total_steps)
+            eval(policy, hps, device, total_steps)
             next_eval += hps.eval_frequency
 
         episode_start = time.time()
@@ -230,9 +229,7 @@ def train(hps: HyperParams) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        eval_return = eval(policy, hps, device)
-        print(f'Final eval: {eval_return}')
-        wandb.log({'eval_return': eval_return}, step=total_steps)
+        eval(policy, hps, device, total_steps)
 
     t = time.strftime("%Y-%m-%d~%H:%M:%S")
     commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
@@ -246,7 +243,7 @@ def train(hps: HyperParams) -> None:
     }, model_path)
 
 
-def eval(policy, hps, device) -> float:
+def eval(policy, hps, device, total_steps):
     opp_hps = HyperParams()
     opp_hps.depth = 4
     opp_hps.width = 1024
@@ -255,48 +252,86 @@ def eval(policy, hps, device) -> float:
     opp_hps.small_init_pi = False
     opp_hps.zero_init_vf = True
 
-    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, '21011a1-1M.pt'))
-    opponent = Policy(**checkpoint['model_kwargs']).to(device)
-    opponent.load_state_dict(checkpoint['model_state_dict'])
+    opp_random = load_policy('random.pt').to(device)
+    opp_1M = load_policy('21011a1-1M.pt').to(device)
 
     policy.eval()
-    opponent.eval()
 
     env = envs.CodeCraftVecEnv(hps.eval_envs,
                                hps.eval_envs // 2,
                                hps.objective,
                                hps.action_delay,
-                               stagger=False)
+                               stagger=False,
+                               fair=True)
 
     returns = []
+    returnsr = []
+    returns1m = []
     lengths = []
     obs = env.reset()
     evens = list([2 * i for i in range(hps.eval_envs // 2)])
     odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
-    policy_envs = evens[:hps.eval_envs // 4] + odds[hps.eval_envs // 4:]
-    opponent_envs = odds[:hps.eval_envs // 4] + evens[hps.eval_envs // 4:]
+    policy_envs = evens
+    opp_random_envs = odds[:len(odds) // 2]
+    opp_1M_envs = odds[len(odds) // 2:]
+
     for step in range(hps.eval_timesteps):
         obs_tensor = torch.tensor(obs).to(device)
         obs_policy = obs_tensor[policy_envs]
-        obs_opponent = obs_tensor[opponent_envs]
+        obs_random = obs_tensor[opp_random_envs]
+        obs_1M = obs_tensor[opp_1M_envs]
         actionsp, _, _, _ = policy.evaluate(obs_policy)
-        actionso, _, _, _ = opponent.evaluate(obs_opponent)
+        actionsor, _, _, _ = opp_random.evaluate(obs_random)
+        actionso1m, _, _, _ = opp_1M.evaluate(obs_1M)
 
         actions = np.zeros(hps.eval_envs, dtype=np.int)
         actions[policy_envs] = actionsp.cpu()
-        actions[opponent_envs] = actionso.cpu()
+        actions[opp_random_envs] = actionsor.cpu()
+        actions[opp_1M_envs] = actionso1m.cpu()
 
         obs, rews, dones, infos = env.step(actions)
 
         for info in infos:
             index = info['episode']['index']
             if index in policy_envs:
-                returns.append(info['episode']['r'])
-                lengths.append(info['episode']['l'])
+                ret = info['episode']['r']
+                length = info['episode']['l']
+                returns.append(ret)
+                lengths.append(length)
+                if index % 2 == 0:
+                    if index + 1 in opp_random_envs:
+                        returnsr.append(ret)
+                    else:
+                        returns1m.append(ret)
+                else:
+                    if index - 1 in opp_random_envs:
+                        returnsr.append(ret)
+                    else:
+                        returns1m.append(ret)
 
     env.close()
 
-    return np.array(returns).mean()
+    returns = np.array(returns)
+    returnsr = np.array(returnsr)
+    returns1m = np.array(returns1m)
+
+    wandb.log({
+        'eval_mean_ret': returns.mean(),
+        'eval_max_ret': returns.max(),
+        'eval_min_ret': returns.min(),
+        'eval_mean_ret_vs_random': returnsr.mean(),
+        'eval_mean_ret_vs_1M': returns1m.mean()
+    }, step=total_steps)
+
+    print(f'Eval: {returns.mean()}')
+
+
+def load_policy(name):
+    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
+    policy = Policy(**checkpoint['model_kwargs'])
+    policy.load_state_dict(checkpoint['model_state_dict'])
+    policy.eval()
+    return policy
 
 
 def explained_variance(ypred,y):
@@ -315,7 +350,6 @@ def explained_variance(ypred,y):
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    wandb.init(project="deep-codecraft")
 
     hps = HyperParams()
     args_parser = hps.args_parser()
@@ -331,10 +365,13 @@ def main():
     config = vars(hps)
     config['commit'] = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
     config['descriptor'] = vars(args)['descriptor']
-    wandb.config.update(config)
 
     if isinstance(hps.objective, str):
         hps.objective = envs.Objective(hps.objective)
+
+    wandb_project = 'deep-codecraft-vs' if hps.objective == envs.Objective.ARENA_TINY else 'deep-codecraft'
+    wandb.init(project=wandb_project)
+    wandb.config.update(config)
 
     train(hps)
 

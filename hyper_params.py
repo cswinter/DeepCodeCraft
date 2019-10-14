@@ -13,18 +13,18 @@ class HyperParams:
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 0.5          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
-        self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
+        self.sample_reuse = 3       # Number of optimizer passes over samples collected during rollout
 
         # Policy
         self.depth = 4              # Number of hidden layers
-        self.width = 1024           # Number of activations on each hidden layer
+        self.width = 2048           # Number of activations on each hidden layer
         self.conv = True            # Use convolution to share weights on objects
         self.fp16 = False           # Whether to use half-precision floating point
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
 
         # Eval
-        self.eval_envs = 64
+        self.eval_envs = 256
         self.eval_timesteps = 360
         self.eval_frequency = 1e5
 

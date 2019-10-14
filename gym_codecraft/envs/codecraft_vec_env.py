@@ -8,7 +8,41 @@ import numpy as np
 import codecraft
 
 
-def map_arena_tiny():
+def random_drone():
+    modules = ['storageModules', 'constructors', 'missileBatteries', 'shieldGenerators', 'missileBatteries']
+    drone = {
+        'xPos': np.random.randint(-450, 450),
+        'yPos': np.random.randint(-450, 450),
+        'resources': 0,
+        'storageModules': 0,
+        'missileBatteries': 0,
+        'constructors': 0,
+        'engines': 0,
+        'shieldGenerators': 0,
+    }
+    for _ in range(0, np.random.randint(2, 5)):
+        module = modules[np.random.randint(0, len(modules))]
+        drone[module] += 1
+    return drone
+
+
+def map_arena_tiny_random():
+    return {
+        'mapWidth': 1000,
+        'mapHeight': 1000,
+        'player1Drones': [random_drone()],
+        'player2Drones': [random_drone()],
+    }
+
+
+def map_arena_tiny(randomize: bool):
+    storage_modules = 1
+    constructors = 1
+    missiles_batteries = 1
+    if randomize:
+        storage_modules = np.random.randint(1, 3)
+        constructors = np.random.randint(1, 3)
+        missiles_batteries = np.random.randint(1, 3)
     return {
         'mapWidth': 1000,
         'mapHeight': 1000,
@@ -17,9 +51,9 @@ def map_arena_tiny():
                 'xPos': np.random.randint(-450, 450),
                 'yPos': np.random.randint(-450, 450),
                 'resources': 0,
-                'storageModules': 1,
+                'storageModules': storage_modules,
                 'missileBatteries': 0,
-                'constructors': 1,
+                'constructors': constructors,
                 'engines': 0,
                 'shieldGenerators': 0,
             }
@@ -30,24 +64,27 @@ def map_arena_tiny():
                 'yPos': np.random.randint(-450, 450),
                 'resources': 0,
                 'storageModules': 0,
-                'missileBatteries': 1,
+                'missileBatteries': missiles_batteries,
                 'constructors': 0,
                 'engines': 0,
-                'shieldGenerators': 3,
+                'shieldGenerators': 4 - missiles_batteries,
             }
-        ]
+        ],
     }
 
 
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True):
+    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True, fair=False, randomize=False):
         assert(num_envs >= 2 * num_self_play)
         self.objective = objective
         self.action_delay = action_delay
         self.num_self_play = num_self_play
         self.stagger = stagger
+        self.fair = fair
         self.game_length = 3 * 60 * 60
         self.custom_map = lambda: None
+        self.last_map = None
+        self.randomize = randomize
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -99,17 +136,17 @@ class CodeCraftVecEnv(VecEnv):
                 game_length,
                 self.action_delay,
                 self_play,
-                self.custom_map())
+                self.next_map())
             # print("Starting game:", game_id)
             self.games.append((game_id, 0))
             self.eplen.append(1)
             self.eprew.append(0)
-            self.score.append(None)
+            self.score.append(0)
             if self_play:
                 self.games.append((game_id, 1))
                 self.eplen.append(1)
                 self.eprew.append(0)
-                self.score.append(None)
+                self.score.append(0)
         return self.observe()[0]
 
     def step_async(self, actions):
@@ -155,7 +192,7 @@ class CodeCraftVecEnv(VecEnv):
             if self.objective == Objective.ARENA_TINY:
                 allied_score = obs[stride * self.num_envs + i * nonobs_features + 1]
                 enemy_score = obs[stride * self.num_envs + i * nonobs_features + 2]
-                score = 2 * allied_score / (allied_score + enemy_score + 1e-8)
+                score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
             elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * self.num_envs + i * nonobs_features + 1] * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
@@ -175,13 +212,9 @@ class CodeCraftVecEnv(VecEnv):
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
-            # TODO: this is a workaround for reward spikes most likely caused by minerals not beeing visible until first movement
-            if self.eplen[i] < 3:
-                self.score[i] = score
-            # if self.score[i] is None:
-            #    self.score[i] = score
             reward = score - self.score[i]
             self.score[i] = score
+            self.eprew[i] += reward
 
             if obs[stride * self.num_envs + i * nonobs_features] > 0:
                 (game_id, pid) = self.games[i]
@@ -190,7 +223,7 @@ class CodeCraftVecEnv(VecEnv):
                     game_id = codecraft.create_game(self.game_length,
                                                     self.action_delay,
                                                     self_play,
-                                                    self.custom_map())
+                                                    self.next_map())
                     self.games[i] = (game_id, 0)
                     if self_play:
                         self.games[i + 1] = (game_id, 1)
@@ -202,10 +235,9 @@ class CodeCraftVecEnv(VecEnv):
                 infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i], 'index': i}})
                 self.eplen[i] = 1
                 self.eprew[i] = 0
-                self.score[i] = None
+                self.score[i] = 0
             else:
                 self.eplen[i] += 1
-                self.eprew[i] += reward
                 dones.append(0.0)
 
             rews.append(reward)
@@ -232,6 +264,24 @@ class CodeCraftVecEnv(VecEnv):
                 if o['winner']:
                     done[game_id] = True
                     running -= 1
+
+    def next_map(self):
+        if self.fair:
+            return self.fair_map()
+        else:
+            return self.custom_map(self.randomize)
+
+    def fair_map(self):
+        if self.last_map is None:
+            self.last_map = self.custom_map(self.randomize)
+            return self.last_map
+        else:
+            result = self.last_map
+            self.last_map = None
+            p1 = result['player1Drones']
+            result['player1Drones'] = result['player2Drones']
+            result['player2Drones'] = p1
+            return result
 
 
 class Objective(Enum):
