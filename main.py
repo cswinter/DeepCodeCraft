@@ -264,9 +264,9 @@ def eval(policy, hps, device, total_steps):
                                stagger=False,
                                fair=True)
 
-    returns = []
-    returnsr = []
-    returns1m = []
+    scores = []
+    scores_r = []
+    scores_1m = []
     lengths = []
     obs = env.reset()
     evens = list([2 * i for i in range(hps.eval_envs // 2)])
@@ -294,36 +294,36 @@ def eval(policy, hps, device, total_steps):
         for info in infos:
             index = info['episode']['index']
             if index in policy_envs:
-                ret = info['episode']['r']
+                score = info['episode']['score']
                 length = info['episode']['l']
-                returns.append(ret)
+                scores.append(score)
                 lengths.append(length)
                 if index % 2 == 0:
                     if index + 1 in opp_random_envs:
-                        returnsr.append(ret)
+                        scores_r.append(score)
                     else:
-                        returns1m.append(ret)
+                        scores_1m.append(score)
                 else:
                     if index - 1 in opp_random_envs:
-                        returnsr.append(ret)
+                        scores_r.append(score)
                     else:
-                        returns1m.append(ret)
+                        scores_1m.append(score)
 
     env.close()
 
-    returns = np.array(returns)
-    returnsr = np.array(returnsr)
-    returns1m = np.array(returns1m)
+    scores = np.array(scores)
+    scores_r = np.array(scores_r)
+    scores_1m = np.array(scores_1m)
 
     wandb.log({
-        'eval_mean_ret': returns.mean(),
-        'eval_max_ret': returns.max(),
-        'eval_min_ret': returns.min(),
-        'eval_mean_ret_vs_random': returnsr.mean(),
-        'eval_mean_ret_vs_1M': returns1m.mean()
+        'eval_mean_score': scores.mean(),
+        'eval_max_score': scores.max(),
+        'eval_min_score': scores.min(),
+        'eval_mean_score_vs_random': scores_r.mean(),
+        'eval_mean_score_vs_1M': scores_1m.mean()
     }, step=total_steps)
 
-    print(f'Eval: {returns.mean()}')
+    print(f'Eval: {scores.mean()}')
 
 
 def load_policy(name):

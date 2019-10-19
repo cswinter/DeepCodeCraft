@@ -82,7 +82,7 @@ class CodeCraftVecEnv(VecEnv):
         self.stagger = stagger
         self.fair = fair
         self.game_length = 3 * 60 * 60
-        self.custom_map = lambda: None
+        self.custom_map = lambda _: None
         self.last_map = None
         self.randomize = randomize
         if objective == Objective.ARENA_TINY:
@@ -141,12 +141,12 @@ class CodeCraftVecEnv(VecEnv):
             self.games.append((game_id, 0))
             self.eplen.append(1)
             self.eprew.append(0)
-            self.score.append(0)
+            self.score.append(None)
             if self_play:
                 self.games.append((game_id, 1))
                 self.eplen.append(1)
                 self.eprew.append(0)
-                self.score.append(0)
+                self.score.append(None)
         return self.observe()[0]
 
     def step_async(self, actions):
@@ -212,6 +212,8 @@ class CodeCraftVecEnv(VecEnv):
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
+            if self.score[i] is None:
+                self.score[i] = score
             reward = score - self.score[i]
             self.score[i] = score
             self.eprew[i] += reward
@@ -232,10 +234,15 @@ class CodeCraftVecEnv(VecEnv):
                 # obs[stride * i:stride * (i + 1)] = codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
-                infos.append({'episode': {'r': self.eprew[i], 'l': self.eplen[i], 'index': i}})
+                infos.append({'episode': {
+                    'r': self.eprew[i],
+                    'l': self.eplen[i],
+                    'index': i,
+                    'score': self.score[i],
+                }})
                 self.eplen[i] = 1
                 self.eprew[i] = 0
-                self.score[i] = 0
+                self.score[i] = None
             else:
                 self.eplen[i] += 1
                 dones.append(0.0)
