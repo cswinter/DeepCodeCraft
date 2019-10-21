@@ -2,6 +2,7 @@ import logging
 import subprocess
 import time
 import os
+from collections import defaultdict
 
 import torch
 import torch.optim as optim
@@ -15,7 +16,7 @@ from policy import Policy
 
 TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
-EVAL_MODELS_PATH = '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models/v1'
+EVAL_MODELS_PATH = '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models'
 
 
 def run_codecraft():
@@ -244,19 +245,20 @@ def train(hps: HyperParams) -> None:
 
 
 def eval(policy, hps, device, total_steps):
-    opp_hps = HyperParams()
-    opp_hps.depth = 4
-    opp_hps.width = 1024
-    opp_hps.conv = True
-    opp_hps.fp16 = False
-    opp_hps.small_init_pi = False
-    opp_hps.zero_init_vf = True
 
-    opp_random = load_policy('random.pt').to(device)
-    opp_1M = load_policy('21011a1-1M.pt').to(device)
+    if hps.objective == envs.Objective.ARENA_TINY:
+        opponents = {
+            '10m': {'model_file': 'v1/25909ee-10M.pt'},
+            '1m': {'model_file': 'v1/21011a1-1M.pt'},
+        }
+    elif hps.objective == envs.Objective.ARENA_TINY_2V2:
+        opponents = {
+            'random': {'model_file': 'v2/random.pt'},
+        }
+    else:
+        raise Exception(f'No eval opponents configured for {hps.objective}')
 
     policy.eval()
-
     env = envs.CodeCraftVecEnv(hps.eval_envs,
                                hps.eval_envs // 2,
                                hps.objective,
@@ -265,29 +267,30 @@ def eval(policy, hps, device, total_steps):
                                fair=True)
 
     scores = []
-    scores_r = []
-    scores_1m = []
+    scores_by_opp = defaultdict(list)
     lengths = []
     obs = env.reset()
     evens = list([2 * i for i in range(hps.eval_envs // 2)])
     odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
     policy_envs = evens
-    opp_random_envs = odds[:len(odds) // 2]
-    opp_1M_envs = odds[len(odds) // 2:]
+
+    i = 0
+    for name, opp in opponents.items():
+        opp['policy'] = load_policy(opp['model_file']).to(device)
+        opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
+        i += 1
 
     for step in range(hps.eval_timesteps):
+        actions = np.zeros((hps.eval_envs, 2), dtype=np.int)
         obs_tensor = torch.tensor(obs).to(device)
         obs_policy = obs_tensor[policy_envs]
-        obs_random = obs_tensor[opp_random_envs]
-        obs_1M = obs_tensor[opp_1M_envs]
         actionsp, _, _, _ = policy.evaluate(obs_policy)
-        actionsor, _, _, _ = opp_random.evaluate(obs_random)
-        actionso1m, _, _, _ = opp_1M.evaluate(obs_1M)
-
-        actions = np.zeros(hps.eval_envs, dtype=np.int)
         actions[policy_envs] = actionsp.cpu()
-        actions[opp_random_envs] = actionsor.cpu()
-        actions[opp_1M_envs] = actionso1m.cpu()
+
+        for _, opp in opponents.items():
+            obs = obs_tensor[opp['envs']]
+            actions_opp, _, _, _ = opp['policy'].evaluate(obs)
+            actions[opp['envs']] = actions_opp.cpu()
 
         obs, rews, dones, infos = env.step(actions)
 
@@ -298,32 +301,23 @@ def eval(policy, hps, device, total_steps):
                 length = info['episode']['l']
                 scores.append(score)
                 lengths.append(length)
-                if index % 2 == 0:
-                    if index + 1 in opp_random_envs:
-                        scores_r.append(score)
-                    else:
-                        scores_1m.append(score)
-                else:
-                    if index - 1 in opp_random_envs:
-                        scores_r.append(score)
-                    else:
-                        scores_1m.append(score)
-
-    env.close()
+                for name, opp in opponents.items():
+                    if index + 1 in opp['envs']:
+                        scores_by_opp[name].append(score)
+                        break
 
     scores = np.array(scores)
-    scores_r = np.array(scores_r)
-    scores_1m = np.array(scores_1m)
-
     wandb.log({
         'eval_mean_score': scores.mean(),
         'eval_max_score': scores.max(),
         'eval_min_score': scores.min(),
-        'eval_mean_score_vs_random': scores_r.mean(),
-        'eval_mean_score_vs_1M': scores_1m.mean()
     }, step=total_steps)
-
+    for opp_name, scores in scores_by_opp.items():
+        scores = np.array(scores)
+        wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=total_steps)
     print(f'Eval: {scores.mean()}')
+
+    env.close()
 
 
 def load_policy(name):
@@ -369,7 +363,7 @@ def main():
     if isinstance(hps.objective, str):
         hps.objective = envs.Objective(hps.objective)
 
-    wandb_project = 'deep-codecraft-vs' if hps.objective == envs.Objective.ARENA_TINY else 'deep-codecraft'
+    wandb_project = 'deep-codecraft-vs' if hps.objective.vs() else 'deep-codecraft'
     wandb.init(project=wandb_project)
     wandb.config.update(config)
 

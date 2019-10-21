@@ -8,18 +8,34 @@ import numpy as np
 import codecraft
 
 
+GLOBAL_FEATURES = 1
+DSTRIDE = 14
+MSTRIDE = 4
+NONOBS_FEATURES = 3
+
+
+def drone_dict(x, y,
+          storage_modules=0,
+          missile_batteries=0,
+          constructors=0,
+          engines=0,
+          shield_generators=0,
+          resources=0):
+    return {
+        'xPos': x,
+        'yPos': y,
+        'resources': resources,
+        'storageModules': storage_modules,
+        'missileBatteries': missile_batteries,
+        'constructors': constructors,
+        'engines': engines,
+        'shieldGenerators': shield_generators,
+    }
+
+
 def random_drone():
     modules = ['storageModules', 'constructors', 'missileBatteries', 'shieldGenerators', 'missileBatteries']
-    drone = {
-        'xPos': np.random.randint(-450, 450),
-        'yPos': np.random.randint(-450, 450),
-        'resources': 0,
-        'storageModules': 0,
-        'missileBatteries': 0,
-        'constructors': 0,
-        'engines': 0,
-        'shieldGenerators': 0,
-    }
+    drone = drone_dict(np.random.randint(-450, 450), np.random.randint(-450, 450))
     for _ in range(0, np.random.randint(2, 5)):
         module = modules[np.random.randint(0, len(modules))]
         drone[module] += 1
@@ -47,28 +63,68 @@ def map_arena_tiny(randomize: bool):
         'mapWidth': 1000,
         'mapHeight': 1000,
         'player1Drones': [
-            {
-                'xPos': np.random.randint(-450, 450),
-                'yPos': np.random.randint(-450, 450),
-                'resources': 0,
-                'storageModules': storage_modules,
-                'missileBatteries': 0,
-                'constructors': constructors,
-                'engines': 0,
-                'shieldGenerators': 0,
-            }
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       storage_modules=storage_modules,
+                       constructors=constructors)
         ],
         'player2Drones': [
-            {
-                'xPos': np.random.randint(-450, 450),
-                'yPos': np.random.randint(-450, 450),
-                'resources': 0,
-                'storageModules': 0,
-                'missileBatteries': missiles_batteries,
-                'constructors': 0,
-                'engines': 0,
-                'shieldGenerators': 4 - missiles_batteries,
-            }
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       missile_batteries=missiles_batteries,
+                       shield_generators=4 - missiles_batteries)
+        ],
+    }
+
+
+def map_arena_tiny_2v2(randomize: bool):
+    missile_batteries = 1
+    shields = 1
+    s1 = 1
+    s2 = 1
+    if randomize:
+        missile_batteries = np.random.randint(0, 2)
+        shields = np.random.randint(0, 2)
+        s1 = np.random.randint(0, 2)
+        s2 = np.random.randint(0, 2)
+    return {
+        'mapWidth': 1000,
+        'mapHeight': 1000,
+        'player1Drones': [
+            # drone_dict(np.random.randint(-950, 950),
+            #             np.random.randint(-950, 950),
+            #             storage_modules=1,
+            #             constructors=1),
+
+            # drone_dict(np.random.randint(-450, 450),
+            #            np.random.randint(-450, 450),
+            #            storage_modules=1-missile_batteries,
+            #            missile_batteries=missile_batteries),
+            # drone_dict(np.random.randint(-450, 450),
+            #            np.random.randint(-450, 450),
+            #            shield_generators=shields,
+            #            storage_modules=1-shields),
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       missile_batteries=1-s1,
+                       shield_generators=s1),
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       missile_batteries=1),
+        ],
+        'player2Drones': [
+            # drone_dict(np.random.randint(-950, 950),
+            #            np.random.randint(-950, 950),
+            #            storage_modules=1,
+            #            constructors=1),
+
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       missile_batteries=1-s2,
+                       shield_generators=s2),
+            drone_dict(np.random.randint(-450, 450),
+                       np.random.randint(-450, 450),
+                       missile_batteries=1),
         ],
     }
 
@@ -88,6 +144,9 @@ class CodeCraftVecEnv(VecEnv):
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
+        elif objective == Objective.ARENA_TINY_2V2:
+            self.game_length = 1 * 60 * 60
+            self.custom_map = map_arena_tiny_2v2
 
         observations_low = []
         observations_high = []
@@ -151,25 +210,28 @@ class CodeCraftVecEnv(VecEnv):
 
     def step_async(self, actions):
         game_actions = []
-        for ((game_id, player_id), action) in zip(self.games, actions):
-            # 0-5: turn/movement (4 is no turn, no movement)
-            # 6: build [0,1,0,0,0] drone (if minerals > 5)
-            # 7: harvest
-            move = False
-            harvest = False
-            turn = 0
-            build = []
-            if action == 0 or action == 1 or action == 2:
-                move = True
-            if action == 0 or action == 3:
-                turn = -1
-            if action == 2 or action == 5:
-                turn = 1
-            if action == 6:
-                build = [[0, 1, 0, 0, 0]]
-            if action == 7:
-                harvest = True
-            game_actions.append((game_id, player_id, move, turn, build, harvest))
+        for ((game_id, player_id), player_actions) in zip(self.games, actions):
+            player_actions2 = []
+            for action in player_actions:
+                # 0-5: turn/movement (4 is no turn, no movement)
+                # 6: build [0,1,0,0,0] drone (if minerals > 5)
+                # 7: harvest
+                move = False
+                harvest = False
+                turn = 0
+                build = []
+                if action == 0 or action == 1 or action == 2:
+                    move = True
+                if action == 0 or action == 3:
+                    turn = -1
+                if action == 2 or action == 5:
+                    turn = 1
+                if action == 6:
+                    build = [[0, 1, 0, 0, 0]]
+                if action == 7:
+                    harvest = True
+                player_actions2.append((move, turn, build, harvest))
+            game_actions.append((game_id, player_id, player_actions2))
 
         codecraft.act_batch(game_actions, disable_harvest=self.objective == Objective.DISTANCE_TO_CRYSTAL)
 
@@ -177,24 +239,27 @@ class CodeCraftVecEnv(VecEnv):
         return self.observe()
 
     def observe(self):
+        allies = 2
+        drones = 10
+        minerals = 10
+
         rews = []
         dones = []
         infos = []
-        obs = codecraft.observe_batch_raw(self.games)
-        global_features = 1
-        nonobs_features = 3
-        dstride = 13
-        mstride = 4
-        stride = global_features + dstride + 10 * mstride + 10 * dstride
+        obs = codecraft.observe_batch_raw(self.games, allies=allies, drones=drones, minerals=minerals)
+        stride = allies * (GLOBAL_FEATURES + DSTRIDE + minerals * MSTRIDE + drones * DSTRIDE)
         for i in range(self.num_envs):
-            x = obs[stride * i + global_features + 0]
-            y = obs[stride * i + global_features + 1]
-            if self.objective == Objective.ARENA_TINY:
-                allied_score = obs[stride * self.num_envs + i * nonobs_features + 1]
-                enemy_score = obs[stride * self.num_envs + i * nonobs_features + 2]
+            x = obs[stride * i + GLOBAL_FEATURES + 0]
+            y = obs[stride * i + GLOBAL_FEATURES + 1]
+            #if x == 0.0:
+            #    assert obs[stride * i + GLOBAL_FEATURES + DSTRIDE + GLOBAL_FEATURES + 0] == 0.0,\
+            #        f'WRONG: {obs[stride * i:stride * i + (GLOBAL_FEATURES + DSTRIDE) * 2]}'
+            if self.objective == Objective.ARENA_TINY or self.objective == Objective.ARENA_TINY_2V2:
+                allied_score = obs[stride * self.num_envs + i * NONOBS_FEATURES + 1]
+                enemy_score = obs[stride * self.num_envs + i * NONOBS_FEATURES + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
             elif self.objective == Objective.ALLIED_WEALTH:
-                score = obs[stride * self.num_envs + i * nonobs_features + 1] * 0.1
+                score = obs[stride * self.num_envs + i * NONOBS_FEATURES + 1] * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
                 score = -dist(x, y, 0.0, 0.0)
             elif self.objective == Objective.DISTANCE_TO_1000_500:
@@ -202,7 +267,7 @@ class CodeCraftVecEnv(VecEnv):
             elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
                 score = 0
                 for j in range(10):
-                    offset = stride * i + global_features + dstride + mstride * j
+                    offset = stride * i + GLOBAL_FEATURES + DSTRIDE + MSTRIDE * j
                     distance = obs[offset + 2]
                     size = obs[offset + 3]
                     if size == 0:
@@ -218,7 +283,7 @@ class CodeCraftVecEnv(VecEnv):
             self.score[i] = score
             self.eprew[i] += reward
 
-            if obs[stride * self.num_envs + i * nonobs_features] > 0:
+            if obs[stride * self.num_envs + i * NONOBS_FEATURES] > 0:
                 (game_id, pid) = self.games[i]
                 if pid == 0:
                     self_play = i // 2 < self.num_self_play
@@ -264,7 +329,7 @@ class CodeCraftVecEnv(VecEnv):
             for (game_id, player_id) in self.games:
                 if not done[game_id]:
                     active_games.append((game_id, player_id))
-                    game_actions.append((game_id, player_id, False, 0, [], False))
+                    game_actions.append((game_id, player_id, [(False, 0, [], False)]))
             codecraft.act_batch(game_actions)
             obs = codecraft.observe_batch(active_games)
             for o, (game_id, _) in zip(obs, active_games):
@@ -297,6 +362,19 @@ class Objective(Enum):
     DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
     DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
     ARENA_TINY = 'ARENA_TINY'
+    ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
+
+    def vs(self):
+        if self == Objective.ALLIED_WEALTH or\
+           self == Objective.DISTANCE_TO_CRYSTAL or\
+           self == Objective.DISTANCE_TO_ORIGIN or\
+           self == Objective.DISTANCE_TO_1000_500:
+           return False
+        elif self == Objective.ARENA_TINY or\
+            self == Objective.ARENA_TINY_2V2:
+            return True
+        else:
+            raise Exception(f'Objective.vs not implemented for {self}')
 
 
 def dist2(x1, y1, x2, y2):

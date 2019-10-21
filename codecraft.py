@@ -45,15 +45,17 @@ def act(game_id: int, action):
 
 def act_batch(actions, disable_harvest: bool = False):
     payload = {}
-    for (game_id, player_id, move, turn, buildSpec, harvest) in actions:
-        action = {
-            "buildDrone": buildSpec,
-            "move": move,
-            "harvest": not disable_harvest,#harvest,
-            "transfer": False,
-            "turn": turn,
-        }
-        payload[f'{game_id}.{player_id}'] = action
+    for game_id, player_id, player_actions in actions:
+        player_actions_json = []
+        for move, turn, buildSpec, harvest in player_actions:
+            player_actions_json.append({
+                "buildDrone": buildSpec,
+                "move": move,
+                "harvest": not disable_harvest,#harvest,
+                "transfer": False,
+                "turn": turn,
+            })
+        payload[f'{game_id}.{player_id}'] = player_actions_json
 
     retries = 100
     while retries > 0:
@@ -89,11 +91,15 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
-def observe_batch_raw(game_ids):
+def observe_batch_raw(game_ids, allies, drones, minerals):
     retries = RETRIES
     while retries > 0:
         try:
-            response = requests.get(f'http://localhost:9000/batch-observation?json=false',
+            response = requests.get(f'http://localhost:9000/batch-observation?'
+                                    f'json=false&'
+                                    f'allies={allies}&'
+                                    f'drones={drones}&'
+                                    f'minerals={minerals}',
                                     json=game_ids,
                                     stream=True)
             response_bytes = response.content

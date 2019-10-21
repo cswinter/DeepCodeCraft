@@ -44,7 +44,7 @@ class HyperParams:
         self.rosteps = self.num_envs * self.seq_rosteps
 
         # Task
-        self.objective = envs.Objective.ARENA_TINY
+        self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
 
     def args_parser(self) -> argparse.ArgumentParser:

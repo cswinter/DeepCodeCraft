@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
-import numpy as np
+
+from gym_codecraft.envs.codecraft_vec_env import GLOBAL_FEATURES, MSTRIDE, DSTRIDE
 
 
 class Policy(nn.Module):
@@ -17,51 +18,93 @@ class Policy(nn.Module):
             zero_init_vf=zero_init_vf,
             fp16=fp16)
 
+        self.allies = 2
+        self.drones = 10
+        self.minerals = 10
+
+        self.width = nhidden
+
         self.conv = conv
         self.fp16 = fp16
         if conv:
-            self.fc_drone = nn.Linear(14, nhidden // 2)
+            # TODO: use Conv1d
+            self.conv_drone = nn.Conv2d(
+                in_channels=1,
+                out_channels=nhidden // 2,
+                kernel_size=(1, GLOBAL_FEATURES + DSTRIDE))
 
-            self.conv_minerals1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 4, kernel_size=(1, 4))
-            self.conv_minerals2 = nn.Conv2d(in_channels=nhidden // 4, out_channels=nhidden // 4, kernel_size=1)
+            self.conv_minerals1 = nn.Conv2d(
+                in_channels=1,
+                out_channels=nhidden // 4,
+                kernel_size=(1, MSTRIDE))
+            self.conv_minerals2 = nn.Conv2d(
+                in_channels=nhidden // 4,
+                out_channels=nhidden // 4,
+                kernel_size=1)
 
-            self.conv_enemies1 = nn.Conv2d(in_channels=1, out_channels=nhidden // 4, kernel_size=(1, 13))
-            self.conv_enemies2 = nn.Conv2d(in_channels=nhidden // 4, out_channels=nhidden // 4, kernel_size=1)
+            self.conv_enemies1 = nn.Conv2d(
+                in_channels=1,
+                out_channels=nhidden // 4,
+                kernel_size=(1, DSTRIDE))
+            self.conv_enemies2 = nn.Conv2d(
+                in_channels=nhidden // 4,
+                out_channels=nhidden // 4,
+                kernel_size=1)
 
-            self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
+            # self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
+            self.final_convs = nn.ModuleList([nn.Conv2d(in_channels=nhidden,
+                                                        out_channels=nhidden,
+                                                        kernel_size=1) for _ in range(fc_layers - 1)])
+
+            self.policy_head = nn.Conv2d(in_channels=nhidden, out_channels=8, kernel_size=1)
+            if small_init_pi:
+                self.policy_head.weight.data *= 0.01
+                self.policy_head.bias.data.fill_(0.0)
+
+            self.value_head = nn.Linear(nhidden, 1)
+            if zero_init_vf:
+                self.value_head.weight.data.fill_(0.0)
+                self.value_head.bias.data.fill_(0.0)
         else:
-            self.fc_layers = nn.ModuleList([nn.Linear(184, nhidden)])
+            self.fc_layers = nn.ModuleList([nn.Linear(195, nhidden)])
             for _ in range(fc_layers - 1):
                 self.fc_layers.append(nn.Linear(nhidden, nhidden))
 
-        self.policy_head = nn.Linear(nhidden, 8)
-        if small_init_pi:
-            self.policy_head.weight.data *= 0.01
-            self.policy_head.bias.data.fill_(0.0)
+            self.policy_head = nn.Linear(nhidden, 8)
+            if small_init_pi:
+                self.policy_head.weight.data *= 0.01
+                self.policy_head.bias.data.fill_(0.0)
 
-        self.value_head = nn.Linear(nhidden, 1)
-        if zero_init_vf:
-            self.value_head.weight.data.fill_(0.0)
-            self.policy_head.bias.data.fill_(0.0)
+            self.value_head = nn.Linear(nhidden, 1)
+            if zero_init_vf:
+                self.value_head.weight.data.fill_(0.0)
+                self.value_head.bias.data.fill_(0.0)
 
     def evaluate(self, observation):
         probs, v = self.forward(observation)
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
-        entropy = action_dist.entropy()
+        entropy = action_dist.entropy().mean(dim=1)
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
     def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
+
+        batch_size = obs.size()[0]
+
         x = self.latents(obs)
-        probs = F.softmax(self.policy_head(x), dim=1)
+        probs = F.softmax(self.policy_head(x), dim=1).view(batch_size, 8, self.allies).permute(0, 2, 1)
 
         logprobs = distributions.Categorical(probs).log_prob(actions)
+        #print('probs', logprobs.size(), old_logprobs.size())
         ratios = torch.exp(logprobs - old_logprobs)
+        advantages = advantages.view(-1, 1)
+        #print('advs, ratios', advantages.size(), ratios.size())
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
+        #print('losses', vanilla_policy_loss.size(), clipped_policy_loss.size())
         if hps.ppo:
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
         else:
@@ -70,7 +113,8 @@ class Policy(nn.Module):
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
 
-        values = self.value_head(x).view(-1)
+        pooled = F.avg_pool2d(x, kernel_size=(self.allies, 1))
+        values = self.value_head(pooled.view(batch_size, -1)).view(batch_size)
         clipped_values = old_values + torch.clamp(values - old_values, -hps.cliprange, hps.cliprange)
         vanilla_value_loss = (values - returns) ** 2
         clipped_value_loss = (clipped_values - returns) ** 2
@@ -84,8 +128,16 @@ class Policy(nn.Module):
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
     def forward(self, x):
+        batch_size = x.size()[0]
         x = self.latents(x)
-        return F.softmax(self.policy_head(x), dim=1), self.value_head(x)
+
+        pooled = F.avg_pool2d(x, kernel_size=(self.allies, 1))
+        values = self.value_head(pooled.view(batch_size, -1))
+
+        logits = self.policy_head(x)
+        probs = F.softmax(logits, dim=1)
+
+        return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
 
     def logits(self, x):
         x = self.latents(x)
@@ -95,26 +147,38 @@ class Policy(nn.Module):
         if self.fp16:
             x = x.half()
         if self.conv:
+            endallies = (DSTRIDE + GLOBAL_FEATURES) * self.allies
+            endmins = endallies + MSTRIDE * self.minerals * self.allies
+            enddrones = endmins + DSTRIDE * self.drones * self.allies
+
             batch_size = x.size()[0]
-            # x[0:14] is properties of drone 0 and global features
-            xd = x[:, :14]
-            xd = F.relu(self.fc_drone(xd))
+            # properties global features of selected allied drones
+            xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
+            xd = F.relu(self.conv_drone(xd))
+            # print('allies1', xd)
 
-            # x[8:48] are 10 x 4 properties concerning the closest minerals
-            xm = x[:, 14:54].view(batch_size, 1, -1, 4)
+            # properties of closest minerals
+            xm = x[:, endallies:endmins].view(batch_size, 1, self.minerals * self.allies, MSTRIDE)
             xm = F.relu(self.conv_minerals1(xm))
-            xm = F.max_pool2d(F.relu(self.conv_minerals2(xm)), kernel_size=(10, 1))
-            xm = xm.view(batch_size, -1)
+            # print('mins1', xm)
+            xm = F.max_pool2d(F.relu(self.conv_minerals2(xm)), kernel_size=(self.minerals, 1))
+            # print('mins2', xm)
 
-            # x[48:118] are 10 x 13 properties of the closest enemies
-            xe = x[:, 54:184].view(batch_size, 1, -1, 13)
+            # properties of the closest drones
+            xe = x[:, endmins:enddrones].view(batch_size, 1, self.drones * self.allies, DSTRIDE)
             xe = F.relu(self.conv_enemies1(xe))
-            xe = F.max_pool2d(F.relu(self.conv_enemies2(xe)), kernel_size=(10, 1))
-            xe = xe.view(batch_size, -1)
+            # print('drones1', xe)
+            xe = F.max_pool2d(F.relu(self.conv_enemies2(xe)), kernel_size=(self.drones, 1))
+            # print('drones2', xe)
 
             x = torch.cat((xd, xm, xe), dim=1)
 
-        for fc in self.fc_layers:
-            x = F.relu(fc(x))
+            for conv in self.final_convs:
+                x = F.relu(conv(x))
+
+        else:
+            for fc in self.fc_layers:
+                x = F.relu(fc(x))
+
         return x
 
