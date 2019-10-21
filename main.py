@@ -40,7 +40,7 @@ def run_codecraft():
         frames += nenv
 
 
-def train(hps: HyperParams) -> None:
+def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.rosteps % hps.bs == 0)
     assert(hps.eval_envs % 4 == 0)
 
@@ -70,11 +70,6 @@ def train(hps: HyperParams) -> None:
         raise Exception(f'Invalid optimizer name `{hps.optimizer}`')
 
     wandb.watch(policy)
-
-    t = time.strftime("%Y-%m-%d~%H:%M:%S")
-    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
-    out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
-    os.mkdir(out_dir)
 
     total_steps = 0
     epoch = 0
@@ -371,7 +366,15 @@ def main():
     wandb.init(project=wandb_project)
     wandb.config.update(config)
 
-    train(hps)
+    if not args.out_dir:
+        t = time.strftime("%Y-%m-%d~%H:%M:%S")
+        commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
+        out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
+        os.mkdir(out_dir)
+    else:
+        out_dir = args.out_dir
+
+    train(hps, out_dir)
 
 """
     if args.out_dir:
