@@ -9,8 +9,9 @@ from gym_codecraft import envs
 @click.command()
 @click.argument('model1_path', nargs=1)
 @click.argument('model2_path', nargs=1)
+@click.option('--task', default='ARENA_TINY_2V2')
 @click.option('--randomize/--no-randomize', default=False)
-def showmatch(model1_path, model2_path, randomize):
+def showmatch(model1_path, model2_path, task, randomize):
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -24,7 +25,7 @@ def showmatch(model1_path, model2_path, randomize):
 
     env = envs.CodeCraftVecEnv(nenv,
                                nenv // 2,
-                               envs.Objective.ARENA_TINY,
+                               envs.Objective(task),
                                action_delay=0,
                                randomize=randomize,
                                stagger=True,
@@ -46,7 +47,7 @@ def showmatch(model1_path, model2_path, randomize):
             actions1, _, _, _ = policy1.evaluate(obs_policy1)
             actions2, _, _, _ = policy2.evaluate(obs_policy2)
 
-            actions = np.zeros(nenv, dtype=np.int)
+            actions = np.zeros((nenv, policy1.allies), dtype=np.int)
             actions[policy1_envs] = actions1.cpu()
             actions[policy2_envs] = actions2.cpu()
 
