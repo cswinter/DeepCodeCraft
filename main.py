@@ -71,6 +71,11 @@ def train(hps: HyperParams) -> None:
 
     wandb.watch(policy)
 
+    t = time.strftime("%Y-%m-%d~%H:%M:%S")
+    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
+    out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
+    os.mkdir(out_dir)
+
     total_steps = 0
     epoch = 0
     obs = env.reset()
@@ -79,7 +84,7 @@ def train(hps: HyperParams) -> None:
     completed_episodes = 0
     while total_steps < hps.steps:
         if total_steps >= next_eval and hps.eval_envs > 0:
-            eval(policy, hps, device, total_steps)
+            eval(policy, hps, device, total_steps, out_dir)
             next_eval += hps.eval_frequency
 
         episode_start = time.time()
@@ -230,21 +235,19 @@ def train(hps: HyperParams) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        eval(policy, hps, device, total_steps)
+        eval(policy, hps, device, total_steps, out_dir)
 
-    t = time.strftime("%Y-%m-%d~%H:%M:%S")
-    commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
-    out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
-    os.mkdir(out_dir)
-    model_path = os.path.join(out_dir, 'model.pt')
-    print(f'Saving final policy to {model_path}')
+
+def save_policy(policy, out_dir, total_steps):
+    model_path = os.path.join(out_dir, f'model-{total_steps}.pt')
+    print(f'Saving policy to {model_path}')
     torch.save({
         'model_state_dict': policy.state_dict(),
         'model_kwargs': policy.kwargs,
     }, model_path)
 
 
-def eval(policy, hps, device, total_steps):
+def eval(policy, hps, device, total_steps, out_dir):
 
     if hps.objective == envs.Objective.ARENA_TINY:
         opponents = {
@@ -316,6 +319,7 @@ def eval(policy, hps, device, total_steps):
         scores = np.array(scores)
         wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=total_steps)
     print(f'Eval: {scores.mean()}')
+    save_policy(policy, out_dir, total_steps)
 
     env.close()
 
