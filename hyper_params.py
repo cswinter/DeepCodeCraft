@@ -27,6 +27,7 @@ class HyperParams:
         self.eval_envs = 256
         self.eval_timesteps = 360
         self.eval_frequency = 1e5
+        self.model_save_frequency = 10
 
         # RL
         self.steps = 10e6           # Total number of timesteps

@@ -45,6 +45,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.eval_envs % 4 == 0)
 
     next_eval = 0
+    next_model_save = hps.model_save_frequency
 
     env = envs.CodeCraftVecEnv(hps.num_envs,
                                hps.num_self_play,
@@ -79,8 +80,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     while total_steps < hps.steps:
         if total_steps >= next_eval and hps.eval_envs > 0:
-            eval(policy, hps, device, total_steps, out_dir)
+            eval(policy, hps, device, total_steps)
             next_eval += hps.eval_frequency
+            next_model_save -= 1
+            if next_model_save == 0:
+                next_model_save = hps.model_save_frequency
+                save_policy(policy, out_dir, total_steps)
 
         episode_start = time.time()
         entropies = []
@@ -230,7 +235,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        eval(policy, hps, device, total_steps, out_dir)
+        eval(policy, hps, device, total_steps)
+    save_policy(policy, out_dir, total_steps)
 
 
 def save_policy(policy, out_dir, total_steps):
@@ -242,7 +248,7 @@ def save_policy(policy, out_dir, total_steps):
     }, model_path)
 
 
-def eval(policy, hps, device, total_steps, out_dir):
+def eval(policy, hps, device, total_steps):
 
     if hps.objective == envs.Objective.ARENA_TINY:
         opponents = {
@@ -252,6 +258,8 @@ def eval(policy, hps, device, total_steps, out_dir):
     elif hps.objective == envs.Objective.ARENA_TINY_2V2:
         opponents = {
             'random': {'model_file': 'v2/random.pt'},
+            'easy': {'model_file': 'v2/eager-shadow-skill9.pt'},
+            'medium': {'model_file': 'v2/skilled-planet-skill9.pt'},
         }
     else:
         raise Exception(f'No eval opponents configured for {hps.objective}')
@@ -314,7 +322,6 @@ def eval(policy, hps, device, total_steps, out_dir):
         scores = np.array(scores)
         wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=total_steps)
     print(f'Eval: {scores.mean()}')
-    save_policy(policy, out_dir, total_steps)
 
     env.close()
 
