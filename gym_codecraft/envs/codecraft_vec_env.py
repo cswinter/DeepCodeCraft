@@ -145,7 +145,7 @@ class CodeCraftVecEnv(VecEnv):
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
         elif objective == Objective.ARENA_TINY_2V2:
-            self.game_length = 1 * 60 * 60
+            self.game_length = 1 * 30 * 60
             self.custom_map = map_arena_tiny_2v2
 
         observations_low = []
