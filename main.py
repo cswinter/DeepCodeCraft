@@ -74,7 +74,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     total_steps = 0
     epoch = 0
-    obs = env.reset()
+    obs, action_masks = env.reset()
     eprewmean = 0
     eplenmean = 0
     completed_episodes = 0
@@ -95,13 +95,15 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_values = []
         all_rewards = []
         all_dones = []
+        all_action_masks = []
 
         policy.eval()
         torch.no_grad()
         # Rollout
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
-            actions, logprobs, entropy, values = policy.evaluate(obs_tensor)
+            action_masks_tensor = torch.tensor(action_masks).to(device)
+            actions, logprobs, entropy, values = policy.evaluate(obs_tensor, action_masks_tensor)
             actions = actions.cpu().numpy()
 
             entropies.extend(entropy.detach().cpu().numpy())
@@ -111,10 +113,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
             all_logprobs.extend(logprobs.detach().cpu().numpy())
             all_values.extend(values)
 
-            obs, rews, dones, infos = env.step(actions)
+            obs, rews, dones, infos, action_masks = env.step(actions)
 
             all_rewards.extend(rews)
             all_dones.extend(dones)
+            all_action_masks.extend(action_masks)
 
             for info in infos:
                 ema = min(95, completed_episodes * 10) / 100.0
@@ -123,11 +126,13 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 completed_episodes += 1
 
         obs_tensor = torch.tensor(obs).to(device)
-        _, _, _, final_values = policy.evaluate(obs_tensor)
+        action_masks_tensor = torch.tensor(action_masks).to(device)
+        _, _, _, final_values = policy.evaluate(obs_tensor, action_masks_tensor)
 
         all_rewards = np.array(all_rewards) * hps.rewscale
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         all_values = np.array(all_values)
+        all_action_masks = np.array(all_action_masks)
         last_gae = np.zeros(hps.num_envs)
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correct for action delay?
@@ -162,6 +167,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 all_logprobs = all_logprobs[perm]
                 all_values = all_values[perm]
                 advantages = advantages[perm]
+                all_action_masks = all_action_masks[perm]
 
             # Policy Update
             policy_loss_sum = 0
@@ -182,10 +188,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 returns = torch.tensor(all_returns[start:end]).to(device)
                 advs = torch.tensor(advantages[start:end]).to(device)
                 vals = torch.tensor(all_values[start:end]).to(device)
+                amasks = torch.tensor(all_action_masks[start:end]).to(device)
 
                 optimizer.zero_grad()
                 policy_loss, value_loss, aproxkl, clipfrac =\
-                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals)
+                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals, amasks)
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
@@ -218,6 +225,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'obs_max': all_obs.max(),
             'obs_min': all_obs.min(),
             'rewards': wandb.Histogram(np.array(all_rewards)),
+            'masked_actions': all_action_masks.mean(),
         }
         total_norm = 0.0
         count = 0
@@ -257,9 +265,7 @@ def eval(policy, hps, device, total_steps):
         }
     elif hps.objective == envs.Objective.ARENA_TINY_2V2:
         opponents = {
-            'random': {'model_file': 'v2/random.pt'},
-            'easy': {'model_file': 'v2/eager-shadow-skill9.pt'},
-            'medium': {'model_file': 'v2/skilled-planet-skill9.pt'},
+            'random': {'model_file': 'v3/random.pt'},
         }
     else:
         raise Exception(f'No eval opponents configured for {hps.objective}')
@@ -275,7 +281,7 @@ def eval(policy, hps, device, total_steps):
     scores = []
     scores_by_opp = defaultdict(list)
     lengths = []
-    obs = env.reset()
+    obs, action_masks = env.reset()
     evens = list([2 * i for i in range(hps.eval_envs // 2)])
     odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
     policy_envs = evens
@@ -289,16 +295,19 @@ def eval(policy, hps, device, total_steps):
     for step in range(hps.eval_timesteps):
         actions = np.zeros((hps.eval_envs, 2), dtype=np.int)
         obs_tensor = torch.tensor(obs).to(device)
+        action_masks_tensor = torch.tensor(action_masks).to(device)
         obs_policy = obs_tensor[policy_envs]
-        actionsp, _, _, _ = policy.evaluate(obs_policy)
+        action_masks_policy = action_masks_tensor[policy_envs]
+        actionsp, _, _, _ = policy.evaluate(obs_policy, action_masks_policy)
         actions[policy_envs] = actionsp.cpu()
 
         for _, opp in opponents.items():
             obs = obs_tensor[opp['envs']]
-            actions_opp, _, _, _ = opp['policy'].evaluate(obs)
+            action_masks_opp = action_masks_tensor[opp['envs']]
+            actions_opp, _, _, _ = opp['policy'].evaluate(obs, action_masks_opp)
             actions[opp['envs']] = actions_opp.cpu()
 
-        obs, rews, dones, infos = env.step(actions)
+        obs, rews, dones, infos, action_masks = env.step(actions)
 
         for info in infos:
             index = info['episode']['index']

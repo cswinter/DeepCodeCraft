@@ -9,7 +9,7 @@ import codecraft
 
 
 GLOBAL_FEATURES = 1
-DSTRIDE = 14
+DSTRIDE = 15
 MSTRIDE = 4
 NONOBS_FEATURES = 3
 
@@ -206,7 +206,8 @@ class CodeCraftVecEnv(VecEnv):
                 self.eplen.append(1)
                 self.eprew.append(0)
                 self.score.append(None)
-        return self.observe()[0]
+        obs, _, _, _, action_masks = self.observe()
+        return obs, action_masks
 
     def step_async(self, actions):
         game_actions = []
@@ -314,10 +315,13 @@ class CodeCraftVecEnv(VecEnv):
 
             rews.append(reward)
 
+        action_masks = obs[-8 * allies * self.num_envs:].reshape(-1, allies, 8)
+
         return obs[:stride * self.num_envs].reshape(self.num_envs, -1),\
                np.array(rews),\
                np.array(dones),\
-               infos
+               infos,\
+               action_masks
 
     def close(self):
         # Run all games to completion

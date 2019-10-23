@@ -7,7 +7,13 @@ from gym_codecraft.envs.codecraft_vec_env import GLOBAL_FEATURES, MSTRIDE, DSTRI
 
 
 class Policy(nn.Module):
-    def __init__(self, fc_layers, nhidden, conv, small_init_pi, zero_init_vf, fp16):
+    def __init__(self,
+                 fc_layers,
+                 nhidden,
+                 conv,
+                 small_init_pi,
+                 zero_init_vf,
+                 fp16):
         super(Policy, self).__init__()
 
         self.kwargs = dict(
@@ -80,14 +86,17 @@ class Policy(nn.Module):
                 self.value_head.weight.data.fill_(0.0)
                 self.value_head.bias.data.fill_(0.0)
 
-    def evaluate(self, observation):
+    def evaluate(self, observation, action_masks):
+        if self.fp16:
+            action_masks = action_masks.half()
         probs, v = self.forward(observation)
+        probs = probs * action_masks + 1e-5  # Add small value to prevent crash when no action is possible
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
         entropy = action_dist.entropy().mean(dim=1)
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
 
-    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values):
+    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values, action_masks):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
@@ -96,6 +105,9 @@ class Policy(nn.Module):
 
         x = self.latents(obs)
         probs = F.softmax(self.policy_head(x), dim=1).view(batch_size, 8, self.allies).permute(0, 2, 1)
+        # add small value to prevent degenerate probability distribution when no action is possible
+        # gradients still get blocked by the action mask
+        probs = probs * action_masks + 1e-5
 
         logprobs = distributions.Categorical(probs).log_prob(actions)
         #print('probs', logprobs.size(), old_logprobs.size())
