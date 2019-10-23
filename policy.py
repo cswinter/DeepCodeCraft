@@ -90,13 +90,14 @@ class Policy(nn.Module):
         if self.fp16:
             action_masks = action_masks.half()
         probs, v = self.forward(observation)
-        probs = probs * action_masks + 1e-5  # Add small value to prevent crash when no action is possible
+        probs = probs * action_masks + 1e-8  # Add small value to prevent crash when no action is possible
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
+        # TODO: correct for action masking?
         entropy = action_dist.entropy().mean(dim=1)
-        return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy()
+        return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
 
-    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values, action_masks):
+    def backprop(self, hps, obs, actions, old_logprobs, returns, value_loss_scale, advantages, old_values, action_masks, old_probs):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
@@ -107,21 +108,19 @@ class Policy(nn.Module):
         probs = F.softmax(self.policy_head(x), dim=1).view(batch_size, 8, self.allies).permute(0, 2, 1)
         # add small value to prevent degenerate probability distribution when no action is possible
         # gradients still get blocked by the action mask
-        probs = probs * action_masks + 1e-5
+        probs = probs * action_masks + 1e-8
 
         logprobs = distributions.Categorical(probs).log_prob(actions)
-        #print('probs', logprobs.size(), old_logprobs.size())
         ratios = torch.exp(logprobs - old_logprobs)
         advantages = advantages.view(-1, 1)
-        #print('advs, ratios', advantages.size(), ratios.size())
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
-        #print('losses', vanilla_policy_loss.size(), clipped_policy_loss.size())
         if hps.ppo:
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
         else:
             policy_loss = -vanilla_policy_loss.mean()
 
+        # TODO: do over full distribution, not just selected actions?
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
 

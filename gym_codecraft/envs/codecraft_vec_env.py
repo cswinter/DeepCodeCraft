@@ -130,7 +130,7 @@ def map_arena_tiny_2v2(randomize: bool):
 
 
 class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True, fair=False, randomize=False):
+    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True, fair=False, randomize=False, use_action_masks=True):
         assert(num_envs >= 2 * num_self_play)
         self.objective = objective
         self.action_delay = action_delay
@@ -141,6 +141,7 @@ class CodeCraftVecEnv(VecEnv):
         self.custom_map = lambda _: None
         self.last_map = None
         self.randomize = randomize
+        self.use_action_masks = use_action_masks
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -321,7 +322,7 @@ class CodeCraftVecEnv(VecEnv):
                np.array(rews),\
                np.array(dones),\
                infos,\
-               action_masks
+               action_masks if self.use_action_masks else np.ones([self.num_envs, allies, 8], dtype=np.float32)
 
     def close(self):
         # Run all games to completion

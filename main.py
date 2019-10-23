@@ -51,7 +51,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                hps.num_self_play,
                                hps.objective,
                                hps.action_delay,
-                               randomize=True)
+                               randomize=True,
+                               use_action_masks=hps.use_action_masks)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -91,6 +92,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         entropies = []
         all_obs = []
         all_actions = []
+        all_probs = []
         all_logprobs = []
         all_values = []
         all_rewards = []
@@ -103,21 +105,22 @@ def train(hps: HyperParams, out_dir: str) -> None:
         for step in range(hps.seq_rosteps):
             obs_tensor = torch.tensor(obs).to(device)
             action_masks_tensor = torch.tensor(action_masks).to(device)
-            actions, logprobs, entropy, values = policy.evaluate(obs_tensor, action_masks_tensor)
+            actions, logprobs, entropy, values, probs = policy.evaluate(obs_tensor, action_masks_tensor)
             actions = actions.cpu().numpy()
 
             entropies.extend(entropy.detach().cpu().numpy())
 
+            all_action_masks.extend(action_masks)
             all_obs.extend(obs)
             all_actions.extend(actions)
             all_logprobs.extend(logprobs.detach().cpu().numpy())
             all_values.extend(values)
+            all_probs.extend(probs)
 
             obs, rews, dones, infos, action_masks = env.step(actions)
 
             all_rewards.extend(rews)
             all_dones.extend(dones)
-            all_action_masks.extend(action_masks)
 
             for info in infos:
                 ema = min(95, completed_episodes * 10) / 100.0
@@ -127,12 +130,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
-        _, _, _, final_values = policy.evaluate(obs_tensor, action_masks_tensor)
+        _, _, _, final_values, final_probs = policy.evaluate(obs_tensor, action_masks_tensor)
 
         all_rewards = np.array(all_rewards) * hps.rewscale
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         all_values = np.array(all_values)
-        all_action_masks = np.array(all_action_masks)
         last_gae = np.zeros(hps.num_envs)
         for t in reversed(range(hps.seq_rosteps)):
             # TODO: correct for action delay?
@@ -157,6 +159,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_actions = np.array(all_actions)
         all_logprobs = np.array(all_logprobs)
         all_obs = np.array(all_obs)
+        all_action_masks = np.array(all_action_masks)
+        all_probs = np.array(all_probs)
 
         for epoch in range(hps.sample_reuse):
             if hps.shuffle:
@@ -168,6 +172,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 all_values = all_values[perm]
                 advantages = advantages[perm]
                 all_action_masks = all_action_masks[perm]
+                all_probs = all_probs[perm]
 
             # Policy Update
             policy_loss_sum = 0
@@ -189,10 +194,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 advs = torch.tensor(advantages[start:end]).to(device)
                 vals = torch.tensor(all_values[start:end]).to(device)
                 amasks = torch.tensor(all_action_masks[start:end]).to(device)
+                actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
                 optimizer.zero_grad()
                 policy_loss, value_loss, aproxkl, clipfrac =\
-                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals, amasks)
+                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals, amasks, actual_probs)
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
@@ -276,7 +282,8 @@ def eval(policy, hps, device, total_steps):
                                hps.objective,
                                hps.action_delay,
                                stagger=False,
-                               fair=True)
+                               fair=True,
+                               use_action_masks=hps.use_action_masks)
 
     scores = []
     scores_by_opp = defaultdict(list)
@@ -298,13 +305,13 @@ def eval(policy, hps, device, total_steps):
         action_masks_tensor = torch.tensor(action_masks).to(device)
         obs_policy = obs_tensor[policy_envs]
         action_masks_policy = action_masks_tensor[policy_envs]
-        actionsp, _, _, _ = policy.evaluate(obs_policy, action_masks_policy)
+        actionsp, _, _, _, _ = policy.evaluate(obs_policy, action_masks_policy)
         actions[policy_envs] = actionsp.cpu()
 
         for _, opp in opponents.items():
             obs = obs_tensor[opp['envs']]
             action_masks_opp = action_masks_tensor[opp['envs']]
-            actions_opp, _, _, _ = opp['policy'].evaluate(obs, action_masks_opp)
+            actions_opp, _, _, _, _ = opp['policy'].evaluate(obs, action_masks_opp)
             actions[opp['envs']] = actions_opp.cpu()
 
         obs, rews, dones, infos, action_masks = env.step(actions)

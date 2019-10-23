@@ -47,6 +47,8 @@ class HyperParams:
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
+        self.use_action_masks = True
+
 
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
