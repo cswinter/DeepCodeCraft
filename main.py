@@ -272,6 +272,7 @@ def eval(policy, hps, device, total_steps):
     elif hps.objective == envs.Objective.ARENA_TINY_2V2:
         opponents = {
             'random': {'model_file': 'v3/random.pt'},
+            'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
         }
     else:
         raise Exception(f'No eval opponents configured for {hps.objective}')
