@@ -20,8 +20,8 @@ def showmatch(model1_path, model2_path, task, randomize):
 
     nenv = 128
 
-    policy1 = load_policy(model1_path).to(device)
-    policy2 = load_policy(model2_path).to(device)
+    policy1, _, _ = load_policy(model1_path, device)
+    policy2, _, _ = load_policy(model2_path, device)
 
     env = envs.CodeCraftVecEnv(nenv,
                                nenv // 2,

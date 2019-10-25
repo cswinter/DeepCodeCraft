@@ -22,6 +22,7 @@ class HyperParams:
         self.fp16 = False           # Whether to use half-precision floating point
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
+        self.resume_from = ''       # Filepath to saved policy
 
         # Eval
         self.eval_envs = 256
