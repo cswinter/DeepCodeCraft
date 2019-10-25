@@ -33,7 +33,7 @@ def showmatch(model1_path, model2_path, task, randomize):
 
     returns = []
     lengths = []
-    obs = env.reset()
+    obs, action_masks = env.reset()
     evens = list([2 * i for i in range(nenv // 2)])
     odds = list([2 * i + 1 for i in range(nenv // 2)])
     policy1_envs = evens
@@ -42,16 +42,19 @@ def showmatch(model1_path, model2_path, task, randomize):
     try:
         while True:
             obs_tensor = torch.tensor(obs).to(device)
+            action_masks_tensor = torch.tensor(action_masks).to(device)
             obs_policy1 = obs_tensor[policy1_envs]
             obs_policy2 = obs_tensor[policy2_envs]
-            actions1, _, _, _ = policy1.evaluate(obs_policy1)
-            actions2, _, _, _ = policy2.evaluate(obs_policy2)
+            action_masks_p1 = action_masks_tensor[policy1_envs]
+            action_masks_p2 = action_masks_tensor[policy2_envs]
+            actions1, _, _, _, _ = policy1.evaluate(obs_policy1, action_masks_p1)
+            actions2, _, _, _, _ = policy2.evaluate(obs_policy2, action_masks_p2)
 
             actions = np.zeros((nenv, policy1.allies), dtype=np.int)
             actions[policy1_envs] = actions1.cpu()
             actions[policy2_envs] = actions2.cpu()
 
-            obs, rews, dones, infos = env.step(actions)
+            obs, rews, dones, infos, action_masks = env.step(actions)
 
             for info in infos:
                 index = info['episode']['index']
