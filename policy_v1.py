@@ -6,7 +6,7 @@ import torch.distributions as distributions
 from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES, MSTRIDE, DSTRIDE
 
 
-class Policy(nn.Module):
+class PolicyV1(nn.Module):
     def __init__(self,
                  fc_layers,
                  nhidden,
@@ -15,7 +15,7 @@ class Policy(nn.Module):
                  zero_init_vf,
                  fp16,
                  obs_config=DEFAULT_OBS_CONFIG):
-        super(Policy, self).__init__()
+        super(PolicyV1, self).__init__()
 
         self.kwargs = dict(
             fc_layers=fc_layers,
@@ -43,20 +43,20 @@ class Policy(nn.Module):
 
             self.conv_minerals1 = nn.Conv2d(
                 in_channels=1,
-                out_channels=nhidden // 8,
+                out_channels=nhidden // 4,
                 kernel_size=(1, MSTRIDE))
             self.conv_minerals2 = nn.Conv2d(
                 in_channels=nhidden // 4,
-                out_channels=nhidden // 8,
+                out_channels=nhidden // 4,
                 kernel_size=1)
 
             self.conv_enemies1 = nn.Conv2d(
                 in_channels=1,
-                out_channels=nhidden // 8,
+                out_channels=nhidden // 4,
                 kernel_size=(1, DSTRIDE))
             self.conv_enemies2 = nn.Conv2d(
                 in_channels=nhidden // 4,
-                out_channels=nhidden // 8,
+                out_channels=nhidden // 4,
                 kernel_size=1)
 
             # self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
@@ -168,36 +168,23 @@ class Policy(nn.Module):
             # properties global features of selected allied drones
             xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
             xd = F.relu(self.conv_drone(xd))
+            # print('allies1', xd)
 
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, 1, self.minerals * self.allies, MSTRIDE)
             xm = F.relu(self.conv_minerals1(xm))
-            pooled = F.avg_pool2d(xm, kernel_size=(self.minerals, 1))
-            xm = xm.view(batch_size, -1, self.minerals, self.allies, 1)
-            pooled = pooled.view(batch_size, -1, 1, self.allies, 1)
-            pooled_expanded = torch.cat(self.minerals * [pooled], dim=2)
-            xm = torch.cat([xm, pooled_expanded], dim=1)
-            xm = xm.view(batch_size, -1, self.minerals * self.allies, 1)
-
-            xm = F.relu(self.conv_minerals2(xm))
-            xm_avg = F.avg_pool2d(xm, kernel_size=(self.minerals, 1))
-            xm_max = F.max_pool2d(xm, kernel_size=(self.minerals, 1))
+            # print('mins1', xm)
+            xm = F.max_pool2d(F.relu(self.conv_minerals2(xm)), kernel_size=(self.minerals, 1))
+            # print('mins2', xm)
 
             # properties of the closest drones
             xe = x[:, endmins:enddrones].view(batch_size, 1, self.drones * self.allies, DSTRIDE)
             xe = F.relu(self.conv_enemies1(xe))
-            pooled = F.avg_pool2d(xe, kernel_size=(self.drones, 1))
-            xe = xe.view(batch_size, -1, self.drones, self.allies, 1)
-            pooled = pooled.view(batch_size, -1, 1, self.allies, 1)
-            pooled_expanded = torch.cat(self.drones * [pooled], dim=2)
-            xe = torch.cat([xe, pooled_expanded], dim=1)
-            xe = xe.view(batch_size, -1, self.drones * self.allies, 1)
+            # print('drones1', xe)
+            xe = F.max_pool2d(F.relu(self.conv_enemies2(xe)), kernel_size=(self.drones, 1))
+            # print('drones2', xe)
 
-            xe = F.relu(self.conv_minerals2(xe))
-            xe_avg = F.avg_pool2d(xe, kernel_size=(self.drones, 1))
-            xe_max = F.max_pool2d(xe, kernel_size=(self.drones, 1))
-
-            x = torch.cat((xd, xm_avg, xm_max, xe_avg, xe_max), dim=1)
+            x = torch.cat((xd, xm, xe), dim=1)
 
             for conv in self.final_convs:
                 x = F.relu(conv(x))

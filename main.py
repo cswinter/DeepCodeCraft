@@ -13,6 +13,7 @@ import wandb
 from gym_codecraft import envs
 from hyper_params import HyperParams
 from policy import Policy
+from policy_v1 import PolicyV1
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +365,11 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None):
     checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
-    policy = Policy(**checkpoint['model_kwargs'])
+    if 'policy_version' in checkpoint:
+        policy = Policy(**checkpoint['model_kwargs'])
+    else:
+        policy = PolicyV1(**checkpoint['model_kwargs'])
+
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
 
