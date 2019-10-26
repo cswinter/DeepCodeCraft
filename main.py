@@ -276,6 +276,7 @@ def eval(policy, hps, device, total_steps):
         opponents = {
             'random': {'model_file': 'v3/random.pt'},
             'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
+            'medium': {'model_file': 'v3/bright-elevator-43M.pt'},
         }
     else:
         raise Exception(f'No eval opponents configured for {hps.objective}')
@@ -299,9 +300,9 @@ def eval(policy, hps, device, total_steps):
 
     i = 0
     for name, opp in opponents.items():
-        policy, _, _ = load_policy(opp['model_file'], device)
-        policy.eval()
-        opp['policy'] = policy
+        opp_policy, _, _ = load_policy(opp['model_file'], device)
+        opp_policy.eval()
+        opp['policy'] = opp_policy
         opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
         i += 1
 
