@@ -1,5 +1,0 @@
-baselines.egg-info/PKG-INFO
-baselines.egg-info/SOURCES.txt
-baselines.egg-info/dependency_links.txt
-baselines.egg-info/requires.txt
-baselines.egg-info/top_level.txt
