@@ -1,17 +1,24 @@
 from collections import defaultdict
 
-from baselines.common.vec_env import VecEnv
 from enum import Enum
-from gym import spaces
+from dataclasses import dataclass
 import numpy as np
 
 import codecraft
+
+
+@dataclass
+class ObsConfig:
+    allies: int
+    drones: int
+    minerals: int
 
 
 GLOBAL_FEATURES = 1
 DSTRIDE = 15
 MSTRIDE = 4
 NONOBS_FEATURES = 3
+DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2)
 
 
 def drone_dict(x, y,
@@ -78,32 +85,15 @@ def map_arena_tiny(randomize: bool):
 
 
 def map_arena_tiny_2v2(randomize: bool):
-    missile_batteries = 1
-    shields = 1
     s1 = 1
     s2 = 1
     if randomize:
-        missile_batteries = np.random.randint(0, 2)
-        shields = np.random.randint(0, 2)
         s1 = np.random.randint(0, 2)
         s2 = np.random.randint(0, 2)
     return {
         'mapWidth': 1000,
         'mapHeight': 1000,
         'player1Drones': [
-            # drone_dict(np.random.randint(-950, 950),
-            #             np.random.randint(-950, 950),
-            #             storage_modules=1,
-            #             constructors=1),
-
-            # drone_dict(np.random.randint(-450, 450),
-            #            np.random.randint(-450, 450),
-            #            storage_modules=1-missile_batteries,
-            #            missile_batteries=missile_batteries),
-            # drone_dict(np.random.randint(-450, 450),
-            #            np.random.randint(-450, 450),
-            #            shield_generators=shields,
-            #            storage_modules=1-shields),
             drone_dict(np.random.randint(-450, 450),
                        np.random.randint(-450, 450),
                        missile_batteries=1-s1,
@@ -113,11 +103,6 @@ def map_arena_tiny_2v2(randomize: bool):
                        missile_batteries=1),
         ],
         'player2Drones': [
-            # drone_dict(np.random.randint(-950, 950),
-            #            np.random.randint(-950, 950),
-            #            storage_modules=1,
-            #            constructors=1),
-
             drone_dict(np.random.randint(-450, 450),
                        np.random.randint(-450, 450),
                        missile_batteries=1-s2,
@@ -129,9 +114,19 @@ def map_arena_tiny_2v2(randomize: bool):
     }
 
 
-class CodeCraftVecEnv(VecEnv):
-    def __init__(self, num_envs, num_self_play, objective, action_delay, stagger=True, fair=False, randomize=False, use_action_masks=True):
+class CodeCraftVecEnv(object):
+    def __init__(self,
+                 num_envs,
+                 num_self_play,
+                 objective,
+                 action_delay,
+                 stagger=True,
+                 fair=False,
+                 randomize=False,
+                 use_action_masks=True,
+                 obs_config=DEFAULT_OBS_CONFIG):
         assert(num_envs >= 2 * num_self_play)
+        self.num_envs = num_envs
         self.objective = objective
         self.action_delay = action_delay
         self.num_self_play = num_self_play
@@ -142,42 +137,13 @@ class CodeCraftVecEnv(VecEnv):
         self.last_map = None
         self.randomize = randomize
         self.use_action_masks = use_action_masks
+        self.obs_config = obs_config
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
         elif objective == Objective.ARENA_TINY_2V2:
             self.game_length = 1 * 30 * 60
             self.custom_map = map_arena_tiny_2v2
-
-        observations_low = []
-        observations_high = []
-        # Drone x, y
-        observations_low.extend([-3, -2])
-        observations_high.extend([3, 2])
-        # Drone orientation unit vector
-        observations_low.extend([-1, -1])
-        observations_high.extend([1, 1])
-        # Drone resources
-        observations_low.append(0)
-        observations_high.append(2)
-        # Is constructing, is harvesting
-        observations_low.extend([-1, -1])
-        observations_high.extend([1, 1])
-        # 10 closest minerals
-        for _ in range(0, 10):
-            # relative x, y and distance
-            observations_low.extend([-3, -2, 0])
-            observations_high.extend([3, 2, 8])
-            # size
-            observations_low.append(0)
-            observations_high.append(2)
-        super().__init__(
-            num_envs,
-            spaces.Box(
-                low=np.array(observations_low),
-                high=np.array(observations_high),
-                dtype=np.float32),
-            spaces.Discrete(8))
 
         self.games = []
         self.eplen = []
@@ -210,6 +176,15 @@ class CodeCraftVecEnv(VecEnv):
         obs, _, _, _, action_masks = self.observe()
         return obs, action_masks
 
+    def step(self, actions):
+        """
+        Step the environments synchronously.
+
+        This is available for backwards compatibility.
+        """
+        self.step_async(actions)
+        return self.step_wait()
+
     def step_async(self, actions):
         game_actions = []
         for ((game_id, player_id), player_actions) in zip(self.games, actions):
@@ -241,21 +216,20 @@ class CodeCraftVecEnv(VecEnv):
         return self.observe()
 
     def observe(self):
-        allies = 2
-        drones = 10
-        minerals = 10
-
         rews = []
         dones = []
         infos = []
-        obs = codecraft.observe_batch_raw(self.games, allies=allies, drones=drones, minerals=minerals)
-        stride = allies * (GLOBAL_FEATURES + DSTRIDE + minerals * MSTRIDE + drones * DSTRIDE)
+        obs = codecraft.observe_batch_raw(self.games,
+                                          allies=self.obs_config.allies,
+                                          drones=self.obs_config.drones,
+                                          minerals=self.obs_config.minerals)
+        stride = self.obs_config.allies * (GLOBAL_FEATURES +
+                                           DSTRIDE +
+                                           self.obs_config.minerals * MSTRIDE +
+                                           self.obs_config.drones * DSTRIDE)
         for i in range(self.num_envs):
             x = obs[stride * i + GLOBAL_FEATURES + 0]
             y = obs[stride * i + GLOBAL_FEATURES + 1]
-            #if x == 0.0:
-            #    assert obs[stride * i + GLOBAL_FEATURES + DSTRIDE + GLOBAL_FEATURES + 0] == 0.0,\
-            #        f'WRONG: {obs[stride * i:stride * i + (GLOBAL_FEATURES + DSTRIDE) * 2]}'
             if self.objective == Objective.ARENA_TINY or self.objective == Objective.ARENA_TINY_2V2:
                 allied_score = obs[stride * self.num_envs + i * NONOBS_FEATURES + 1]
                 enemy_score = obs[stride * self.num_envs + i * NONOBS_FEATURES + 2]
@@ -316,13 +290,14 @@ class CodeCraftVecEnv(VecEnv):
 
             rews.append(reward)
 
-        action_masks = obs[-8 * allies * self.num_envs:].reshape(-1, allies, 8)
+        action_masks = obs[-8 * self.obs_config.allies * self.num_envs:].reshape(-1, self.obs_config.allies, 8)
 
         return obs[:stride * self.num_envs].reshape(self.num_envs, -1),\
                np.array(rews),\
                np.array(dones),\
                infos,\
-               action_masks if self.use_action_masks else np.ones([self.num_envs, allies, 8], dtype=np.float32)
+               action_masks if self.use_action_masks\
+                            else np.ones([self.num_envs, self.obs_config.allies, 8], dtype=np.float32)
 
     def close(self):
         # Run all games to completion

@@ -1,6 +1,5 @@
 requests>=2.21
 gym
-tensorflow
 logger
 numpy
 torch==1.2

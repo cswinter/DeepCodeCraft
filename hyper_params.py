@@ -23,6 +23,9 @@ class HyperParams:
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
         self.resume_from = ''       # Filepath to saved policy
+        self.obs_allies = 2         # Max number of controllable allies per player
+        self.obs_drones = 4         # Max number of drones observed by each drone
+        self.obs_minerals = 2       # Max number of minerals observed by each drone
 
         # Eval
         self.eval_envs = 256

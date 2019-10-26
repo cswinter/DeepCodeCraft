@@ -33,7 +33,7 @@ def showmatch(model1_path, model2_path, task, randomize):
 
     returns = []
     lengths = []
-    obs, action_masks = env.reset()
+    obs, action_masks = env.reset(policy1.obs_config)
     evens = list([2 * i for i in range(nenv // 2)])
     odds = list([2 * i + 1 for i in range(nenv // 2)])
     policy1_envs = evens
@@ -54,7 +54,7 @@ def showmatch(model1_path, model2_path, task, randomize):
             actions[policy1_envs] = actions1.cpu()
             actions[policy2_envs] = actions2.cpu()
 
-            obs, rews, dones, infos, action_masks = env.step(actions)
+            obs, rews, dones, infos, action_masks = env.step(actions, policy1.obs_config)
 
             for info in infos:
                 index = info['episode']['index']

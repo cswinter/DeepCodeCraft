@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 
-from gym_codecraft.envs.codecraft_vec_env import GLOBAL_FEATURES, MSTRIDE, DSTRIDE
+from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES, MSTRIDE, DSTRIDE
 
 
 class Policy(nn.Module):
@@ -13,7 +13,8 @@ class Policy(nn.Module):
                  conv,
                  small_init_pi,
                  zero_init_vf,
-                 fp16):
+                 fp16,
+                 obs_config=DEFAULT_OBS_CONFIG):
         super(Policy, self).__init__()
 
         self.kwargs = dict(
@@ -22,11 +23,12 @@ class Policy(nn.Module):
             conv=conv,
             small_init_pi=small_init_pi,
             zero_init_vf=zero_init_vf,
-            fp16=fp16)
+            fp16=fp16,
+            obs_config=obs_config)
 
-        self.allies = 2
-        self.drones = 10
-        self.minerals = 10
+        self.allies = obs_config.allies
+        self.drones = obs_config.drones
+        self.minerals = obs_config.minerals
 
         self.width = nhidden
 
