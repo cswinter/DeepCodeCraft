@@ -357,6 +357,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
         'model_state_dict': policy.state_dict(),
         'model_kwargs': policy.kwargs,
         'total_steps': total_steps,
+        'policy_version': policy.version,
     }
     if optimizer:
         model['optimizer_state_dict'] = optimizer.state_dict()
@@ -365,7 +366,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None):
     checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
-    if 'policy_version' in checkpoint:
+    if 'policy_version' in checkpoint or name.endswith('dashing-wildflower-25M.pt'):
         policy = Policy(**checkpoint['model_kwargs'])
     else:
         policy = PolicyV1(**checkpoint['model_kwargs'])

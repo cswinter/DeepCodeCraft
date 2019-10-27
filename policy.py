@@ -16,6 +16,7 @@ class Policy(nn.Module):
                  fp16,
                  obs_config=DEFAULT_OBS_CONFIG):
         super(Policy, self).__init__()
+        self.version = 'v2'
 
         self.kwargs = dict(
             fc_layers=fc_layers,
