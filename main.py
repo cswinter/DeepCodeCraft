@@ -47,7 +47,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.rosteps % hps.bs == 0)
     assert(hps.eval_envs % 4 == 0)
 
-    next_eval = 0
     next_model_save = hps.model_save_frequency
 
     env = envs.CodeCraftVecEnv(hps.num_envs,
@@ -87,6 +86,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     wandb.watch(policy)
 
     total_steps = resume_steps
+    next_eval = total_steps
     epoch = 0
     obs, action_masks = env.reset()
     eprewmean = 0
