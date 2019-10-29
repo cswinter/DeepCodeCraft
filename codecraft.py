@@ -104,9 +104,9 @@ def observe_batch_raw(game_ids, allies, drones, minerals):
                                     stream=True)
             response_bytes = response.content
             return np.frombuffer(response_bytes, dtype=np.float32)
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
             retries -= 1
-            logging.info(f"Connection error on observe_batch(), retrying")
+            logging.info(f"Connection error on observe_batch_raw(), retrying: {e}")
             time.sleep(10)
 
 
