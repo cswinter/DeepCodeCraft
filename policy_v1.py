@@ -88,7 +88,7 @@ class PolicyV1(nn.Module):
                 self.value_head.weight.data.fill_(0.0)
                 self.value_head.bias.data.fill_(0.0)
 
-    def evaluate(self, observation, action_masks):
+    def evaluate(self, observation, action_masks, _):
         if self.fp16:
             action_masks = action_masks.half()
         probs, v = self.forward(observation)

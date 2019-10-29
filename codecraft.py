@@ -91,22 +91,24 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
-def observe_batch_raw(game_ids, allies, drones, minerals):
+def observe_batch_raw(game_ids, allies, drones, minerals, global_drones):
     retries = RETRIES
+    url = f'http://localhost:9000/batch-observation?' \
+        f'json=false&' \
+        f'allies={allies}&' \
+        f'drones={drones}&' \
+        f'minerals={minerals}&' \
+        f'globalDrones={global_drones}'
     while retries > 0:
         try:
-            response = requests.get(f'http://localhost:9000/batch-observation?'
-                                    f'json=false&'
-                                    f'allies={allies}&'
-                                    f'drones={drones}&'
-                                    f'minerals={minerals}',
+            response = requests.get(url,
                                     json=game_ids,
                                     stream=True)
             response_bytes = response.content
             return np.frombuffer(response_bytes, dtype=np.float32)
         except requests.exceptions.ConnectionError as e:
             retries -= 1
-            logging.info(f"Connection error on observe_batch_raw(), retrying: {e}")
+            logging.info(f"Connection error on {url} with json={game_ids}, retrying: {e}")
             time.sleep(10)
 
 

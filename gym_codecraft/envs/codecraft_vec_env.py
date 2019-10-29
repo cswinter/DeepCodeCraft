@@ -12,13 +12,14 @@ class ObsConfig:
     allies: int
     drones: int
     minerals: int
+    global_drones: int
 
 
 GLOBAL_FEATURES = 1
 DSTRIDE = 15
 MSTRIDE = 4
 NONOBS_FEATURES = 3
-DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2)
+DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, global_drones=4)
 
 
 def drone_dict(x, y,
@@ -173,8 +174,8 @@ class CodeCraftVecEnv(object):
                 self.eplen.append(1)
                 self.eprew.append(0)
                 self.score.append(None)
-        obs, _, _, _, action_masks = self.observe()
-        return obs, action_masks
+        obs, _, _, _, action_masks, privileged_obs = self.observe()
+        return obs, action_masks, privileged_obs
 
     def step(self, actions):
         """
@@ -222,7 +223,8 @@ class CodeCraftVecEnv(object):
         obs = codecraft.observe_batch_raw(self.games,
                                           allies=self.obs_config.allies,
                                           drones=self.obs_config.drones,
-                                          minerals=self.obs_config.minerals)
+                                          minerals=self.obs_config.minerals,
+                                          global_drones=self.obs_config.global_drones)
         stride = self.obs_config.allies * (GLOBAL_FEATURES +
                                            DSTRIDE +
                                            self.obs_config.minerals * MSTRIDE +
@@ -290,14 +292,21 @@ class CodeCraftVecEnv(object):
 
             rews.append(reward)
 
-        action_masks = obs[-8 * self.obs_config.allies * self.num_envs:].reshape(-1, self.obs_config.allies, 8)
+        privileged_obs_elems = self.obs_config.global_drones * self.num_envs * DSTRIDE
+
+        action_mask_elems = 8 * self.obs_config.allies * self.num_envs
+        action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems]\
+            .reshape(-1, self.obs_config.allies, 8)
+
+        privileged_obs = obs[-privileged_obs_elems:].reshape(self.num_envs, self.obs_config.global_drones, DSTRIDE)
 
         return obs[:stride * self.num_envs].reshape(self.num_envs, -1),\
                np.array(rews),\
                np.array(dones),\
                infos,\
                action_masks if self.use_action_masks\
-                            else np.ones([self.num_envs, self.obs_config.allies, 8], dtype=np.float32)
+                            else np.ones([self.num_envs, self.obs_config.allies, 8], dtype=np.float32),\
+               privileged_obs
 
     def close(self):
         # Run all games to completion

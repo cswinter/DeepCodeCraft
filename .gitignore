@@ -1,4 +1,4 @@
 .idea
 __pycache__
-params.yaml
+params*.yaml
 wandb
