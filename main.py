@@ -81,7 +81,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         hps.small_init_pi,
                         hps.zero_init_vf,
                         hps.fp16,
-                        use_privileged=True).to(device)
+                        use_privileged=hps.use_privileged).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs)

@@ -26,6 +26,7 @@ class HyperParams:
         self.obs_allies = 2         # Max number of controllable allies per player
         self.obs_drones = 4         # Max number of drones observed by each drone
         self.obs_minerals = 2       # Max number of minerals observed by each drone
+        self.use_privileged = True  # Whether value function has access to hidden information
 
         # Eval
         self.eval_envs = 256
