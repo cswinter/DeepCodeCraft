@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.distributions as distributions
 
 from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES, MSTRIDE, DSTRIDE
+from list_net import ListNet
 
 
 class Policy(nn.Module):
@@ -17,6 +18,9 @@ class Policy(nn.Module):
                  obs_config=DEFAULT_OBS_CONFIG,
                  use_privileged=False):
         super(Policy, self).__init__()
+        assert obs_config.drones > 0 or obs_config.minerals > 0,\
+            'Must have at least one mineral or drones observation'
+
         self.version = 'v2'
 
         self.kwargs = dict(
@@ -49,23 +53,21 @@ class Policy(nn.Module):
                 out_channels=nhidden // 2,
                 kernel_size=(1, GLOBAL_FEATURES + DSTRIDE))
 
-            self.conv_minerals1 = nn.Conv2d(
-                in_channels=1,
-                out_channels=nhidden // 8,
-                kernel_size=(1, MSTRIDE))
-            self.conv_minerals2 = nn.Conv2d(
-                in_channels=nhidden // 4,
-                out_channels=nhidden // 8,
-                kernel_size=1)
+            if self.minerals > 0:
+                self.mineral_net = ListNet(
+                    in_features=MSTRIDE,
+                    width=nhidden // 8 if self.drones > 0 else nhidden // 4,
+                    items=self.minerals,
+                    groups=self.allies,
+                )
 
-            self.conv_enemies1 = nn.Conv2d(
-                in_channels=1,
-                out_channels=nhidden // 8,
-                kernel_size=(1, DSTRIDE))
-            self.conv_enemies2 = nn.Conv2d(
-                in_channels=nhidden // 4,
-                out_channels=nhidden // 8,
-                kernel_size=1)
+            if self.drones > 0:
+                self.drone_net = ListNet(
+                    in_features=DSTRIDE,
+                    width=nhidden // 8 if self.minerals > 0 else nhidden // 4,
+                    items=self.drones,
+                    groups=self.allies,
+                )
 
             if use_privileged:
                 self.conv_all_drones1 = nn.Conv2d(
@@ -207,33 +209,16 @@ class Policy(nn.Module):
             xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
             xd = F.relu(self.conv_drone(xd))
 
-            # properties of closest minerals
-            xm = x[:, endallies:endmins].view(batch_size, 1, self.minerals * self.allies, MSTRIDE)
-            xm = F.relu(self.conv_minerals1(xm))
-            pooled = F.avg_pool2d(xm, kernel_size=(self.minerals, 1))
-            xm = xm.view(batch_size, -1, self.minerals, self.allies, 1)
-            pooled = pooled.view(batch_size, -1, 1, self.allies, 1)
-            pooled_expanded = torch.cat(self.minerals * [pooled], dim=2)
-            xm = torch.cat([xm, pooled_expanded], dim=1)
-            xm = xm.view(batch_size, -1, self.minerals * self.allies, 1)
+            if self.minerals > 0:
+                # properties of closest minerals
+                xm = x[:, endallies:endmins]
+                xm = self.mineral_net(xm)
 
-            xm = F.relu(self.conv_minerals2(xm))
-            xm_avg = F.avg_pool2d(xm, kernel_size=(self.minerals, 1))
-            xm_max = F.max_pool2d(xm, kernel_size=(self.minerals, 1))
-
-            # properties of the closest drones
-            xe = x[:, endmins:enddrones].view(batch_size, 1, self.drones * self.allies, DSTRIDE)
-            xe = F.relu(self.conv_enemies1(xe))
-            pooled = F.avg_pool2d(xe, kernel_size=(self.drones, 1))
-            xe = xe.view(batch_size, -1, self.drones, self.allies, 1)
-            pooled = pooled.view(batch_size, -1, 1, self.allies, 1)
-            pooled_expanded = torch.cat(self.drones * [pooled], dim=2)
-            xe = torch.cat([xe, pooled_expanded], dim=1)
-            xe = xe.view(batch_size, -1, self.drones * self.allies, 1)
-
-            xe = F.relu(self.conv_minerals2(xe))
-            xe_avg = F.avg_pool2d(xe, kernel_size=(self.drones, 1))
-            xe_max = F.max_pool2d(xe, kernel_size=(self.drones, 1))
+            if self.drones > 0:
+                print(self.drones)
+                # properties of the closest drones
+                xe = x[:, endmins:enddrones]
+                xe = self.drone_net(xe)
 
             # properties of global drones
             if self.use_privileged:
@@ -254,7 +239,12 @@ class Policy(nn.Module):
             else:
                 x_privileged = None
 
-            x = torch.cat((xd, xm_avg, xm_max, xe_avg, xe_max), dim=1)
+            if self.minerals == 0:
+                x = torch.cat((xd, xe), dim=1)
+            elif self.drones == 0:
+                x = torch.cat((xd, xm), dim=1)
+            else:
+                x = torch.cat((xd, xe, xm), dim=1)
 
             for conv in self.final_convs:
                 x = F.relu(conv(x))

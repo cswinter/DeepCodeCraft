@@ -295,10 +295,16 @@ class CodeCraftVecEnv(object):
         privileged_obs_elems = self.obs_config.global_drones * self.num_envs * DSTRIDE
 
         action_mask_elems = 8 * self.obs_config.allies * self.num_envs
-        action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems]\
-            .reshape(-1, self.obs_config.allies, 8)
+        if privileged_obs_elems > 0:
+            action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems]\
+                .reshape(-1, self.obs_config.allies, 8)
+        else:
+            action_masks = obs[-action_mask_elems:].reshape(-1, self.obs_config.allies, 8)
 
-        privileged_obs = obs[-privileged_obs_elems:].reshape(self.num_envs, self.obs_config.global_drones, DSTRIDE)
+        if self.obs_config.global_drones > 0:
+            privileged_obs = obs[-privileged_obs_elems:].reshape(self.num_envs, self.obs_config.global_drones, DSTRIDE)
+        else:
+            privileged_obs = np.zeros([self.num_envs, 1])
 
         return obs[:stride * self.num_envs].reshape(self.num_envs, -1),\
                np.array(rews),\

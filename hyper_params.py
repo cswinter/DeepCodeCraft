@@ -23,13 +23,13 @@ class HyperParams:
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
         self.resume_from = ''       # Filepath to saved policy
-        self.obs_allies = 2         # Max number of controllable allies per player
-        self.obs_drones = 4         # Max number of drones observed by each drone
-        self.obs_minerals = 2       # Max number of minerals observed by each drone
-        self.use_privileged = True  # Whether value function has access to hidden information
+        self.obs_allies = 1         # Max number of controllable allies per player
+        self.obs_drones = 2         # Max number of drones observed by each drone
+        self.obs_minerals = 6       # Max number of minerals observed by each drone
+        self.obs_global_drones = 2  # Max number of (possibly hidden) drones observed by value function
 
         # Eval
-        self.eval_envs = 256
+        self.eval_envs = 0
         self.eval_timesteps = 360
         self.eval_frequency = 1e5
         self.model_save_frequency = 10
@@ -37,7 +37,7 @@ class HyperParams:
         # RL
         self.steps = 10e6           # Total number of timesteps
         self.num_envs = 64          # Number of environments
-        self.num_self_play = 32     # Number of self-play environments (each provides two environments)
+        self.num_self_play = 0      # Number of self-play environments (each provides two environments)
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
@@ -50,10 +50,35 @@ class HyperParams:
         self.rosteps = self.num_envs * self.seq_rosteps
 
         # Task
-        self.objective = envs.Objective.ARENA_TINY_2V2
+        self.objective = envs.Objective.ALLIED_WEALTH
         self.action_delay = 0
         self.use_action_masks = True
 
+    @staticmethod
+    def allied_wealth():
+        hps = HyperParams()
+        hps.depth = 4
+        hps.eval_envs = 0
+        hps.gamma = 0.99
+        hps.lamb = 0.95
+        hps.momentum = 0.9
+        hps.norm_advs = True
+        hps.num_envs = 64
+        hps.num_self_play = 0
+        hps.num_self_play = 0
+        hps.obs_allies = 1
+        hps.obs_drones = 0
+        hps.obs_global_drones = 0
+        hps.obs_minerals = 10
+        hps.sample_reuse = 2
+        hps.small_init_pi = False
+        hps.use_privileged = False
+        hps.vf_coef = 0.5
+        hps.use_action_masks = False
+        hps.weight_decay = 0.0001
+        hps.width = 1024
+        hps.zero_init_vf = True
+        return hps
 
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()

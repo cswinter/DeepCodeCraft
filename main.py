@@ -11,6 +11,7 @@ import numpy as np
 import wandb
 
 from gym_codecraft import envs
+from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
 from policy import Policy
 from policy_v1 import PolicyV1
@@ -49,12 +50,17 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     next_model_save = hps.model_save_frequency
 
+    obs_config = ObsConfig(allies=hps.obs_allies,
+                           drones=hps.obs_drones,
+                           minerals=hps.obs_minerals,
+                           global_drones=hps.obs_global_drones)
     env = envs.CodeCraftVecEnv(hps.num_envs,
                                hps.num_self_play,
                                hps.objective,
                                hps.action_delay,
                                randomize=True,
-                               use_action_masks=hps.use_action_masks)
+                               use_action_masks=hps.use_action_masks,
+                               obs_config=obs_config)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -81,7 +87,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         hps.small_init_pi,
                         hps.zero_init_vf,
                         hps.fp16,
-                        use_privileged=hps.use_privileged).to(device)
+                        obs_config=obs_config,
+                        use_privileged=hps.obs_global_drones > 0).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs)
@@ -429,7 +436,10 @@ def main():
     args_parser.add_argument("--out-dir")
     args_parser.add_argument("--device", default=0)
     args_parser.add_argument("--descriptor", default="none")
+    args_parser.add_argument("--hpset", default="default")
     args = args_parser.parse_args()
+    if args.hpset == 'allied_wealth':
+        hps = HyperParams.allied_wealth()
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)
