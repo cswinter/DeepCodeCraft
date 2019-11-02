@@ -89,7 +89,14 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         hps.fp16,
                         obs_config=obs_config,
                         use_privileged=hps.obs_global_drones > 0).to(device)
-        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
+        group0, group1, group2 = policy.param_groups()
+        optimizer = optimizer_fn([
+                {'params': group2},
+                {'params': group1, 'lr': hps.lr * hps.lr_ratios},
+                {'params': group0, 'lr': hps.lr * hps.lr_ratios * hps.lr_ratios},
+            ],
+            **optimizer_kwargs
+        )
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs)
 

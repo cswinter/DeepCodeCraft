@@ -14,6 +14,7 @@ class HyperParams:
         self.vf_coef = 1.0          # Weighting of value function loss in optimization objective
         self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
         self.sample_reuse = 3       # Number of optimizer passes over samples collected during rollout
+        self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
 
         # Policy
         self.depth = 4              # Number of hidden layers

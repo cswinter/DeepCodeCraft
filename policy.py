@@ -255,3 +255,24 @@ class Policy(nn.Module):
 
         return x, x_privileged
 
+    def param_groups(self):
+        group0 = [
+            *self.conv_drone.parameters(),
+            *(self.mineral_net.parameters() if self.minerals > 0 else []),
+            *(self.drone_net.parameters() if self.drones > 0 else []),
+            *(self.conv_all_drones1.parameters() if self.global_drones > 0 else []),
+            *(self.conv_all_drones2.parameters() if self.global_drones > 0 else []),
+        ]
+        group1 = [
+            *self.final_convs.parameters(),
+        ]
+        group2 = [
+            *self.value_head.parameters(),
+            *self.policy_head.parameters(),
+        ]
+        grouped_params = len(group0) + len(group1) + len(group2)
+        actual_params = len(list(self.parameters()))
+        assert grouped_params == actual_params,\
+                f'Missing parameters in group: {grouped_params} != {actual_params}'
+        return group0, group1, group2
+
