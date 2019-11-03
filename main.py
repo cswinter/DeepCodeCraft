@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
 import wandb
@@ -42,6 +43,12 @@ def run_codecraft():
         env.step_async([4]*nenv)
         env.observe()
         frames += nenv
+
+
+def warmup_lr_schedule(warmup_steps: int):
+    def lr(step):
+        return (step + 1) / warmup_steps if step < warmup_steps else 1.0
+    return lr
 
 
 def train(hps: HyperParams, out_dir: str) -> None:
@@ -99,6 +106,15 @@ def train(hps: HyperParams, out_dir: str) -> None:
         )
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs)
+
+    lr_scheduler = None
+    if hps.warmup > 0:
+        warmup_steps = hps.sample_reuse * hps.warmup // hps.bs
+        lr_scheduler = LambdaLR(optimizer, lr_lambda=[
+            warmup_lr_schedule(warmup_steps),
+            warmup_lr_schedule(warmup_steps),
+            warmup_lr_schedule(warmup_steps),
+        ])
 
     if hps.fp16:
         policy = policy.half()
@@ -247,6 +263,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 clipfrac_sum += clipfrac
                 gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
                 optimizer.step()
+                if lr_scheduler:
+                    lr_scheduler.step()
 
         epoch += 1
         total_steps += hps.rosteps
