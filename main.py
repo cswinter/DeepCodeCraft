@@ -293,7 +293,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'obs_max': all_obs.max(),
             'obs_min': all_obs.min(),
             'rewards': wandb.Histogram(np.array(all_rewards)),
-            'masked_actions': all_action_masks.mean(),
+            'masked_actions': 1 - all_action_masks.mean(),
         }
         total_norm = 0.0
         count = 0

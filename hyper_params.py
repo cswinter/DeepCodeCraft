@@ -15,6 +15,7 @@ class HyperParams:
         self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
         self.sample_reuse = 3       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
+        # TODO: weak evidence this might help, enables higher lr
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
 
         # Policy
