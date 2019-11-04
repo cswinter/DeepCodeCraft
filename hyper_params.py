@@ -29,6 +29,8 @@ class HyperParams:
         self.obs_drones = 2         # Max number of drones observed by each drone
         self.obs_minerals = 6       # Max number of minerals observed by each drone
         self.obs_global_drones = 2  # Max number of (possibly hidden) drones observed by value function
+        self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
+        self.dconv_pooling = 'max'  # Pooling layer after drone convolutions ('max', 'avg' or 'both')
 
         # Eval
         self.eval_envs = 0

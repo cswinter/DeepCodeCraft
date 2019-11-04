@@ -15,6 +15,8 @@ class Policy(nn.Module):
                  small_init_pi,
                  zero_init_vf,
                  fp16,
+                 mpooling,
+                 dpooling,
                  obs_config=DEFAULT_OBS_CONFIG,
                  use_privileged=False):
         super(Policy, self).__init__()
@@ -31,7 +33,10 @@ class Policy(nn.Module):
             zero_init_vf=zero_init_vf,
             fp16=fp16,
             use_privileged=use_privileged,
-            obs_config=obs_config)
+            obs_config=obs_config,
+            mpooling=mpooling,
+            dpooling=dpooling,
+        )
 
         self.allies = obs_config.allies
         self.drones = obs_config.drones
@@ -56,17 +61,19 @@ class Policy(nn.Module):
             if self.minerals > 0:
                 self.mineral_net = ListNet(
                     in_features=MSTRIDE,
-                    width=nhidden // 8 if self.drones > 0 else nhidden // 4,
+                    width=nhidden // 4 if self.drones > 0 else nhidden // 2,
                     items=self.minerals,
                     groups=self.allies,
+                    pooling=mpooling,
                 )
 
             if self.drones > 0:
                 self.drone_net = ListNet(
                     in_features=DSTRIDE,
-                    width=nhidden // 8 if self.minerals > 0 else nhidden // 4,
+                    width=nhidden // 4 if self.minerals > 0 else nhidden // 2,
                     items=self.drones,
                     groups=self.allies,
+                    pooling=dpooling,
                 )
 
             if use_privileged:
