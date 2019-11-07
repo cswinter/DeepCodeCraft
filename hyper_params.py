@@ -5,7 +5,7 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'RMSProp'  # Optimizer
+        self.optimizer = 'RMSProp'  # Optimizer ("SGD" or "RMSProp" or "Adam")
         self.lr = 0.0001            # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
@@ -62,14 +62,15 @@ class HyperParams:
     @staticmethod
     def allied_wealth():
         hps = HyperParams()
+        hps.clip_vf = True
         hps.depth = 4
         hps.eval_envs = 0
         hps.gamma = 0.99
         hps.lamb = 0.95
+        hps.max_grad_norm = 5.0
         hps.momentum = 0.9
         hps.norm_advs = True
         hps.num_envs = 64
-        hps.num_self_play = 0
         hps.num_self_play = 0
         hps.obs_allies = 1
         hps.obs_drones = 0
@@ -77,11 +78,11 @@ class HyperParams:
         hps.obs_minerals = 10
         hps.sample_reuse = 2
         hps.small_init_pi = False
+        hps.use_action_masks = True
         hps.use_privileged = False
-        hps.vf_coef = 0.5
-        hps.use_action_masks = False
+        hps.vf_coef = 1.0
         hps.weight_decay = 0.0001
-        hps.width = 1024
+        hps.width = 2048
         hps.zero_init_vf = True
         return hps
 
