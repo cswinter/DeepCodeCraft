@@ -90,12 +90,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.resume_from == '':
         policy = Policy(hps.depth,
                         hps.width,
-                        hps.conv,
                         hps.small_init_pi,
                         hps.zero_init_vf,
                         hps.fp16,
                         mpooling=hps.mconv_pooling,
                         dpooling=hps.dconv_pooling,
+                        norm=hps.norm,
                         obs_config=obs_config,
                         use_privileged=hps.obs_global_drones > 0).to(device)
         group0, group1, group2 = policy.param_groups()

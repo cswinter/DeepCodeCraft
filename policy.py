@@ -11,12 +11,12 @@ class Policy(nn.Module):
     def __init__(self,
                  fc_layers,
                  nhidden,
-                 conv,
                  small_init_pi,
                  zero_init_vf,
                  fp16,
                  mpooling,
                  dpooling,
+                 norm,
                  obs_config=DEFAULT_OBS_CONFIG,
                  use_privileged=False):
         super(Policy, self).__init__()
@@ -28,11 +28,11 @@ class Policy(nn.Module):
         self.kwargs = dict(
             fc_layers=fc_layers,
             nhidden=nhidden,
-            conv=conv,
             small_init_pi=small_init_pi,
             zero_init_vf=zero_init_vf,
             fp16=fp16,
             use_privileged=use_privileged,
+            norm=norm,
             obs_config=obs_config,
             mpooling=mpooling,
             dpooling=dpooling,
@@ -48,72 +48,80 @@ class Policy(nn.Module):
 
         self.width = nhidden
 
-        self.conv = conv
         self.fp16 = fp16
         self.use_privileged = use_privileged
-        if conv:
-            # TODO: use Conv1d
-            self.conv_drone = nn.Conv2d(
+        self.conv_drone = nn.Conv2d(
+            in_channels=1,
+            out_channels=nhidden // 2,
+            kernel_size=(1, GLOBAL_FEATURES + DSTRIDE))
+        if norm == 'none':
+            self.norm_drone = nn.Sequential()
+        elif norm == 'batchnorm':
+            self.norm_drone = nn.BatchNorm2d(nhidden // 2)
+        elif norm == 'layernorm':
+            self.norm_drone = nn.LayerNorm([nhidden // 2, 1, 1])
+        else:
+            raise Exception(f'Unexpected normalization layer {norm}')
+
+        if self.minerals > 0:
+            self.mineral_net = ListNet(
+                in_features=MSTRIDE,
+                width=nhidden // 4 if self.drones > 0 else nhidden // 2,
+                items=self.minerals,
+                groups=self.allies,
+                pooling=mpooling,
+                norm=norm,
+            )
+
+        if self.drones > 0:
+            self.drone_net = ListNet(
+                in_features=DSTRIDE,
+                width=nhidden // 4 if self.minerals > 0 else nhidden // 2,
+                items=self.drones,
+                groups=self.allies,
+                pooling=dpooling,
+                norm=norm,
+            )
+
+        if use_privileged:
+            self.conv_all_drones1 = nn.Conv2d(
                 in_channels=1,
                 out_channels=nhidden // 2,
-                kernel_size=(1, GLOBAL_FEATURES + DSTRIDE))
+                kernel_size=(1, DSTRIDE))
+            self.conv_all_drones2 = nn.Conv2d(
+                in_channels=nhidden,
+                out_channels=nhidden // 2,
+                kernel_size=1)
 
-            if self.minerals > 0:
-                self.mineral_net = ListNet(
-                    in_features=MSTRIDE,
-                    width=nhidden // 4 if self.drones > 0 else nhidden // 2,
-                    items=self.minerals,
-                    groups=self.allies,
-                    pooling=mpooling,
-                )
-
-            if self.drones > 0:
-                self.drone_net = ListNet(
-                    in_features=DSTRIDE,
-                    width=nhidden // 4 if self.minerals > 0 else nhidden // 2,
-                    items=self.drones,
-                    groups=self.allies,
-                    pooling=dpooling,
-                )
-
-            if use_privileged:
-                self.conv_all_drones1 = nn.Conv2d(
-                    in_channels=1,
-                    out_channels=nhidden // 2,
-                    kernel_size=(1, DSTRIDE))
-                self.conv_all_drones2 = nn.Conv2d(
+        layers = []
+        for _ in range(fc_layers - 1):
+            layers.append(
+                nn.Conv2d(
                     in_channels=nhidden,
-                    out_channels=nhidden // 2,
-                    kernel_size=1)
+                    out_channels=nhidden,
+                    kernel_size=1
+                )
+            )
+            layers.append(nn.ReLU())
+            if norm == 'none':
+                pass
+            elif norm == 'batchnorm':
+                layers.append(nn.BatchNorm2d(nhidden))
+            elif norm == 'layernorm':
+                layers.append(nn.Sequential(nn.LayerNorm([nhidden, 1, 1])))
+            else:
+                raise Exception(f'Unexpected normalization layer {norm}')
+        self.fc_layers = nn.Sequential(*layers)
 
-            # self.fc_layers = nn.ModuleList([nn.Linear(nhidden, nhidden) for _ in range(fc_layers - 1)])
-            self.final_convs = nn.ModuleList([nn.Conv2d(in_channels=nhidden,
-                                                        out_channels=nhidden,
-                                                        kernel_size=1) for _ in range(fc_layers - 1)])
+        self.policy_head = nn.Conv2d(in_channels=nhidden, out_channels=8, kernel_size=1)
+        if small_init_pi:
+            self.policy_head.weight.data *= 0.01
+            self.policy_head.bias.data.fill_(0.0)
 
-            self.policy_head = nn.Conv2d(in_channels=nhidden, out_channels=8, kernel_size=1)
-            if small_init_pi:
-                self.policy_head.weight.data *= 0.01
-                self.policy_head.bias.data.fill_(0.0)
-
-            self.value_head = nn.Linear(2 * nhidden if use_privileged else nhidden, 1)
-            if zero_init_vf:
-                self.value_head.weight.data.fill_(0.0)
-                self.value_head.bias.data.fill_(0.0)
-        else:
-            self.fc_layers = nn.ModuleList([nn.Linear(195, nhidden)])
-            for _ in range(fc_layers - 1):
-                self.fc_layers.append(nn.Linear(nhidden, nhidden))
-
-            self.policy_head = nn.Linear(nhidden, 8)
-            if small_init_pi:
-                self.policy_head.weight.data *= 0.01
-                self.policy_head.bias.data.fill_(0.0)
-
-            self.value_head = nn.Linear(nhidden, 1)
-            if zero_init_vf:
-                self.value_head.weight.data.fill_(0.0)
-                self.value_head.bias.data.fill_(0.0)
+        self.value_head = nn.Linear(2 * nhidden if use_privileged else nhidden, 1)
+        if zero_init_vf:
+            self.value_head.weight.data.fill_(0.0)
+            self.value_head.bias.data.fill_(0.0)
 
     def evaluate(self, observation, action_masks, privileged_obs):
         if self.fp16:
@@ -206,72 +214,67 @@ class Policy(nn.Module):
         if self.fp16:
             x = x.half()
             x_privileged = x_privileged.half()
-        if self.conv:
-            endallies = (DSTRIDE + GLOBAL_FEATURES) * self.allies
-            endmins = endallies + MSTRIDE * self.minerals * self.allies
-            enddrones = endmins + DSTRIDE * self.drones * self.allies
 
-            batch_size = x.size()[0]
-            # properties global features of selected allied drones
-            xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
-            xd = F.relu(self.conv_drone(xd))
+        endallies = (DSTRIDE + GLOBAL_FEATURES) * self.allies
+        endmins = endallies + MSTRIDE * self.minerals * self.allies
+        enddrones = endmins + DSTRIDE * self.drones * self.allies
 
-            if self.minerals > 0:
-                # properties of closest minerals
-                xm = x[:, endallies:endmins]
-                xm = self.mineral_net(xm)
+        batch_size = x.size()[0]
+        # global features and properties of selected allied drones
+        xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
+        xd = self.norm_drone(F.relu(self.conv_drone(xd)))
 
-            if self.drones > 0:
-                print(self.drones)
-                # properties of the closest drones
-                xe = x[:, endmins:enddrones]
-                xe = self.drone_net(xe)
+        if self.minerals > 0:
+            # properties of closest minerals
+            xm = x[:, endallies:endmins]
+            xm = self.mineral_net(xm)
 
-            # properties of global drones
-            if self.use_privileged:
-                xg = x_privileged.view(batch_size, 1, self.global_drones, DSTRIDE)
-                xg = F.relu(self.conv_all_drones1(xg))
-                pooled = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
-                xg = xg.view(batch_size, -1, self.global_drones, 1)
-                pooled = pooled.view(batch_size, -1, 1, 1)
-                pooled_expanded = torch.cat(self.global_drones * [pooled], dim=2)
-                xg = torch.cat([xg, pooled_expanded], dim=1)
-                xg = xg.view(batch_size, -1, self.global_drones, 1)
+        if self.drones > 0:
+            # properties of the closest drones
+            xe = x[:, endmins:enddrones]
+            xe = self.drone_net(xe)
 
-                xg = F.relu(self.conv_all_drones2(xg))
-                xg_avg = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
-                xg_max = F.max_pool2d(xg, kernel_size=(self.global_drones, 1))
+        # properties of global drones
+        if self.use_privileged:
+            xg = x_privileged.view(batch_size, 1, self.global_drones, DSTRIDE)
+            xg = F.relu(self.conv_all_drones1(xg))
+            pooled = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
+            xg = xg.view(batch_size, -1, self.global_drones, 1)
+            pooled = pooled.view(batch_size, -1, 1, 1)
+            pooled_expanded = torch.cat(self.global_drones * [pooled], dim=2)
+            xg = torch.cat([xg, pooled_expanded], dim=1)
+            xg = xg.view(batch_size, -1, self.global_drones, 1)
 
-                x_privileged = torch.cat([xg_avg, xg_max], dim=2)
-            else:
-                x_privileged = None
+            xg = F.relu(self.conv_all_drones2(xg))
+            xg_avg = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
+            xg_max = F.max_pool2d(xg, kernel_size=(self.global_drones, 1))
 
-            if self.minerals == 0:
-                x = torch.cat((xd, xe), dim=1)
-            elif self.drones == 0:
-                x = torch.cat((xd, xm), dim=1)
-            else:
-                x = torch.cat((xd, xe, xm), dim=1)
-
-            for conv in self.final_convs:
-                x = F.relu(conv(x))
-
+            x_privileged = torch.cat([xg_avg, xg_max], dim=2)
         else:
-            for fc in self.fc_layers:
-                x = F.relu(fc(x))
+            x_privileged = None
+
+        if self.minerals == 0:
+            x = torch.cat((xd, xe), dim=1)
+        elif self.drones == 0:
+            x = torch.cat((xd, xm), dim=1)
+        else:
+            x = torch.cat((xd, xe, xm), dim=1)
+
+        x = self.fc_layers(x)
 
         return x, x_privileged
 
     def param_groups(self):
         group0 = [
             *self.conv_drone.parameters(),
+            *self.norm_drone.parameters(),
             *(self.mineral_net.parameters() if self.minerals > 0 else []),
             *(self.drone_net.parameters() if self.drones > 0 else []),
             *(self.conv_all_drones1.parameters() if self.global_drones > 0 else []),
             *(self.conv_all_drones2.parameters() if self.global_drones > 0 else []),
         ]
         group1 = [
-            *self.final_convs.parameters(),
+            *self.fc_layers.parameters(),
         ]
         group2 = [
             *self.value_head.parameters(),

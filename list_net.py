@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class ListNet(nn.Module):
-    def __init__(self, in_features, width, items, groups, pooling, resblocks=1):
+    def __init__(self, in_features, width, items, groups, pooling, norm, resblocks=1):
         super(ListNet, self).__init__()
 
         assert(pooling in ['max', 'avg', 'both'])
@@ -15,16 +15,27 @@ class ListNet(nn.Module):
         self.items = items
         self.groups = groups
         self.pooling = pooling
+        self.norm = norm
 
         self.layer0 = nn.Conv1d(in_channels=1, out_channels=self.width, kernel_size=in_features)
+
+        if norm == 'none':
+            self.layer0_norm = nn.Sequential()
+        elif norm == 'batchnorm':
+            self.layer0_norm = nn.BatchNorm1d(self.width)
+        elif norm == 'layernorm':
+            self.layer0_norm = nn.LayerNorm([self.width, 1])
+        else:
+            raise Exception(f'Unexpected normalization layer {norm}')
+
         self.net = nn.Sequential(
-            *[ResBlock(self.width) for _ in range(resblocks)]
+            *[ResBlock(self.width, norm) for _ in range(resblocks)]
         )
 
     def forward(self, x):
         batch_size = x.shape[0]
         x = x.reshape(batch_size * self.items * self.groups, 1, self.in_features)
-        x = F.relu(self.layer0(x))
+        x = self.layer0_norm(F.relu(self.layer0(x)))
         x = self.net(x)
         x = x.view(batch_size, self.items, self.groups, self.width)
         x = x.permute(0, 2, 3, 1).reshape(batch_size * self.groups, self.width, self.items)
@@ -44,14 +55,35 @@ class ListNet(nn.Module):
 
 
 class ResBlock(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, channels, norm):
         super(ResBlock, self).__init__()
-        self.convs = nn.Sequential(
-            nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-            nn.ReLU(),
-            # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-            # nn.ReLU(),
-        )
+        if norm == 'none':
+            self.convs = nn.Sequential(
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
+                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                # nn.ReLU(),
+            )
+        elif norm == 'batchnorm':
+            # TODO: init params on last batchnorm layer to 0
+            self.convs = nn.Sequential(
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
+                nn.BatchNorm1d(channels),
+                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                # nn.ReLU(),
+            )
+        elif norm == 'layernorm':
+            # TODO: init params on last batchnorm layer to 0
+            self.convs = nn.Sequential(
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
+                nn.LayerNorm([channels, 1]),
+                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                # nn.ReLU(),
+            )
+        else:
+            raise Exception(f'Unexpected normalization layer {norm}')
 
     def forward(self, x):
         return self.convs(x)

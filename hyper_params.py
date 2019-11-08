@@ -21,7 +21,6 @@ class HyperParams:
         # Policy
         self.depth = 4              # Number of hidden layers
         self.width = 2048           # Number of activations on each hidden layer
-        self.conv = True            # Use convolution to share weights on objects
         self.fp16 = False           # Whether to use half-precision floating point
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
@@ -32,6 +31,7 @@ class HyperParams:
         self.obs_global_drones = 2  # Max number of (possibly hidden) drones observed by value function
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
         self.dconv_pooling = 'max'  # Pooling layer after drone convolutions ('max', 'avg' or 'both')
+        self.norm = 'batchnorm'     # Normalization layers ("none", "batchnorm", "layernorm")
 
         # Eval
         self.eval_envs = 0
