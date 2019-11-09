@@ -94,7 +94,7 @@ class Policy(nn.Module):
                 kernel_size=1)
 
         layers = []
-        for _ in range(fc_layers - 1):
+        for i in range(fc_layers - 1):
             layers.append(
                 nn.Conv2d(
                     in_channels=nhidden,
@@ -103,7 +103,7 @@ class Policy(nn.Module):
                 )
             )
             layers.append(nn.ReLU())
-            if norm == 'none':
+            if norm == 'none' or i == fc_layers - 2:
                 pass
             elif norm == 'batchnorm':
                 layers.append(nn.BatchNorm2d(nhidden))
