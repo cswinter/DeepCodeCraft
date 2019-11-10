@@ -61,8 +61,8 @@ class ResBlock(nn.Module):
             self.convs = nn.Sequential(
                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
                 nn.ReLU(),
-                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-                # nn.ReLU(),
+                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                 nn.ReLU(),
             )
         elif norm == 'batchnorm':
             # TODO: init params on last batchnorm layer to 0
@@ -70,8 +70,9 @@ class ResBlock(nn.Module):
                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
                 nn.ReLU(),
                 nn.BatchNorm1d(channels),
-                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-                # nn.ReLU(),
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
+                nn.BatchNorm1d(channels),
             )
         elif norm == 'layernorm':
             # TODO: init params on last batchnorm layer to 0
@@ -79,13 +80,13 @@ class ResBlock(nn.Module):
                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
                 nn.ReLU(),
                 nn.LayerNorm([channels, 1]),
-                # nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-                # nn.ReLU(),
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
+                nn.LayerNorm([channels, 1]),
             )
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
     def forward(self, x):
-        return self.convs(x)
-        # return x + self.convs(x)
+        return x + self.convs(x)
 

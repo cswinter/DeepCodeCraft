@@ -18,7 +18,8 @@ class Policy(nn.Module):
                  dpooling,
                  norm,
                  obs_config=DEFAULT_OBS_CONFIG,
-                 use_privileged=False):
+                 use_privileged=False,
+                 resblocks=1):
         super(Policy, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -36,6 +37,7 @@ class Policy(nn.Module):
             obs_config=obs_config,
             mpooling=mpooling,
             dpooling=dpooling,
+            resblocks=resblocks,
         )
 
         self.allies = obs_config.allies
@@ -71,6 +73,7 @@ class Policy(nn.Module):
                 groups=self.allies,
                 pooling=mpooling,
                 norm=norm,
+                resblocks=resblocks,
             )
 
         if self.drones > 0:
@@ -81,6 +84,7 @@ class Policy(nn.Module):
                 groups=self.allies,
                 pooling=dpooling,
                 norm=norm,
+                resblocks=resblocks,
             )
 
         if use_privileged:

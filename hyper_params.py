@@ -20,6 +20,7 @@ class HyperParams:
 
         # Policy
         self.depth = 4              # Number of hidden layers
+        self.resblocks = 1          # Number of initial residual conv blocks
         self.width = 2048           # Number of activations on each hidden layer
         self.fp16 = False           # Whether to use half-precision floating point
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
