@@ -67,8 +67,10 @@ class HyperParams:
         hps.eval_envs = 0
         hps.gamma = 0.99
         hps.lamb = 0.95
-        hps.max_grad_norm = 5.0
+        hps.lr = 0.00003
+        hps.max_grad_norm = 20.0
         hps.momentum = 0.9
+        hps.norm = 'layernorm'
         hps.norm_advs = True
         hps.num_envs = 64
         hps.num_self_play = 0
@@ -76,6 +78,7 @@ class HyperParams:
         hps.obs_drones = 0
         hps.obs_global_drones = 0
         hps.obs_minerals = 10
+        hps.optimizer = 'Adam'
         hps.sample_reuse = 2
         hps.small_init_pi = False
         hps.use_action_masks = True
@@ -84,6 +87,7 @@ class HyperParams:
         hps.weight_decay = 0.0001
         hps.width = 2048
         hps.zero_init_vf = True
+
         return hps
 
     def args_parser(self) -> argparse.ArgumentParser:
