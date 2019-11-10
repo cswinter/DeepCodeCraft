@@ -93,6 +93,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         hps.small_init_pi,
                         hps.zero_init_vf,
                         hps.fp16,
+                        resblocks=hps.resblocks,
                         mpooling=hps.mconv_pooling,
                         dpooling=hps.dconv_pooling,
                         norm=hps.norm,
