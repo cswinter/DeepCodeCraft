@@ -80,6 +80,7 @@ class HyperParams:
         hps.obs_global_drones = 0
         hps.obs_minerals = 10
         hps.optimizer = 'Adam'
+        hps.resblocks = 1
         hps.sample_reuse = 2
         hps.small_init_pi = False
         hps.use_action_masks = True

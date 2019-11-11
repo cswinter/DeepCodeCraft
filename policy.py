@@ -52,18 +52,16 @@ class Policy(nn.Module):
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
-        self.conv_drone = nn.Conv2d(
-            in_channels=1,
-            out_channels=nhidden // 2,
-            kernel_size=(1, GLOBAL_FEATURES + DSTRIDE))
-        if norm == 'none':
-            self.norm_drone = nn.Sequential()
-        elif norm == 'batchnorm':
-            self.norm_drone = nn.BatchNorm2d(nhidden // 2)
-        elif norm == 'layernorm':
-            self.norm_drone = nn.LayerNorm([nhidden // 2, 1, 1])
-        else:
-            raise Exception(f'Unexpected normalization layer {norm}')
+
+        self.self_net = self.drone_net = ListNet(
+            in_features=DSTRIDE + GLOBAL_FEATURES,
+            width=nhidden // 2,
+            items=1,
+            groups=1,
+            pooling=dpooling,
+            norm=norm,
+            resblocks=resblocks,
+        )
 
         if self.minerals > 0:
             self.mineral_net = ListNet(
@@ -88,14 +86,15 @@ class Policy(nn.Module):
             )
 
         if use_privileged:
-            self.conv_all_drones1 = nn.Conv2d(
-                in_channels=1,
-                out_channels=nhidden // 2,
-                kernel_size=(1, DSTRIDE))
-            self.conv_all_drones2 = nn.Conv2d(
-                in_channels=nhidden,
-                out_channels=nhidden // 2,
-                kernel_size=1)
+            self.privileged_net = ListNet(
+                in_features=DSTRIDE,
+                width=nhidden // 2,
+                items=self.global_drones,
+                groups=1,
+                pooling='both',
+                norm=norm,
+                resblocks=resblocks,
+            )
 
         layers = []
         for i in range(fc_layers - 1):
@@ -224,9 +223,9 @@ class Policy(nn.Module):
         enddrones = endmins + DSTRIDE * self.drones * self.allies
 
         batch_size = x.size()[0]
-        # global features and properties of selected allied drones
-        xd = x[:, :endallies].view(batch_size, 1, self.allies, DSTRIDE + GLOBAL_FEATURES)
-        xd = self.norm_drone(F.relu(self.conv_drone(xd)))
+        # global features and properties of the drone controlled by this network
+        xd = x[:, :endallies]
+        xd = self.self_net(xd)
 
         if self.minerals > 0:
             # properties of closest minerals
@@ -240,20 +239,7 @@ class Policy(nn.Module):
 
         # properties of global drones
         if self.use_privileged:
-            xg = x_privileged.view(batch_size, 1, self.global_drones, DSTRIDE)
-            xg = F.relu(self.conv_all_drones1(xg))
-            pooled = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
-            xg = xg.view(batch_size, -1, self.global_drones, 1)
-            pooled = pooled.view(batch_size, -1, 1, 1)
-            pooled_expanded = torch.cat(self.global_drones * [pooled], dim=2)
-            xg = torch.cat([xg, pooled_expanded], dim=1)
-            xg = xg.view(batch_size, -1, self.global_drones, 1)
-
-            xg = F.relu(self.conv_all_drones2(xg))
-            xg_avg = F.avg_pool2d(xg, kernel_size=(self.global_drones, 1))
-            xg_max = F.max_pool2d(xg, kernel_size=(self.global_drones, 1))
-
-            x_privileged = torch.cat([xg_avg, xg_max], dim=2)
+            x_privileged = self.privileged_net(x_privileged)
         else:
             x_privileged = None
 
@@ -270,12 +256,10 @@ class Policy(nn.Module):
 
     def param_groups(self):
         group0 = [
-            *self.conv_drone.parameters(),
-            *self.norm_drone.parameters(),
+            *self.self_net.parameters(),
             *(self.mineral_net.parameters() if self.minerals > 0 else []),
             *(self.drone_net.parameters() if self.drones > 0 else []),
-            *(self.conv_all_drones1.parameters() if self.global_drones > 0 else []),
-            *(self.conv_all_drones2.parameters() if self.global_drones > 0 else []),
+            *(self.privileged_net.parameters() if self.use_privileged else []),
         ]
         group1 = [
             *self.fc_layers.parameters(),
