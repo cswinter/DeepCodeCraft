@@ -73,8 +73,6 @@ class ResBlock(nn.Module):
                 nn.ReLU(),
                 nn.BatchNorm2d(channels),
             )
-            self.convs[5].weight.data *= 0.1
-            self.convs[5].bias.data.fill_(0.0)
         elif norm == 'layernorm':
             self.convs = nn.Sequential(
                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
@@ -84,8 +82,6 @@ class ResBlock(nn.Module):
                 nn.ReLU(),
                 nn.LayerNorm([channels, 1]),
             )
-            self.convs[5].weight.data *= 0.1
-            self.convs[5].bias.data.fill_(0.0)
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
