@@ -5,15 +5,15 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'RMSProp'  # Optimizer ("SGD" or "RMSProp" or "Adam")
-        self.lr = 0.0001            # Learning rate
+        self.optimizer = 'Adam'  # Optimizer ("SGD" or "RMSProp" or "Adam")
+        self.lr = 0.00003           # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
         self.bs = 2048              # Batch size during optimization
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 1.0          # Weighting of value function loss in optimization objective
-        self.max_grad_norm = 1.0    # Maximum gradient norm for gradient clipping
-        self.sample_reuse = 3       # Number of optimizer passes over samples collected during rollout
+        self.max_grad_norm = 20.0   # Maximum gradient norm for gradient clipping
+        self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         # TODO: weak evidence this might help, enables higher lr
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
@@ -26,16 +26,17 @@ class HyperParams:
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
         self.resume_from = ''       # Filepath to saved policy
-        self.obs_allies = 1         # Max number of controllable allies per player
-        self.obs_drones = 2         # Max number of drones observed by each drone
-        self.obs_minerals = 6       # Max number of minerals observed by each drone
-        self.obs_global_drones = 2  # Max number of (possibly hidden) drones observed by value function
+        self.obs_allies = 2         # Max number of controllable allies per player
+        self.obs_drones = 4         # Max number of drones observed by each drone
+        self.obs_minerals = 0       # Max number of minerals observed by each drone
+        self.obs_global_drones = 0  # Max number of (possibly hidden) drones observed by value function
+        self.use_privileged = False # Whether value function has access to hidden information
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
-        self.dconv_pooling = 'max'  # Pooling layer after drone convolutions ('max', 'avg' or 'both')
-        self.norm = 'none'          # Normalization layers ("none", "batchnorm", "layernorm")
+        self.dconv_pooling = 'both' # Pooling layer after drone convolutions ('max', 'avg' or 'both')
+        self.norm = 'layernorm'          # Normalization layers ("none", "batchnorm", "layernorm")
 
         # Eval
-        self.eval_envs = 0
+        self.eval_envs = 256
         self.eval_timesteps = 360
         self.eval_frequency = 1e5
         self.model_save_frequency = 10
@@ -43,7 +44,7 @@ class HyperParams:
         # RL
         self.steps = 10e6           # Total number of timesteps
         self.num_envs = 64          # Number of environments
-        self.num_self_play = 0      # Number of self-play environments (each provides two environments)
+        self.num_self_play = 32     # Number of self-play environments (each provides two environments)
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
@@ -51,12 +52,12 @@ class HyperParams:
         self.rewscale = 1.0         # Scaling of reward values
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
-        self.clip_vf = False        # Use clipped value function objective
+        self.clip_vf = True         # Use clipped value function objective
 
         self.rosteps = self.num_envs * self.seq_rosteps
 
         # Task
-        self.objective = envs.Objective.ALLIED_WEALTH
+        self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
         self.use_action_masks = True
 
@@ -70,6 +71,7 @@ class HyperParams:
         hps.lamb = 0.95
         hps.lr = 0.00003
         hps.max_grad_norm = 20.0
+        hps.mconv_pooling = 'max'
         hps.momentum = 0.9
         hps.norm = 'layernorm'
         hps.norm_advs = True

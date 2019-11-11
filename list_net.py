@@ -61,8 +61,8 @@ class ResBlock(nn.Module):
             self.convs = nn.Sequential(
                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
                 nn.ReLU(),
-                 nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
-                 nn.ReLU(),
+                nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=1),
+                nn.ReLU(),
             )
         elif norm == 'batchnorm':
             self.convs = nn.Sequential(

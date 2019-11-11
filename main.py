@@ -16,6 +16,7 @@ from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
 from policy import Policy
 from policy_v1 import PolicyV1
+from policy_v2 import PolicyV2
 
 logger = logging.getLogger(__name__)
 
@@ -339,55 +340,70 @@ def eval(policy, hps, device, total_steps):
                                hps.action_delay,
                                stagger=False,
                                fair=True,
-                               use_action_masks=hps.use_action_masks)
+                               use_action_masks=hps.use_action_masks,
+                               obs_config=policy.obs_config)
 
     scores = []
     scores_by_opp = defaultdict(list)
     lengths = []
-    obs, action_masks, privileged_obs = env.reset()
     evens = list([2 * i for i in range(hps.eval_envs // 2)])
     odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
     policy_envs = evens
 
+    partitions = [(policy_envs, policy.obs_config)]
     i = 0
     for name, opp in opponents.items():
         opp_policy, _, _ = load_policy(opp['model_file'], device)
         opp_policy.eval()
         opp['policy'] = opp_policy
         opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
+        opp['obs_config'] = opp_policy.obs_config
+        opp['i'] = i
         i += 1
+        partitions.append((opp['envs'], opp_policy.obs_config))
+
+    initial_obs = env.reset(partitions)
+
+    obs, action_masks, privileged_obs = initial_obs[0]
+    obs_opps, action_masks_opps, privileged_obs_opps = ([], [], [])
+    for o, a, p in initial_obs[1:]:
+        obs_opps.append(o)
+        action_masks_opps.append(a)
+        privileged_obs_opps.append(p)
 
     for step in range(hps.eval_timesteps):
-        actions = np.zeros((hps.eval_envs, 2), dtype=np.int)
         obs_tensor = torch.tensor(obs).to(device)
         privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
-        obs_policy = obs_tensor[policy_envs]
-        privileged_obs_policy = privileged_obs_tensor[policy_envs]
-        action_masks_policy = action_masks_tensor[policy_envs]
-        actionsp, _, _, _, _ = policy.evaluate(obs_policy, action_masks_policy, privileged_obs_policy)
-        actions[policy_envs] = actionsp.cpu()
+        actionsp, _, _, _, _ = policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+        env.step_async(actionsp.cpu(), policy_envs)
 
         for _, opp in opponents.items():
-            obs = obs_tensor[opp['envs']]
-            action_masks_opp = action_masks_tensor[opp['envs']]
-            privileged_obs_opp = privileged_obs_tensor[opp['envs']]
-            actions_opp, _, _, _, _ = opp['policy'].evaluate(obs, action_masks_opp, privileged_obs_opp)
-            actions[opp['envs']] = actions_opp.cpu()
+            i = opp['i']
+            obs_opp_tensor = torch.tensor(obs_opps[i]).to(device)
+            privileged_obs_opp_tensor = torch.tensor(privileged_obs_opps[i]).to(device)
+            action_masks_opp_tensor = torch.tensor(action_masks_opps[i]).to(device)
+            actions_opp, _, _, _, _ = opp['policy'].evaluate(obs_opp_tensor,
+                                                             action_masks_opp_tensor,
+                                                             privileged_obs_opp_tensor)
+            env.step_async(actions_opp.cpu(), opp['envs'])
 
-        obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions)
+        obs, _, _, infos, action_masks, privileged_obs = env.observe(policy_envs)
+        for _, opp in opponents.items():
+            i = opp['i']
+            obs_opps[i], _, _, _, action_masks_opps[i], privileged_obs_opps[i] = \
+                env.observe(opp['envs'], opp['obs_config'])
 
         for info in infos:
             index = info['episode']['index']
-            if index in policy_envs:
-                score = info['episode']['score']
-                length = info['episode']['l']
-                scores.append(score)
-                lengths.append(length)
-                for name, opp in opponents.items():
-                    if index + 1 in opp['envs']:
-                        scores_by_opp[name].append(score)
-                        break
+            score = info['episode']['score']
+            length = info['episode']['l']
+            scores.append(score)
+            lengths.append(length)
+            for name, opp in opponents.items():
+                if index + 1 in opp['envs']:
+                    scores_by_opp[name].append(score)
+                    break
 
     scores = np.array(scores)
     wandb.log({
@@ -419,10 +435,13 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None):
     checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
-    if 'policy_version' in checkpoint or name.endswith('dashing-wildflower-25M.pt'):
-        policy = Policy(**checkpoint['model_kwargs'])
-    else:
+    version = checkpoint.get('policy_version')
+    if version is None:
         policy = PolicyV1(**checkpoint['model_kwargs'])
+    elif version == 'v2' or name.endswith('dashing-wildflower-25M.pt'):
+        policy = PolicyV2(**checkpoint['model_kwargs'])
+    elif version == 'v3':
+        policy = Policy(**checkpoint['model_kwargs'])
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)

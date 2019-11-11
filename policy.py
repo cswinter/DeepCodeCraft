@@ -24,7 +24,7 @@ class Policy(nn.Module):
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
 
-        self.version = 'v2'
+        self.version = 'v3'
 
         self.kwargs = dict(
             fc_layers=fc_layers,
@@ -40,6 +40,7 @@ class Policy(nn.Module):
             resblocks=resblocks,
         )
 
+        self.obs_config = obs_config
         self.allies = obs_config.allies
         self.drones = obs_config.drones
         self.minerals = obs_config.minerals
@@ -57,7 +58,7 @@ class Policy(nn.Module):
             in_features=DSTRIDE + GLOBAL_FEATURES,
             width=nhidden // 2,
             items=1,
-            groups=1,
+            groups=self.allies,
             pooling=dpooling,
             norm=norm,
             resblocks=resblocks,
@@ -97,6 +98,7 @@ class Policy(nn.Module):
             )
 
         layers = []
+        norm_layers = []
         for i in range(fc_layers - 1):
             layers.append(
                 nn.Conv2d(
@@ -107,14 +109,15 @@ class Policy(nn.Module):
             )
             layers.append(nn.ReLU())
             if norm == 'none' or i == fc_layers - 2:
-                pass
+                norm_layers.append(nn.Sequential())
             elif norm == 'batchnorm':
                 layers.append(nn.BatchNorm2d(nhidden))
             elif norm == 'layernorm':
                 layers.append(nn.Sequential(nn.LayerNorm([nhidden, 1, 1])))
             else:
                 raise Exception(f'Unexpected normalization layer {norm}')
-        self.fc_layers = nn.Sequential(*layers)
+        self.fc_layers = nn.ModuleList(layers)
+        self.fc_norm_layers = nn.ModuleList(norm_layers)
 
         self.policy_head = nn.Conv2d(in_channels=nhidden, out_channels=8, kernel_size=1)
         if small_init_pi:
@@ -250,7 +253,11 @@ class Policy(nn.Module):
         else:
             x = torch.cat((xd, xe, xm), dim=1)
 
-        x = self.fc_layers(x)
+        for fc, fc_norm in zip(self.fc_layers, self.fc_norm_layers):
+            x = F.relu(fc(x))
+            x = x.view(batch_size * self.allies, self.width, 1)
+            x = fc_norm(x)
+            x = x.view(batch_size, self.width, self.allies, 1)
 
         return x, x_privileged
 
