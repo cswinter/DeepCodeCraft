@@ -321,8 +321,7 @@ def eval(policy, hps, device, total_steps):
 
     if hps.objective == envs.Objective.ARENA_TINY:
         opponents = {
-            '10m': {'model_file': 'v1/25909ee-10M.pt'},
-            '1m': {'model_file': 'v1/21011a1-1M.pt'},
+            'random': {'model_file': 'v3/random-v3.pt'},
         }
     elif hps.objective == envs.Objective.ARENA_TINY_2V2:
         opponents = {
@@ -487,6 +486,8 @@ def main():
     args = args_parser.parse_args()
     if args.hpset == 'allied_wealth':
         hps = HyperParams.allied_wealth()
+    elif args.hpset == 'arena_tiny':
+        hps = HyperParams.arena_tiny()
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)
