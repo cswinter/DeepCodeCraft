@@ -29,7 +29,8 @@ def showmatch(model1_path, model2_path, task, randomize):
                                action_delay=0,
                                randomize=randomize,
                                stagger=True,
-                               fair=True)
+                               fair=True,
+                               obs_config=policy1.obs_config)
 
     returns = []
     lengths = []
@@ -47,11 +48,11 @@ def showmatch(model1_path, model2_path, task, randomize):
             obs_policy1 = obs_tensor[policy1_envs]
             obs_policy2 = obs_tensor[policy2_envs]
             privileged_obs_policy1 = privileged_obs_tensor[policy1_envs]
-            privileted_obs_policy2 = privileged_obs_tensor[policy2_envs]
+            privileged_obs_policy2 = privileged_obs_tensor[policy2_envs]
             action_masks_p1 = action_masks_tensor[policy1_envs]
             action_masks_p2 = action_masks_tensor[policy2_envs]
             actions1, _, _, _, _ = policy1.evaluate(obs_policy1, action_masks_p1, privileged_obs_policy1)
-            actions2, _, _, _, _ = policy2.evaluate(obs_policy2, action_masks_p2, privileted_obs_policy2)
+            actions2, _, _, _, _ = policy2.evaluate(obs_policy2, action_masks_p2, privileged_obs_policy2)
 
             actions = np.zeros((nenv, policy1.allies), dtype=np.int)
             actions[policy1_envs] = actions1.cpu()
@@ -62,9 +63,9 @@ def showmatch(model1_path, model2_path, task, randomize):
             for info in infos:
                 index = info['episode']['index']
                 if index in policy1_envs:
-                    ret = info['episode']['r']
+                    score = info['episode']['score']
                     length = info['episode']['l']
-                    returns.append(ret)
+                    returns.append(score)
                     lengths.append(length)
 
                     if len(returns) % 50 == 0:
