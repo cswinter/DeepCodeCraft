@@ -89,7 +89,7 @@ class Policy(nn.Module):
         if use_privileged:
             self.privileged_net = ListNet(
                 in_features=DSTRIDE,
-                width=nhidden // 2,
+                width=nhidden,
                 items=self.global_drones,
                 groups=1,
                 pooling='both',
