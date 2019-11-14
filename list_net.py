@@ -34,11 +34,11 @@ class ListNet(nn.Module):
 
     def forward(self, x):
         batch_size = x.shape[0]
-        x = x.reshape(batch_size * self.items * self.groups, 1, self.in_features)
+        x = x.reshape(batch_size * self.groups * self.items, 1, self.in_features)
         x = self.layer0_norm(F.relu(self.layer0(x)))
         x = self.net(x)
-        x = x.view(batch_size, self.items, self.groups, self.width)
-        x = x.permute(0, 2, 3, 1).reshape(batch_size * self.groups, self.width, self.items)
+        x = x.view(batch_size, self.groups, self.items, self.width)
+        x = x.permute(0, 1, 3, 2).reshape(batch_size * self.groups, self.width, self.items)
 
         if self.pooling == 'max':
             x = F.max_pool1d(x, kernel_size=self.items)
