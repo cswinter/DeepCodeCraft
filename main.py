@@ -109,7 +109,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             **optimizer_kwargs
         )
     else:
-        policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs)
+        policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
 
     lr_scheduler = None
     if hps.warmup > 0:
@@ -432,7 +432,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
     torch.save(model, model_path)
 
 
-def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None):
+def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
     checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
     version = checkpoint.get('policy_version')
     if version is None:
@@ -447,7 +447,14 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None):
 
     optimizer = None
     if optimizer_fn:
-        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
+        group0, group1, group2 = policy.param_groups()
+        optimizer = optimizer_fn([
+            {'params': group2},
+            {'params': group1, 'lr': hps.lr * hps.lr_ratios},
+            {'params': group0, 'lr': hps.lr * hps.lr_ratios * hps.lr_ratios},
+        ],
+            **optimizer_kwargs
+        )
         if 'optimizer_state_dict' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             for state in optimizer.state.values():
