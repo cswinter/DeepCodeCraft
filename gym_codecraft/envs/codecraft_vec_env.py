@@ -12,7 +12,7 @@ class ObsConfig:
     allies: int
     drones: int
     minerals: int
-    global_drones: int
+    global_drones: int = 0
 
 
 GLOBAL_FEATURES = 1

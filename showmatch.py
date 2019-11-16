@@ -2,7 +2,7 @@ import click
 import torch
 import numpy as np
 
-from main import load_policy
+from main import load_policy, eval
 from gym_codecraft import envs
 
 
@@ -18,62 +18,18 @@ def showmatch(model1_path, model2_path, task, randomize):
         print("Running on CPU")
         device = "cpu"
 
-    nenv = 128
-
+    objective = envs.Objective(task)
     policy1, _, _ = load_policy(model1_path, device)
-    policy2, _, _ = load_policy(model2_path, device)
-
-    env = envs.CodeCraftVecEnv(nenv,
-                               nenv // 2,
-                               envs.Objective(task),
-                               action_delay=0,
-                               randomize=randomize,
-                               stagger=True,
-                               fair=True,
-                               obs_config=policy1.obs_config)
-
-    returns = []
-    lengths = []
-    obs, action_masks, privileged_obs = env.reset()
-    evens = list([2 * i for i in range(nenv // 2)])
-    odds = list([2 * i + 1 for i in range(nenv // 2)])
-    policy1_envs = evens
-    policy2_envs = odds
-
-    try:
-        while True:
-            obs_tensor = torch.tensor(obs).to(device)
-            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-            action_masks_tensor = torch.tensor(action_masks).to(device)
-            obs_policy1 = obs_tensor[policy1_envs]
-            obs_policy2 = obs_tensor[policy2_envs]
-            privileged_obs_policy1 = privileged_obs_tensor[policy1_envs]
-            privileged_obs_policy2 = privileged_obs_tensor[policy2_envs]
-            action_masks_p1 = action_masks_tensor[policy1_envs]
-            action_masks_p2 = action_masks_tensor[policy2_envs]
-            actions1, _, _, _, _ = policy1.evaluate(obs_policy1, action_masks_p1, privileged_obs_policy1)
-            actions2, _, _, _, _ = policy2.evaluate(obs_policy2, action_masks_p2, privileged_obs_policy2)
-
-            actions = np.zeros((nenv, policy1.allies), dtype=np.int)
-            actions[policy1_envs] = actions1.cpu()
-            actions[policy2_envs] = actions2.cpu()
-
-            obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions)
-
-            for info in infos:
-                index = info['episode']['index']
-                if index in policy1_envs:
-                    score = info['episode']['score']
-                    length = info['episode']['l']
-                    returns.append(score)
-                    lengths.append(length)
-
-                    if len(returns) % 50 == 0:
-                        print(np.array(returns).mean())
-    except KeyboardInterrupt:
-        print('exiting')
-
-    env.close()
+    eval(
+        policy=policy1,
+        num_envs=128,
+        device=device,
+        objective=objective,
+        eval_steps=int(1e20),
+        opponents={'player2': {'model_file': model2_path}},
+        printerval=100,
+        randomize=randomize,
+    )
 
 
 if __name__ == "__main__":

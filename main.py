@@ -134,7 +134,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     while total_steps < hps.steps + resume_steps:
         if total_steps >= next_eval and hps.eval_envs > 0:
-            eval(policy, hps, device, total_steps)
+            eval(policy=policy,
+                 num_envs=hps.eval_envs,
+                 device=device,
+                 objective=hps.objective,
+                 eval_steps=hps.eval_timesteps,
+                 curr_step=total_steps)
             next_eval += hps.eval_frequency
             next_model_save -= 1
             if next_model_save == 0:
@@ -313,40 +318,49 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        eval(policy, hps, device, total_steps)
+        eval(policy=policy,
+             num_envs=hps.eval_envs,
+             device=device,
+             objective=hps.objective,
+             eval_steps=hps.eval_timesteps,
+             curr_step=total_steps)
     save_policy(policy, out_dir, total_steps, optimizer)
 
 
-def eval(policy, hps, device, total_steps):
+def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, opponents=None, printerval=None, randomize=False):
+    if printerval is None:
+        printerval = eval_steps
 
-    if hps.objective == envs.Objective.ARENA_TINY:
-        opponents = {
-            'random': {'model_file': 'v3/random-v3.pt'},
-        }
-    elif hps.objective == envs.Objective.ARENA_TINY_2V2:
-        opponents = {
-            'random': {'model_file': 'v3/random.pt'},
-            'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
-            'medium': {'model_file': 'v3/bright-elevator-43M.pt'},
-        }
-    else:
-        raise Exception(f'No eval opponents configured for {hps.objective}')
+    if not opponents:
+        if objective == envs.Objective.ARENA_TINY:
+            opponents = {
+                'random': {'model_file': 'v3/random-v3.pt'},
+            }
+        elif objective == envs.Objective.ARENA_TINY_2V2:
+            opponents = {
+                'random': {'model_file': 'v3/random.pt'},
+                'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
+                'medium': {'model_file': 'v3/bright-elevator-43M.pt'},
+            }
+        else:
+            raise Exception(f'No eval opponents configured for {objective}')
 
     policy.eval()
-    env = envs.CodeCraftVecEnv(hps.eval_envs,
-                               hps.eval_envs // 2,
-                               hps.objective,
-                               hps.action_delay,
+    env = envs.CodeCraftVecEnv(num_envs,
+                               num_envs // 2,
+                               objective,
+                               action_delay=0,
                                stagger=False,
                                fair=True,
-                               use_action_masks=hps.use_action_masks,
-                               obs_config=policy.obs_config)
+                               use_action_masks=True,
+                               obs_config=policy.obs_config,
+                               randomize=randomize)
 
     scores = []
     scores_by_opp = defaultdict(list)
     lengths = []
-    evens = list([2 * i for i in range(hps.eval_envs // 2)])
-    odds = list([2 * i + 1 for i in range(hps.eval_envs // 2)])
+    evens = list([2 * i for i in range(num_envs // 2)])
+    odds = list([2 * i + 1 for i in range(num_envs // 2)])
     policy_envs = evens
 
     partitions = [(policy_envs, policy.obs_config)]
@@ -370,7 +384,7 @@ def eval(policy, hps, device, total_steps):
         action_masks_opps.append(a)
         privileged_obs_opps.append(p)
 
-    for step in range(hps.eval_timesteps):
+    for step in range(eval_steps):
         obs_tensor = torch.tensor(obs).to(device)
         privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -404,16 +418,20 @@ def eval(policy, hps, device, total_steps):
                     scores_by_opp[name].append(score)
                     break
 
+        if (step + 1) % printerval == 0:
+            print(f'Eval: {np.array(scores).mean()}')
+
     scores = np.array(scores)
-    wandb.log({
-        'eval_mean_score': scores.mean(),
-        'eval_max_score': scores.max(),
-        'eval_min_score': scores.min(),
-    }, step=total_steps)
-    print(f'Eval: {scores.mean()}')
-    for opp_name, scores in scores_by_opp.items():
-        scores = np.array(scores)
-        wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=total_steps)
+
+    if curr_step:
+        wandb.log({
+            'eval_mean_score': scores.mean(),
+            'eval_max_score': scores.max(),
+            'eval_min_score': scores.min(),
+        }, step=curr_step)
+        for opp_name, scores in scores_by_opp.items():
+            scores = np.array(scores)
+            wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=curr_step)
 
     env.close()
 
