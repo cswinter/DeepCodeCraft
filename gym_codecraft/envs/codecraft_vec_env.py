@@ -61,6 +61,7 @@ def map_arena_tiny(randomize: bool):
     return {
         'mapWidth': 1000,
         'mapHeight': 1000,
+        'minerals': [],
         'player1Drones': [
             drone_dict(np.random.randint(-450, 450),
                        np.random.randint(-450, 450),
@@ -85,6 +86,7 @@ def map_arena_tiny_2v2(randomize: bool):
     return {
         'mapWidth': 1000,
         'mapHeight': 1000,
+        'minerals': [],
         'player1Drones': [
             drone_dict(np.random.randint(-450, 450),
                        np.random.randint(-450, 450),
@@ -112,6 +114,7 @@ def map_arena_medium(randomize: bool):
         s1 = np.random.randint(0, 2)
     return {
         'mapWidth': 1500,
+        'minerals': [(2, 25), (2, 25), (2, 25), (2, 25), (2, 25)],
         'mapHeight': 1500,
         'player1Drones': [
             drone_dict(np.random.randint(-700, 700),
