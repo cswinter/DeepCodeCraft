@@ -50,15 +50,6 @@ def random_drone():
     return drone
 
 
-def map_arena_tiny_random():
-    return {
-        'mapWidth': 1000,
-        'mapHeight': 1000,
-        'player1Drones': [random_drone()],
-        'player2Drones': [random_drone()],
-    }
-
-
 def map_arena_tiny(randomize: bool):
     storage_modules = 1
     constructors = 1
@@ -115,6 +106,29 @@ def map_arena_tiny_2v2(randomize: bool):
     }
 
 
+def map_arena_medium(randomize: bool):
+    s1 = 1
+    if randomize:
+        s1 = np.random.randint(0, 2)
+    return {
+        'mapWidth': 1500,
+        'mapHeight': 1500,
+        'player1Drones': [
+            drone_dict(np.random.randint(-700, 700),
+                       np.random.randint(-700, 700),
+                       constructors=2,
+                       storage_modules=2),
+        ],
+        'player2Drones': [
+            drone_dict(np.random.randint(-700, 700),
+                       np.random.randint(-700, 700),
+                       constructors=2 * s1,
+                       storage_modules=2 * s1,
+                       missile_batteries=1 - s1),
+        ],
+    }
+
+
 class CodeCraftVecEnv(object):
     def __init__(self,
                  num_envs,
@@ -145,6 +159,9 @@ class CodeCraftVecEnv(object):
         elif objective == Objective.ARENA_TINY_2V2:
             self.game_length = 1 * 30 * 60
             self.custom_map = map_arena_tiny_2v2
+        elif objective == Objective.ARENA_MEDIUM:
+            self.game_length = 3 * 60 * 60
+            self.custom_map = map_arena_medium
 
         self.games = []
         self.eplen = []
@@ -247,7 +264,7 @@ class CodeCraftVecEnv(object):
             game = env_subset[i] if env_subset else i
             x = obs[stride * i + GLOBAL_FEATURES + 0]
             y = obs[stride * i + GLOBAL_FEATURES + 1]
-            if self.objective == Objective.ARENA_TINY or self.objective == Objective.ARENA_TINY_2V2:
+            if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * NONOBS_FEATURES + 1]
                 enemy_score = obs[stride * num_envs + i * NONOBS_FEATURES + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
@@ -374,6 +391,7 @@ class Objective(Enum):
     DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
     ARENA_TINY = 'ARENA_TINY'
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
+    ARENA_MEDIUM = 'ARENA_MEDIUM_alpha'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
@@ -382,7 +400,8 @@ class Objective(Enum):
            self == Objective.DISTANCE_TO_1000_500:
            return False
         elif self == Objective.ARENA_TINY or\
-            self == Objective.ARENA_TINY_2V2:
+            self == Objective.ARENA_TINY_2V2 or\
+            self == Objective.ARENA_MEDIUM:
             return True
         else:
             raise Exception(f'Objective.vs not implemented for {self}')

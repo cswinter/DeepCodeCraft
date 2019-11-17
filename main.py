@@ -342,6 +342,10 @@ def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, oppone
                 'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
                 'medium': {'model_file': 'v3/bright-elevator-43M.pt'},
             }
+        elif objective == envs.Objective.ARENA_MEDIUM:
+            opponents = {
+                'random': {'model_file': 'v3/random-v3.pt'},
+            }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
 
@@ -423,7 +427,7 @@ def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, oppone
 
     scores = np.array(scores)
 
-    if curr_step:
+    if curr_step is not None:
         wandb.log({
             'eval_mean_score': scores.mean(),
             'eval_max_score': scores.max(),
