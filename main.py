@@ -345,6 +345,7 @@ def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, oppone
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
                 'random': {'model_file': 'v3/random-v3.pt'},
+                'easy': {'model_file': 'v3/polar-fire-10M.pt'},
             }
         else:
             raise Exception(f'No eval opponents configured for {objective}')

@@ -23,12 +23,12 @@ DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, global_drones=4)
 
 
 def drone_dict(x, y,
-          storage_modules=0,
-          missile_batteries=0,
-          constructors=0,
-          engines=0,
-          shield_generators=0,
-          resources=0):
+               storage_modules=0,
+               missile_batteries=0,
+               constructors=0,
+               engines=0,
+               shield_generators=0,
+               resources=0):
     return {
         'xPos': x,
         'yPos': y,
@@ -112,19 +112,21 @@ def map_arena_medium(randomize: bool):
     s1 = 1
     if randomize:
         s1 = np.random.randint(0, 2)
+    spawn_x = np.random.randint(150, 950)
+    spawn_y = np.random.randint(-950, 950)
     return {
-        'mapWidth': 1500,
-        'minerals': [(2, 25), (2, 25), (2, 25), (2, 25), (2, 25)],
-        'mapHeight': 1500,
+        'mapWidth': 2000,
+        'mapHeight': 2000,
+        'minerals': [(2, 25), (2, 25), (2, 25), (2, 25), (2, 25), (2, 25)],
         'player1Drones': [
-            drone_dict(np.random.randint(-700, 700),
-                       np.random.randint(-700, 700),
+            drone_dict(spawn_x,
+                       spawn_y,
                        constructors=2,
                        storage_modules=2),
         ],
         'player2Drones': [
-            drone_dict(np.random.randint(-700, 700),
-                       np.random.randint(-700, 700),
+            drone_dict(-spawn_x,
+                       -spawn_y,
                        constructors=2 * s1,
                        storage_modules=2 * s1,
                        missile_batteries=1 - s1),
