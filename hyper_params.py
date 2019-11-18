@@ -60,6 +60,8 @@ class HyperParams:
         self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
         self.use_action_masks = True
+        self.task_hardness = 0
+        self.task_randomize = True
 
     @staticmethod
     def arena_tiny():

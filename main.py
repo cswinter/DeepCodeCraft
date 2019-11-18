@@ -66,7 +66,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                hps.num_self_play,
                                hps.objective,
                                hps.action_delay,
-                               randomize=True,
+                               randomize=hps.task_randomize,
                                use_action_masks=hps.use_action_masks,
                                obs_config=obs_config)
     if torch.cuda.is_available():

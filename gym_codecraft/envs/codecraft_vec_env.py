@@ -50,7 +50,7 @@ def random_drone():
     return drone
 
 
-def map_arena_tiny(randomize: bool):
+def map_arena_tiny(randomize: bool, hardness: int):
     storage_modules = 1
     constructors = 1
     missiles_batteries = 1
@@ -77,7 +77,7 @@ def map_arena_tiny(randomize: bool):
     }
 
 
-def map_arena_tiny_2v2(randomize: bool):
+def map_arena_tiny_2v2(randomize: bool, hardness: int):
     s1 = 1
     s2 = 1
     if randomize:
@@ -108,16 +108,25 @@ def map_arena_tiny_2v2(randomize: bool):
     }
 
 
-def map_arena_medium(randomize: bool):
+def map_arena_medium(randomize: bool, hardness: int):
+    if hardness == 0:
+        map_width = 1500
+        map_height = 1500
+        mineral_count = 5
+    else:
+        map_width = 2000
+        map_height = 2000
+        mineral_count = 8
+
     s1 = 1
     if randomize:
         s1 = np.random.randint(0, 2)
-    spawn_x = np.random.randint(150, 950)
-    spawn_y = np.random.randint(-950, 950)
+    spawn_x = np.random.randint(150, map_width // 2 - 50)
+    spawn_y = np.random.randint(-map_height // 2 + 50, map_height // 2 - 50)
     return {
-        'mapWidth': 2000,
-        'mapHeight': 2000,
-        'minerals': [(2, 25), (2, 25), (2, 25), (2, 25), (2, 25), (2, 25)],
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': mineral_count * [(2, 25)],
         'player1Drones': [
             drone_dict(spawn_x,
                        spawn_y,
@@ -144,7 +153,8 @@ class CodeCraftVecEnv(object):
                  fair=False,
                  randomize=False,
                  use_action_masks=True,
-                 obs_config=DEFAULT_OBS_CONFIG):
+                 obs_config=DEFAULT_OBS_CONFIG,
+                 hardness=0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -153,11 +163,12 @@ class CodeCraftVecEnv(object):
         self.stagger = stagger
         self.fair = fair
         self.game_length = 3 * 60 * 60
-        self.custom_map = lambda _: None
+        self.custom_map = lambda _1, _2: None
         self.last_map = None
         self.randomize = randomize
         self.use_action_masks = use_action_masks
         self.obs_config = obs_config
+        self.hardness = hardness
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -374,11 +385,11 @@ class CodeCraftVecEnv(object):
         if self.fair:
             return self.fair_map()
         else:
-            return self.custom_map(self.randomize)
+            return self.custom_map(self.randomize, self.hardness)
 
     def fair_map(self):
         if self.last_map is None:
-            self.last_map = self.custom_map(self.randomize)
+            self.last_map = self.custom_map(self.randomize, self.hardness)
             return self.last_map
         else:
             result = self.last_map
