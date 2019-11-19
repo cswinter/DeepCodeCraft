@@ -11,7 +11,8 @@ from gym_codecraft import envs
 @click.argument('model2_path', nargs=1)
 @click.option('--task', default='ARENA_TINY_2V2')
 @click.option('--randomize/--no-randomize', default=False)
-def showmatch(model1_path, model2_path, task, randomize):
+@click.option('--hardness', default=0)
+def showmatch(model1_path, model2_path, task, randomize, hardness):
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -29,6 +30,7 @@ def showmatch(model1_path, model2_path, task, randomize):
         opponents={'player2': {'model_file': model2_path}},
         printerval=100,
         randomize=randomize,
+        hardness=hardness,
     )
 
 

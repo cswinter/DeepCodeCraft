@@ -327,7 +327,16 @@ def train(hps: HyperParams, out_dir: str) -> None:
     save_policy(policy, out_dir, total_steps, optimizer)
 
 
-def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, opponents=None, printerval=None, randomize=False):
+def eval(policy,
+         num_envs,
+         device,
+         objective,
+         eval_steps,
+         curr_step=None,
+         opponents=None,
+         printerval=None,
+         randomize=False,
+         hardness=0):
     if printerval is None:
         printerval = eval_steps
 
@@ -359,7 +368,8 @@ def eval(policy, num_envs, device, objective, eval_steps, curr_step=None, oppone
                                fair=True,
                                use_action_masks=True,
                                obs_config=policy.obs_config,
-                               randomize=randomize)
+                               randomize=randomize,
+                               hardness=hardness)
 
     scores = []
     scores_by_opp = defaultdict(list)

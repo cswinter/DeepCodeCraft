@@ -120,9 +120,11 @@ def map_arena_medium(randomize: bool, hardness: int):
 
     s1 = 1
     if randomize:
-        s1 = np.random.randint(0, 2)
-    spawn_x = np.random.randint(150, map_width // 2 - 50)
-    spawn_y = np.random.randint(-map_height // 2 + 50, map_height // 2 - 50)
+        s1 = np.random.rand(0, 2)
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
