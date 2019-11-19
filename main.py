@@ -336,7 +336,7 @@ def eval(policy,
          opponents=None,
          printerval=None,
          randomize=False,
-         hardness=0):
+         hardness=10):
     if printerval is None:
         printerval = eval_steps
 
