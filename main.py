@@ -353,8 +353,7 @@ def eval(policy,
             }
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
-                'random': {'model_file': 'v3/random-v3.pt'},
-                'easy': {'model_file': 'v3/polar-fire-10M.pt'},
+                'easy': {'model_file': 'arena_medium/whole-sun-25M.pt'},
             }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
@@ -528,6 +527,8 @@ def main():
         hps = HyperParams.allied_wealth()
     elif args.hpset == 'arena_tiny':
         hps = HyperParams.arena_tiny()
+    elif args.hpset == 'arena_medium':
+        hps = HyperParams.arena_medium()
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)

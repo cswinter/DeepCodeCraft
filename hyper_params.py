@@ -33,7 +33,7 @@ class HyperParams:
         self.use_privileged = False # Whether value function has access to hidden information
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
         self.dconv_pooling = 'both' # Pooling layer after drone convolutions ('max', 'avg' or 'both')
-        self.norm = 'layernorm'          # Normalization layers ("none", "batchnorm", "layernorm")
+        self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
 
         # Eval
         self.eval_envs = 256
@@ -62,6 +62,56 @@ class HyperParams:
         self.use_action_masks = True
         self.task_hardness = 0
         self.task_randomize = True
+
+
+    @staticmethod
+    def arena_medium():
+        hps = HyperParams()
+        hps.action_delay = 0
+        hps.bs = 2048
+        hps.clip_vf = True
+        hps.cliprange = 0.2
+        hps.dconv_pooling = 'both'
+        hps.depth = 4
+        hps.eval_envs = 256
+        hps.eval_frequency = 5e5
+        hps.eval_timesteps = 1100
+        hps.fp16 = False
+        hps.gamma = 0.99
+        hps.lamb = 0.95
+        hps.lr = 0.0001
+        hps.lr_ratios = 1.0
+        hps.max_grad_norm = 20.0
+        hps.mconv_pooling = 'max'
+        hps.momentum = 0.9
+        hps.norm = 'layernorm'
+        hps.norm_advs = True
+        hps.num_envs = 64
+        hps.num_self_play = 32
+        hps.objective = envs.Objective.ARENA_MEDIUM
+        hps.obs_allies = 4
+        hps.obs_drones = 4
+        hps.obs_global_drones = 0
+        hps.obs_minerals = 4
+        hps.optimizer = 'Adam'
+        hps.ppo = True
+        hps.resblocks = 1
+        hps.rewscale = 1.0
+        hps.sample_reuse = 2
+        hps.seq_rosteps = 256
+        hps.shuffle = True
+        hps.small_init_pi = False
+        hps.steps = 25e6
+        hps.task_hardness = 0
+        hps.use_action_masks = True
+        hps.use_privileged = False
+        hps.vf_coef = 1.0
+        hps.warmup = 0
+        hps.weight_decay = 0.0001
+        hps.width = 2048
+        hps.zero_init_vf = True
+
+        return hps
 
     @staticmethod
     def arena_tiny():

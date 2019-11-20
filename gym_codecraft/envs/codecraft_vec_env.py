@@ -118,10 +118,6 @@ def map_arena_medium(randomize: bool, hardness: int):
         map_height = 2000
         mineral_count = 8
 
-    s1 = 1
-    if randomize:
-        s1 = np.random.rand(0, 2)
-
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
     spawn_y = (map_height // 2 - 100) * np.cos(angle)
@@ -138,9 +134,8 @@ def map_arena_medium(randomize: bool, hardness: int):
         'player2Drones': [
             drone_dict(-spawn_x,
                        -spawn_y,
-                       constructors=2 * s1,
-                       storage_modules=2 * s1,
-                       missile_batteries=1 - s1),
+                       constructors=2,
+                       storage_modules=2),
         ],
     }
 
@@ -409,7 +404,7 @@ class Objective(Enum):
     DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
     ARENA_TINY = 'ARENA_TINY'
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
-    ARENA_MEDIUM = 'ARENA_MEDIUM_alpha'
+    ARENA_MEDIUM = 'ARENA_MEDIUM'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
