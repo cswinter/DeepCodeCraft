@@ -467,12 +467,19 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
     checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
     version = checkpoint.get('policy_version')
+    kwargs = checkpoint['model_kwargs']
+    if hps:
+        kwargs['obs_config'] = ObsConfig(
+            allies=hps.obs_allies,
+            drones=hps.obs_drones,
+            minerals=hps.obs_minerals,
+            global_drones=hps.obs_global_drones)
     if version is None:
-        policy = PolicyV1(**checkpoint['model_kwargs'])
+        policy = PolicyV1(**kwargs)
     elif version == 'v2' or name.endswith('dashing-wildflower-25M.pt'):
-        policy = PolicyV2(**checkpoint['model_kwargs'])
+        policy = PolicyV2(**kwargs)
     elif version == 'v3':
-        policy = Policy(**checkpoint['model_kwargs'])
+        policy = Policy(**kwargs)
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
