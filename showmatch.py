@@ -12,7 +12,8 @@ from gym_codecraft import envs
 @click.option('--task', default='ARENA_TINY_2V2')
 @click.option('--randomize/--no-randomize', default=False)
 @click.option('--hardness', default=0)
-def showmatch(model1_path, model2_path, task, randomize, hardness):
+@click.option('--num_envs', default=4)
+def showmatch(model1_path, model2_path, task, randomize, hardness, num_envs):
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -23,7 +24,7 @@ def showmatch(model1_path, model2_path, task, randomize, hardness):
     policy1, _, _ = load_policy(model1_path, device)
     eval(
         policy=policy1,
-        num_envs=128,
+        num_envs=num_envs,
         device=device,
         objective=objective,
         eval_steps=int(1e20),
