@@ -53,7 +53,7 @@ def warmup_lr_schedule(warmup_steps: int):
 
 
 def train(hps: HyperParams, out_dir: str) -> None:
-    assert(hps.rosteps % hps.bs == 0)
+    assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
 
     next_model_save = hps.model_save_frequency
@@ -250,6 +250,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
             torch.enable_grad()
             num_minibatches = int(hps.rosteps / hps.bs)
             for batch in range(num_minibatches):
+                if batch % hps.batches_per_update == 0:
+                    optimizer.zero_grad()
+
                 start = hps.bs * batch
                 end = hps.bs * (batch + 1)
 
@@ -263,7 +266,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 amasks = torch.tensor(all_action_masks[start:end]).to(device)
                 actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
-                optimizer.zero_grad()
                 policy_loss, value_loss, aproxkl, clipfrac =\
                     policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals, amasks, actual_probs, op)
                 policy_loss_sum += policy_loss
@@ -271,9 +273,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 aproxkl_sum += aproxkl
                 clipfrac_sum += clipfrac
                 gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
-                optimizer.step()
-                if lr_scheduler:
-                    lr_scheduler.step()
+
+                if (batch + 1) % hps.batches_per_update == 0:
+                    optimizer.step()
+                    if lr_scheduler:
+                        lr_scheduler.step()
 
         epoch += 1
         total_steps += hps.rosteps

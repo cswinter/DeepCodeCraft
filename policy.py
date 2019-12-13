@@ -193,6 +193,7 @@ class Policy(nn.Module):
             value_loss = vanilla_value_loss.mean()
 
         loss = policy_loss + value_loss_scale * value_loss
+        loss /= hps.batches_per_update
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
