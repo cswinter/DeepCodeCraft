@@ -465,7 +465,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
 
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
-    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name))
+    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name), map_location=device)
     version = checkpoint.get('policy_version')
     kwargs = checkpoint['model_kwargs']
     if hps:
