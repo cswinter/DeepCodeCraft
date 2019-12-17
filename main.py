@@ -407,7 +407,9 @@ def eval(policy,
         privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
         actionsp, _, _, _, _ = policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+        print('step main begin')
         env.step_async(actionsp.cpu(), policy_envs)
+        print('step main success')
 
         for _, opp in opponents.items():
             i = opp['i']
@@ -417,13 +419,19 @@ def eval(policy,
             actions_opp, _, _, _, _ = opp['policy'].evaluate(obs_opp_tensor,
                                                              action_masks_opp_tensor,
                                                              privileged_obs_opp_tensor)
+            print('step opp begin')
             env.step_async(actions_opp.cpu(), opp['envs'])
+            print('step opp success')
 
+        print('observe main begin')
         obs, _, _, infos, action_masks, privileged_obs = env.observe(policy_envs)
+        print('observe main success')
         for _, opp in opponents.items():
             i = opp['i']
+            print('observe opp begin')
             obs_opps[i], _, _, _, action_masks_opps[i], privileged_obs_opps[i] = \
                 env.observe(opp['envs'], opp['obs_config'])
+            print('observe opp success')
 
         for info in infos:
             index = info['episode']['index']
