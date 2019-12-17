@@ -151,7 +151,8 @@ class CodeCraftVecEnv(object):
                  randomize=False,
                  use_action_masks=True,
                  obs_config=DEFAULT_OBS_CONFIG,
-                 hardness=0):
+                 hardness=0,
+                 symmetric=False):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -166,6 +167,7 @@ class CodeCraftVecEnv(object):
         self.use_action_masks = use_action_masks
         self.obs_config = obs_config
         self.hardness = hardness
+        self.symmetric = symmetric
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -380,9 +382,11 @@ class CodeCraftVecEnv(object):
 
     def next_map(self):
         if self.fair:
-            return self.fair_map()
+            map = self.fair_map()
         else:
-            return self.custom_map(self.randomize, self.hardness)
+            map = self.custom_map(self.randomize, self.hardness)
+        map['symmetric'] = self.symmetric
+        return map
 
     def fair_map(self):
         if self.last_map is None:

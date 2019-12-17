@@ -13,7 +13,8 @@ from gym_codecraft import envs
 @click.option('--randomize/--no-randomize', default=False)
 @click.option('--hardness', default=0)
 @click.option('--num_envs', default=4)
-def showmatch(model1_path, model2_path, task, randomize, hardness, num_envs):
+@click.option('--symmetric/--no-symmetric', default=True)
+def showmatch(model1_path, model2_path, task, randomize, hardness, num_envs, symmetric):
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -32,6 +33,7 @@ def showmatch(model1_path, model2_path, task, randomize, hardness, num_envs):
         printerval=100,
         randomize=randomize,
         hardness=hardness,
+        symmetric=symmetric,
     )
 
 

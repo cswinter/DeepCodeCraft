@@ -63,6 +63,7 @@ class HyperParams:
         self.use_action_masks = True
         self.task_hardness = 0
         self.task_randomize = True
+        self.symmetric_map = False
 
 
     @staticmethod

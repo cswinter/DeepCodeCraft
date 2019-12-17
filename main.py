@@ -68,7 +68,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                hps.action_delay,
                                randomize=hps.task_randomize,
                                use_action_masks=hps.use_action_masks,
-                               obs_config=obs_config)
+                               obs_config=obs_config,
+                               symmetric=hps.symmetric_map)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -340,7 +341,8 @@ def eval(policy,
          opponents=None,
          printerval=None,
          randomize=False,
-         hardness=10):
+         hardness=10,
+         symmetric=True):
     if printerval is None:
         printerval = eval_steps
 
@@ -368,11 +370,12 @@ def eval(policy,
                                objective,
                                action_delay=0,
                                stagger=False,
-                               fair=True,
+                               fair=not symmetric,
                                use_action_masks=True,
                                obs_config=policy.obs_config,
                                randomize=randomize,
-                               hardness=hardness)
+                               hardness=hardness,
+                               symmetric=symmetric)
 
     scores = []
     scores_by_opp = defaultdict(list)
