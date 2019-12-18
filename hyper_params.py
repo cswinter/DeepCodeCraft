@@ -106,7 +106,7 @@ class HyperParams:
         hps.shuffle = True
         hps.small_init_pi = False
         hps.steps = 25e6
-        hps.symmetric = True
+        hps.symmetric_map = True
         hps.task_hardness = 0
         hps.use_action_masks = True
         hps.use_privileged = False
