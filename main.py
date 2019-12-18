@@ -62,14 +62,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
                            drones=hps.obs_drones,
                            minerals=hps.obs_minerals,
                            global_drones=hps.obs_global_drones)
-    env = envs.CodeCraftVecEnv(hps.num_envs,
-                               hps.num_self_play,
-                               hps.objective,
-                               hps.action_delay,
-                               randomize=hps.task_randomize,
-                               use_action_masks=hps.use_action_masks,
-                               obs_config=obs_config,
-                               symmetric=hps.symmetric_map)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -129,11 +121,29 @@ def train(hps: HyperParams, out_dir: str) -> None:
     total_steps = resume_steps
     next_eval = total_steps
     epoch = 0
-    obs, action_masks, privileged_obs = env.reset()
     eprewmean = 0
     eplenmean = 0
     completed_episodes = 0
+    env = None
+    num_self_play_schedule = hps.get_num_self_play_schedule()
     while total_steps < hps.steps + resume_steps:
+        if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
+            _, num_self_play = num_self_play_schedule.pop()
+            hps.num_self_play = num_self_play
+            if env is not None:
+                env.close()
+                env = None
+        if env is None:
+            env = envs.CodeCraftVecEnv(hps.num_envs,
+                                       hps.num_self_play,
+                                       hps.objective,
+                                       hps.action_delay,
+                                       randomize=hps.task_randomize,
+                                       use_action_masks=hps.use_action_masks,
+                                       obs_config=obs_config,
+                                       symmetric=hps.symmetric_map)
+            obs, action_masks, privileged_obs = env.reset()
+
         if total_steps >= next_eval and hps.eval_envs > 0:
             eval(policy=policy,
                  num_envs=hps.eval_envs,

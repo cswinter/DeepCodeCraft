@@ -46,6 +46,7 @@ class HyperParams:
         self.steps = 10e6           # Total number of timesteps
         self.num_envs = 64          # Number of environments
         self.num_self_play = 32     # Number of self-play environments (each provides two environments)
+        self.num_self_play_schedule = ''
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.gamma = 0.99           # Discount factor
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
@@ -70,7 +71,8 @@ class HyperParams:
     def arena_medium():
         hps = HyperParams()
         hps.action_delay = 0
-        hps.bs = 2048
+        hps.batches_per_update = 2
+        hps.bs = 1024
         hps.clip_vf = True
         hps.cliprange = 0.2
         hps.dconv_pooling = 'both'
@@ -81,7 +83,7 @@ class HyperParams:
         hps.fp16 = False
         hps.gamma = 0.99
         hps.lamb = 0.95
-        hps.lr = 0.0001
+        hps.lr = 0.0003
         hps.lr_ratios = 1.0
         hps.max_grad_norm = 20.0
         hps.mconv_pooling = 'max'
@@ -93,7 +95,7 @@ class HyperParams:
         hps.objective = envs.Objective.ARENA_MEDIUM
         hps.obs_allies = 4
         hps.obs_drones = 4
-        hps.obs_global_drones = 0
+        hps.obs_global_drones = 10
         hps.obs_minerals = 4
         hps.optimizer = 'Adam'
         hps.ppo = True
@@ -104,6 +106,7 @@ class HyperParams:
         hps.shuffle = True
         hps.small_init_pi = False
         hps.steps = 25e6
+        hps.symmetric = True
         hps.task_hardness = 0
         hps.use_action_masks = True
         hps.use_privileged = False
@@ -195,6 +198,16 @@ class HyperParams:
         hps.zero_init_vf = True
 
         return hps
+
+    def get_num_self_play_schedule(self):
+        if self.num_self_play_schedule == '':
+            return []
+        else:
+            items = []
+            for kv in self.num_self_play_schedule.split(","):
+                [k, v] = kv.split(":")
+                items.append((float(k), int(v)))
+            return list(reversed(items))
 
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
