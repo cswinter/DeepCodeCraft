@@ -193,7 +193,7 @@ class Policy(nn.Module):
         else:
             value_loss = vanilla_value_loss.mean()
 
-        entropy_loss = hps.entropy_bonus * entropy.mean()
+        entropy_loss = -hps.entropy_bonus * entropy.mean()
 
         loss = policy_loss + value_loss_scale * value_loss + entropy_loss
         loss /= hps.batches_per_update
