@@ -136,8 +136,7 @@ class Policy(nn.Module):
         probs = probs * action_masks + 1e-8  # Add small value to prevent crash when no action is possible
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
-        # TODO: correct for action masking?
-        entropy = action_dist.entropy().mean(dim=1)
+        entropy = action_dist.entropy()[action_masks.sum(2) != 0]
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
 
     def backprop(self,

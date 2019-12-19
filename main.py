@@ -294,6 +294,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         total_steps += hps.rosteps
         throughput = int(hps.rosteps / (time.time() - episode_start))
 
+        all_agent_masks = all_action_masks.sum(2) != 0
         metrics = {
             'loss': policy_loss_sum / num_minibatches,
             'value_loss': value_loss_sum / num_minibatches,
@@ -310,7 +311,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'meanval': all_values.mean(),
             'returns': wandb.Histogram(all_returns),
             'meanret': all_returns.mean(),
-            'actions': wandb.Histogram(np.array(all_actions)),
+            'actions': wandb.Histogram(np.array(all_actions[all_agent_masks])),
             'observations': wandb.Histogram(np.array(all_obs)),
             'obs_max': all_obs.max(),
             'obs_min': all_obs.min(),
