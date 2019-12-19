@@ -91,7 +91,8 @@ class HyperParams:
         hps.norm = 'layernorm'
         hps.norm_advs = True
         hps.num_envs = 64
-        hps.num_self_play = 32
+        hps.num_self_play = 24
+        hps.num_self_play_schedule = '3e6:32'
         hps.objective = envs.Objective.ARENA_MEDIUM
         hps.obs_allies = 4
         hps.obs_drones = 4
