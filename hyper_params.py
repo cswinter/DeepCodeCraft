@@ -13,6 +13,7 @@ class HyperParams:
         self.batches_per_update = 1 # Accumulate gradients over this many batches before applying gradients
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 1.0          # Weighting of value function loss in optimization objective
+        self.entropy_bonus = 0.0    # Weighting of  entropy bonus in loss function
         self.max_grad_norm = 20.0   # Maximum gradient norm for gradient clipping
         self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers

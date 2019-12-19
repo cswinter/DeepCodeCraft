@@ -164,7 +164,9 @@ class Policy(nn.Module):
         # gradients still get blocked by the action mask
         probs = probs * action_masks + 1e-8
 
-        logprobs = distributions.Categorical(probs).log_prob(actions)
+        dist = distributions.Categorical(probs)
+        entropy = dist.entropy()
+        logprobs = dist.log_prob(actions)
         ratios = torch.exp(logprobs - old_logprobs)
         advantages = advantages.view(-1, 1)
         vanilla_policy_loss = advantages * ratios
@@ -192,7 +194,9 @@ class Policy(nn.Module):
         else:
             value_loss = vanilla_value_loss.mean()
 
-        loss = policy_loss + value_loss_scale * value_loss
+        entropy_loss = hps.entropy_bonus * entropy.mean()
+
+        loss = policy_loss + value_loss_scale * value_loss + entropy_loss
         loss /= hps.batches_per_update
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
