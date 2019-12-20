@@ -133,7 +133,7 @@ class TransformerPolicy(nn.Module):
         x, x_privileged = self.latents(obs, privileged_obs)
         x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
         print(x.size())
-        values = self.value_head(x)
+        values = self.value_head(x).view(-1)
         # TODO
         #if self.use_privileged:
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
@@ -188,7 +188,7 @@ class TransformerPolicy(nn.Module):
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
         #else:
         #    vin = pooled.view(batch_size, -1)
-        values = self.value_head(x)
+        values = self.value_head(x).view(-1)
 
         logits = self.policy_head(x)
         probs = F.softmax(logits, dim=1)
