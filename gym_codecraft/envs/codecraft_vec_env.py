@@ -385,7 +385,8 @@ class CodeCraftVecEnv(object):
             map = self.fair_map()
         else:
             map = self.custom_map(self.randomize, self.hardness)
-        map['symmetric'] = self.symmetric
+        if map:
+            map['symmetric'] = self.symmetric
         return map
 
     def fair_map(self):

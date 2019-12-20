@@ -20,7 +20,7 @@ class HyperParams:
         # TODO: weak evidence this might help, enables higher lr
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
 
-        # Policy
+        # Policy (simple)
         self.depth = 4              # Number of hidden layers
         self.resblocks = 1          # Number of initial residual conv blocks
         self.width = 2048           # Number of activations on each hidden layer
@@ -36,6 +36,13 @@ class HyperParams:
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
         self.dconv_pooling = 'both' # Pooling layer after drone convolutions ('max', 'avg' or 'both')
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
+
+        # Policy (transformer)
+        self.d_model = 512
+        self.nhead = 8
+        self.dim_feedforward = 2048
+        self.transformer_layers = 2
+        self.dropout = 0.0 # Try 0.1?
 
         # Eval
         self.eval_envs = 256
@@ -56,8 +63,6 @@ class HyperParams:
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
         self.clip_vf = True         # Use clipped value function objective
-
-        self.rosteps = self.num_envs * self.seq_rosteps
 
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2
@@ -184,6 +189,7 @@ class HyperParams:
         hps.norm_advs = True
         hps.num_envs = 64
         hps.num_self_play = 0
+        hps.objective = envs.Objective.ALLIED_WEALTH
         hps.obs_allies = 1
         hps.obs_drones = 0
         hps.obs_global_drones = 0
@@ -200,6 +206,10 @@ class HyperParams:
         hps.zero_init_vf = True
 
         return hps
+
+    @property
+    def rosteps(self):
+        return self.num_envs * self.seq_rosteps
 
     def get_num_self_play_schedule(self):
         if self.num_self_play_schedule == '':

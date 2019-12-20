@@ -14,6 +14,7 @@ import wandb
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
+from policy_t import TransformerPolicy
 from policy import Policy
 from policy_v1 import PolicyV1
 from policy_v2 import PolicyV2
@@ -82,25 +83,19 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = Policy(hps.depth,
-                        hps.width,
-                        hps.small_init_pi,
-                        hps.zero_init_vf,
-                        hps.fp16,
-                        resblocks=hps.resblocks,
-                        mpooling=hps.mconv_pooling,
-                        dpooling=hps.dconv_pooling,
-                        norm=hps.norm,
-                        obs_config=obs_config,
-                        use_privileged=hps.obs_global_drones > 0).to(device)
-        group0, group1, group2 = policy.param_groups()
-        optimizer = optimizer_fn([
-                {'params': group2},
-                {'params': group1, 'lr': hps.lr * hps.lr_ratios},
-                {'params': group0, 'lr': hps.lr * hps.lr_ratios * hps.lr_ratios},
-            ],
-            **optimizer_kwargs
-        )
+        policy = TransformerPolicy(
+            hps.transformer_layers,
+            hps.d_model,
+            hps.nhead,
+            hps.dim_feedforward,
+            hps.dropout,
+            hps.small_init_pi,
+            hps.zero_init_vf,
+            hps.fp16,
+            norm=hps.norm,
+            obs_config=obs_config,
+            use_privileged=hps.obs_global_drones > 0).to(device)
+        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
 
