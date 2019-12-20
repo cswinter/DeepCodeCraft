@@ -134,6 +134,9 @@ class TransformerPolicy(nn.Module):
         x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
         print(x.size())
         values = self.value_head(x)
+        print("values.size()", values.size())
+        print("old_values.size()", old_values.size())
+        print("returns.size()", returns.size())
         # TODO
         #if self.use_privileged:
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
