@@ -85,7 +85,7 @@ class TransformerPolicy(nn.Module):
             dim_feedforward=d_model * dim_feedforward_ratio,
             dropout=dropout,
         )
-        self.transformer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU()) # nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
 
         # TODO: just input final drone item?
         self.policy_head = nn.Linear(d_model * (self.minerals + self.allies), 8)
