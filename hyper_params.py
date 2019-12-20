@@ -40,7 +40,7 @@ class HyperParams:
         # Policy (transformer)
         self.d_model = 512
         self.nhead = 8
-        self.dim_feedforward = 2048
+        self.dim_feedforward_ratio = 4
         self.transformer_layers = 2
         self.dropout = 0.0 # Try 0.1?
 

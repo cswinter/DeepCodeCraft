@@ -12,7 +12,7 @@ class TransformerPolicy(nn.Module):
                  transformer_layers,
                  d_model,
                  nhead,
-                 dim_feedforward,
+                 dim_feedforward_ratio,
                  dropout,
                  small_init_pi,
                  zero_init_vf,
@@ -30,7 +30,7 @@ class TransformerPolicy(nn.Module):
             transformer_layers=transformer_layers,
             d_model=d_model,
             nhead=nhead,
-            dim_feedforward=dim_feedforward,
+            dim_feedforward_ratio=dim_feedforward_ratio,
             dropout=dropout,
             small_init_pi=small_init_pi,
             zero_init_vf=zero_init_vf,
@@ -52,7 +52,7 @@ class TransformerPolicy(nn.Module):
         self.transformer_layers = transformer_layers
         self.d_model = d_model
         self.nhead = nhead
-        self.dim_feedforward = dim_feedforward
+        self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
 
         self.fp16 = fp16
@@ -82,10 +82,10 @@ class TransformerPolicy(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
-            dim_feedforward=dim_feedforward,
+            dim_feedforward=d_model * dim_feedforward_ratio,
             dropout=dropout,
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
+        self.transformer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU()) # nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
 
         # TODO: just input final drone item?
         self.policy_head = nn.Linear(d_model * (self.minerals + self.allies), 8)
@@ -215,12 +215,12 @@ class TransformerPolicy(nn.Module):
         batch_size = x.size()[0]
         # global features and properties of the drone controlled by this network
         xd = x[:, :endallies].view(batch_size, self.allies, DSTRIDE + GLOBAL_FEATURES)
-        xd = self.drone_embedding(xd)
+        xd = self.drone_norm(F.relu(self.drone_embedding(xd)))
 
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.minerals, MSTRIDE)
-            xm = self.mineral_embedding(xm)
+            xm = self.mineral_norm(F.relu(self.mineral_embedding(xm)))
             x = torch.cat((xd, xm), dim=1)
 
         # TODO: self.use_privileged

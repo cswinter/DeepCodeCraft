@@ -87,7 +87,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hps.transformer_layers,
             hps.d_model,
             hps.nhead,
-            hps.dim_feedforward,
+            hps.dim_feedforward_ratio,
             hps.dropout,
             hps.small_init_pi,
             hps.zero_init_vf,
