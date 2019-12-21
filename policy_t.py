@@ -14,6 +14,7 @@ class TransformerPolicy(nn.Module):
                  nhead,
                  dim_feedforward_ratio,
                  dropout,
+                 disable_transformer,
                  small_init_pi,
                  zero_init_vf,
                  fp16,
@@ -54,6 +55,7 @@ class TransformerPolicy(nn.Module):
         self.nhead = nhead
         self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
+        self.disable_transformer = disable_transformer
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -237,7 +239,8 @@ class TransformerPolicy(nn.Module):
         else:
             x_privileged = None
 
-        x = self.transformer(x)
+        if not self.disable_transformer:
+            x = self.transformer(x)
 
         return x, x_privileged
 
