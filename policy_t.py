@@ -67,26 +67,20 @@ class TransformerPolicy(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.drone_embedding = nn.Sequential(
-            nn.Linear(DSTRIDE + GLOBAL_FEATURES, d_model),
-            nn.ReLU(),
-            norm_fn(d_model),
-
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            norm_fn(d_model),
+        self.drone_embedding = ItemEmbedding(
+            DSTRIDE + GLOBAL_FEATURES,
+            d_model,
+            d_model * dim_feedforward_ratio,
+            norm_fn,
         )
         # TODO: other drones
 
         if self.minerals > 0:
-            self.mineral_embedding = nn.Sequential(
-                nn.Linear(MSTRIDE, d_model),
-                nn.ReLU(),
-                norm_fn(d_model),
-
-                nn.Linear(d_model, d_model),
-                nn.ReLU(),
-                norm_fn(d_model),
+            self.mineral_embedding = ItemEmbedding(
+                MSTRIDE,
+                d_model,
+                d_model * dim_feedforward_ratio,
+                norm_fn,
             )
 
         if use_privileged:
@@ -250,3 +244,26 @@ class TransformerPolicy(nn.Module):
     def param_groups(self):
         # TODO?
         pass
+
+
+class ItemEmbedding(nn.Module):
+    def __init__(self, d_in, d_model, d_ff, norm_fn):
+        super(ItemEmbedding, self).__init__()
+
+        self.linear_0 = nn.Linear(d_in, d_model)
+        self.norm_0 = norm_fn(d_model)
+
+        self.linear_1 = nn.Linear(d_model, d_ff)
+        self.linear_2 = nn.Linear(d_ff, d_model)
+        self.norm_2 = norm_fn(d_model)
+
+        # self.linear_2.weight.data.fill_(0.0)
+        # self.linear_2.bias.data.fill_(0.0)
+
+    def forward(self, x):
+        x = self.norm_0(F.relu(self.linear_0(x)))
+
+        x2 = F.relu(self.linear_1(x))
+        x = x + F.relu(self.linear_2(x2))
+        x = self.norm_2(x)
+        return x
