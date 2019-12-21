@@ -36,7 +36,6 @@ class HyperParams:
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
         self.dconv_pooling = 'both' # Pooling layer after drone convolutions ('max', 'avg' or 'both')
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
-        self.disable_transformer = False
 
         # Policy (transformer)
         self.d_model = 512

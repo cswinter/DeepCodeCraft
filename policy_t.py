@@ -14,7 +14,6 @@ class TransformerPolicy(nn.Module):
                  nhead,
                  dim_feedforward_ratio,
                  dropout,
-                 disable_transformer,
                  small_init_pi,
                  zero_init_vf,
                  fp16,
@@ -55,7 +54,6 @@ class TransformerPolicy(nn.Module):
         self.nhead = nhead
         self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
-        self.disable_transformer = disable_transformer
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -89,21 +87,24 @@ class TransformerPolicy(nn.Module):
             # TODO
             pass
 
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=d_model * dim_feedforward_ratio,
-            dropout=dropout,
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
+        if self.transformer_layers > 0:
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=d_model * dim_feedforward_ratio,
+                dropout=dropout,
+            )
+            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
+
+        self.final_layer = nn.Linear(d_model * (self.minerals + self.allies), d_model * dim_feedforward_ratio)
 
         # TODO: just input final drone item?
-        self.policy_head = nn.Linear(d_model * (self.minerals + self.allies), 8)
+        self.policy_head = nn.Linear(d_model * dim_feedforward_ratio, 8)
         if small_init_pi:
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
-        self.value_head = nn.Linear(d_model * (self.minerals + self.allies), 1)
+        self.value_head = nn.Linear(d_model * dim_feedforward_ratio, 1)
         if zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
@@ -138,11 +139,8 @@ class TransformerPolicy(nn.Module):
             returns = returns.half()
 
         print(obs.size())
-        batch_size = obs.size()[0]
 
         x, x_privileged = self.latents(obs, privileged_obs)
-        x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
-        print(x.size())
         values = self.value_head(x).view(-1)
         # TODO
         #if self.use_privileged:
@@ -190,9 +188,7 @@ class TransformerPolicy(nn.Module):
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
     def forward(self, x, x_privileged):
-        batch_size = x.size()[0]
         x, x_privileged = self.latents(x, x_privileged)
-        x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
         # TODO
         #if self.use_privileged:
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
@@ -239,8 +235,11 @@ class TransformerPolicy(nn.Module):
         else:
             x_privileged = None
 
-        if not self.disable_transformer:
+        if self.transformer_layers > 0:
             x = self.transformer(x)
+
+        x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
+        x = F.relu(self.final_layer(x))
 
         return x, x_privileged
 
