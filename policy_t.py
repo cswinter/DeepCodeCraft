@@ -67,13 +67,27 @@ class TransformerPolicy(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.drone_embedding = nn.Linear(DSTRIDE + GLOBAL_FEATURES, d_model)
-        self.drone_norm = norm_fn(d_model)
+        self.drone_embedding = nn.Sequential(
+            nn.Linear(DSTRIDE + GLOBAL_FEATURES, d_model),
+            nn.ReLU(),
+            norm_fn(d_model),
+
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            norm_fn(d_model),
+        )
         # TODO: other drones
 
         if self.minerals > 0:
-            self.mineral_embedding = nn.Linear(MSTRIDE, d_model)
-            self.mineral_norm = norm_fn(d_model)
+            self.mineral_embedding = nn.Sequential(
+                nn.Linear(MSTRIDE, d_model),
+                nn.ReLU(),
+                norm_fn(d_model),
+
+                nn.Linear(d_model, d_model),
+                nn.ReLU(),
+                norm_fn(d_model),
+            )
 
         if use_privileged:
             # TODO
@@ -215,12 +229,12 @@ class TransformerPolicy(nn.Module):
         batch_size = x.size()[0]
         # global features and properties of the drone controlled by this network
         xd = x[:, :endallies].view(batch_size, self.allies, DSTRIDE + GLOBAL_FEATURES)
-        xd = self.drone_norm(F.relu(self.drone_embedding(xd)))
+        xd = F.relu(self.drone_embedding(xd))
 
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.minerals, MSTRIDE)
-            xm = self.mineral_norm(F.relu(self.mineral_embedding(xm)))
+            xm = self.mineral_embedding(xm)
             x = torch.cat((xd, xm), dim=1)
 
         # TODO: self.use_privileged
