@@ -96,7 +96,7 @@ class TransformerPolicy(nn.Module):
             )
             self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers, norm=None)
 
-        self.final_layer = nn.Linear(d_model * (self.minerals + self.allies), d_model * dim_feedforward_ratio)
+        self.final_layer = nn.Linear(d_model, d_model * dim_feedforward_ratio)
 
         # TODO: just input final drone item?
         self.policy_head = nn.Linear(d_model * dim_feedforward_ratio, 8)
@@ -238,8 +238,9 @@ class TransformerPolicy(nn.Module):
         if self.transformer_layers > 0:
             x = self.transformer(x)
 
-        x = x.view(batch_size, (self.allies + self.minerals) * self.d_model)
+        x = x[:, :self.allies, :]
         x = F.relu(self.final_layer(x))
+        x = x.view(batch_size, self.allies * self.d_model * self.dim_feedforward_ratio)
 
         return x, x_privileged
 
