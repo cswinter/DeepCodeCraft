@@ -235,8 +235,11 @@ class TransformerPolicy(nn.Module):
         else:
             x_privileged = None
 
+        # Transformer input dimensions are: Sequence length, Batch size, Embedding size
+        x = x.permute(1, 0, 2)
         if self.transformer_layers > 0:
             x = self.transformer(x)
+        x = x.permute(1, 0, 2)
 
         x = x[:, :self.allies, :]
         x = F.relu(self.final_layer(x))
