@@ -13,6 +13,7 @@ class ObsConfig:
     drones: int
     minerals: int
     global_drones: int = 0
+    relative_positions: bool = True
 
 
 GLOBAL_FEATURES = 1
@@ -270,7 +271,8 @@ class CodeCraftVecEnv(object):
                                           allies=obs_config.allies,
                                           drones=obs_config.drones,
                                           minerals=obs_config.minerals,
-                                          global_drones=obs_config.global_drones)
+                                          global_drones=obs_config.global_drones,
+                                          relative_positions=obs_config.relative_positions)
         stride = obs_config.allies * (GLOBAL_FEATURES +
                                            DSTRIDE +
                                            obs_config.minerals * MSTRIDE +

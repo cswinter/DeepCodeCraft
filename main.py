@@ -59,10 +59,13 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     next_model_save = hps.model_save_frequency
 
-    obs_config = ObsConfig(allies=hps.obs_allies,
-                           drones=hps.obs_drones,
-                           minerals=hps.obs_minerals,
-                           global_drones=hps.obs_global_drones)
+    obs_config = ObsConfig(
+        allies=hps.obs_allies,
+        drones=hps.obs_drones,
+        minerals=hps.obs_minerals,
+        global_drones=hps.obs_global_drones,
+        relative_positions=hps.obs_relative_positions,
+    )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:

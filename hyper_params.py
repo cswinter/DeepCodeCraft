@@ -28,11 +28,6 @@ class HyperParams:
         self.zero_init_vf = True    # Set all initial weights for value function head to zero
         self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
         self.resume_from = ''       # Filepath to saved policy
-        self.obs_allies = 2         # Max number of controllable allies per player
-        self.obs_drones = 4         # Max number of drones observed by each drone
-        self.obs_minerals = 0       # Max number of minerals observed by each drone
-        self.obs_global_drones = 0  # Max number of (possibly hidden) drones observed by value function
-        self.use_privileged = False # Whether value function has access to hidden information
         self.mconv_pooling = 'max'  # Pooling layer after mineral convolutions ('max', 'avg' or 'both')
         self.dconv_pooling = 'both' # Pooling layer after drone convolutions ('max', 'avg' or 'both')
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
@@ -43,6 +38,14 @@ class HyperParams:
         self.dim_feedforward_ratio = 4
         self.transformer_layers = 2
         self.dropout = 0.0 # Try 0.1?
+
+        # Observations
+        self.obs_allies = 2         # Max number of controllable allies per player
+        self.obs_drones = 4         # Max number of drones observed by each drone
+        self.obs_minerals = 0       # Max number of minerals observed by each drone
+        self.obs_global_drones = 0  # Max number of (possibly hidden) drones observed by value function
+        self.obs_relative_positions = True # Create copy of observations for each controllable drone with all positions relative to that drone
+        self.use_privileged = False # Whether value function has access to hidden information
 
         # Eval
         self.eval_envs = 256
@@ -177,13 +180,13 @@ class HyperParams:
     def allied_wealth():
         hps = HyperParams()
         hps.clip_vf = True
-        hps.depth = 4
+        hps.d_model = 512
+        hps.dim_feedforward_ratio = 2
         hps.eval_envs = 0
         hps.gamma = 0.99
         hps.lamb = 0.95
-        hps.lr = 0.00003
+        hps.lr = 0.0003
         hps.max_grad_norm = 20.0
-        hps.mconv_pooling = 'max'
         hps.momentum = 0.9
         hps.norm = 'layernorm'
         hps.norm_advs = True
@@ -195,14 +198,13 @@ class HyperParams:
         hps.obs_global_drones = 0
         hps.obs_minerals = 10
         hps.optimizer = 'Adam'
-        hps.resblocks = 1
         hps.sample_reuse = 2
         hps.small_init_pi = False
+        hps.transformer_layers = 1
         hps.use_action_masks = True
         hps.use_privileged = False
         hps.vf_coef = 1.0
         hps.weight_decay = 0.0001
-        hps.width = 2048
         hps.zero_init_vf = True
 
         return hps

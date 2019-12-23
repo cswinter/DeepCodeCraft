@@ -115,10 +115,8 @@ class TransformerPolicy(nn.Module):
         probs, v = self.forward(observation, privileged_obs)
         probs = probs.view(-1, 1, 8)
         probs = probs * action_masks + 1e-8  # Add small value to prevent crash when no action is possible
-        print(f"probs: {probs.size()}")
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
-        print(f"es: {action_dist.entropy().size()} am: {action_masks.size()} ams: {action_masks.sum(1).size()}")
         entropy = action_dist.entropy()[action_masks.sum(2) != 0]
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
 
@@ -137,8 +135,6 @@ class TransformerPolicy(nn.Module):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
-
-        print(obs.size())
 
         x, x_privileged = self.latents(obs, privileged_obs)
         values = self.value_head(x).view(-1)
@@ -198,7 +194,6 @@ class TransformerPolicy(nn.Module):
 
         logits = self.policy_head(x)
         probs = F.softmax(logits, dim=1)
-        print(f"x: {x.size()} logits: {logits.size()} probs: {probs.size()}")
 
         # return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
         return probs, values
