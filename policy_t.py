@@ -216,12 +216,15 @@ class TransformerPolicy(nn.Module):
         batch_size = x.size()[0]
         # global features and properties of the drone controlled by this network
         xd = x[:, :endallies].view(batch_size, self.allies, DSTRIDE + GLOBAL_FEATURES)
+        mask = xd[:, :, GLOBAL_FEATURES + 7] == 0 # Position 7 is hitpoints
         xd = F.relu(self.drone_embedding(xd))
 
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.minerals, MSTRIDE)
+            mineral_mask = xm[:, :, 3] == 0
             xm = self.mineral_embedding(xm)
+            mask = torch.cat((mask, mineral_mask), dim = 1)
             x = torch.cat((xd, xm), dim=1)
 
         # TODO: self.use_privileged
@@ -233,7 +236,7 @@ class TransformerPolicy(nn.Module):
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
         x = x.permute(1, 0, 2)
         if self.transformer_layers > 0:
-            x = self.transformer(x)
+            x = self.transformer(x, src_key_padding_mask=mask)
         x = x.permute(1, 0, 2)
 
         x = x[:, :self.allies, :]
