@@ -538,6 +538,7 @@ def explained_variance(ypred,y):
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    torch.set_printoptions(threshold=25000)
 
     hps = HyperParams()
     args_parser = hps.args_parser()
@@ -550,8 +551,12 @@ def main():
         hps = HyperParams.allied_wealth()
     elif args.hpset == 'arena_tiny':
         hps = HyperParams.arena_tiny()
+    elif args.hpset == 'arena_tiny_2v2':
+        hps = HyperParams.arena_tiny_2v2()
     elif args.hpset == 'arena_medium':
         hps = HyperParams.arena_medium()
+    elif args.hpset != '':
+        raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)

@@ -6,7 +6,7 @@ class HyperParams:
     def __init__(self):
         # Optimizer
         self.optimizer = 'Adam'  # Optimizer ("SGD" or "RMSProp" or "Adam")
-        self.lr = 0.00003           # Learning rate
+        self.lr = 0.0003            # Learning rate
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
         self.bs = 2048              # Batch size during optimization
@@ -125,6 +125,27 @@ class HyperParams:
         hps.weight_decay = 0.0001
         hps.width = 2048
         hps.zero_init_vf = True
+
+        return hps
+
+    @staticmethod
+    def arena_tiny_2v2():
+        hps = HyperParams()
+        hps.objective = envs.Objective.ARENA_TINY_2V2
+
+        hps.d_model = 512
+        hps.nhead = 8
+        hps.dim_feedforward_ratio = 2
+        hps.transformer_layers = 1
+
+        hps.obs_allies = 2
+        hps.obs_drones = 3
+        hps.obs_minerals = 0
+
+        hps.eval_envs = 256
+        hps.eval_timesteps = 360
+        hps.eval_frequency = 1e5
+        hps.model_save_frequency = 10
 
         return hps
 

@@ -67,13 +67,19 @@ class TransformerPolicy(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.drone_embedding = ItemEmbedding(
+        self.self_embedding = ItemEmbedding(
             DSTRIDE + GLOBAL_FEATURES,
             d_model,
             d_model * dim_feedforward_ratio,
             norm_fn,
         )
-        # TODO: other drones
+        # TODO: same embedding for self and other drones?
+        self.drone_embedding = ItemEmbedding(
+            DSTRIDE,
+            d_model,
+            d_model * dim_feedforward_ratio,
+            norm_fn,
+        )
 
         if self.minerals > 0:
             self.mineral_embedding = ItemEmbedding(
@@ -113,7 +119,7 @@ class TransformerPolicy(nn.Module):
         if self.fp16:
             action_masks = action_masks.half()
         probs, v = self.forward(observation, privileged_obs)
-        probs = probs.view(-1, 1, 8)
+        probs = probs.view(-1, self.allies, 8)
         probs = probs * action_masks + 1e-8  # Add small value to prevent crash when no action is possible
         action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
@@ -137,15 +143,16 @@ class TransformerPolicy(nn.Module):
             returns = returns.half()
 
         x, x_privileged = self.latents(obs, privileged_obs)
-        values = self.value_head(x).view(-1)
+        vin = F.max_pool2d(x, kernel_size=(self.allies, 1))
+        values = self.value_head(vin).view(-1)
         # TODO
         #if self.use_privileged:
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
         #else:
         #    vin = pooled.view(batch_size, -1)
         logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=1)
-        probs = probs.view(-1, 1, 8)
+        probs = F.softmax(logits, dim=2)
+        probs = probs.view(-1, self.allies, 8)
 
         # add small value to prevent degenerate probability distribution when no action is possible
         # gradients still get blocked by the action mask
@@ -184,16 +191,18 @@ class TransformerPolicy(nn.Module):
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
     def forward(self, x, x_privileged):
+        batch_size = x.size()[0]
         x, x_privileged = self.latents(x, x_privileged)
         # TODO
         #if self.use_privileged:
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
         #else:
         #    vin = pooled.view(batch_size, -1)
-        values = self.value_head(x).view(-1)
+        vin = F.max_pool2d(x, kernel_size=(self.allies, 1))
+        values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=1)
+        probs = F.softmax(logits, dim=2)
 
         # return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
         return probs, values
@@ -215,17 +224,30 @@ class TransformerPolicy(nn.Module):
 
         batch_size = x.size()[0]
         # global features and properties of the drone controlled by this network
-        xd = x[:, :endallies].view(batch_size, self.allies, DSTRIDE + GLOBAL_FEATURES)
-        mask = xd[:, :, GLOBAL_FEATURES + 7] == 0 # Position 7 is hitpoints
-        xd = F.relu(self.drone_embedding(xd))
+        xs = x[:, :endallies].view(batch_size, self.allies, 1, DSTRIDE + GLOBAL_FEATURES)
+        # Ensures that at least one mask element is present, otherwise we get NaN in attention softmax
+        # If the ally is nonexistant, it's output will be ignored anyway
+        # Derive from original tensor to keep on device
+        mask = (xs[:, :, :, GLOBAL_FEATURES + 7] * 0 != 0).view(batch_size, self.allies, 1) # Position 7 is hitpoints
+        x_emb = self.self_embedding(xs)
 
         if self.minerals > 0:
             # properties of closest minerals
-            xm = x[:, endallies:endmins].view(batch_size, self.minerals, MSTRIDE)
-            mineral_mask = xm[:, :, 3] == 0
+            xm = x[:, endallies:endmins].view(batch_size, self.allies, self.minerals, MSTRIDE)
+            mineral_mask = (xm[:, :, :, 3] == 0).view(batch_size, self.allies, self.minerals)
             xm = self.mineral_embedding(xm)
-            mask = torch.cat((mask, mineral_mask), dim = 1)
-            x = torch.cat((xd, xm), dim=1)
+            mask = torch.cat((mask, mineral_mask), dim=2)
+            x_emb = torch.cat((x_emb, xm), dim=2)
+
+        if self.drones > 0:
+            # properties of closest minerals
+            xd = x[:, endmins:enddrones].view(batch_size, self.allies, self.drones, DSTRIDE)
+            drone_mask = (xd[:, :, :, 7] == 0).view(batch_size, self.allies, self.drones) # Position 7 is hitpoints
+            xd = self.drone_embedding(xd)
+            mask = torch.cat((mask, drone_mask), dim=2)
+            x_emb = torch.cat((x_emb, xd), dim=2)
+
+        mask = mask.view(batch_size * self.allies, 1 + self.minerals + self.drones)
 
         # TODO: self.use_privileged
         if self.use_privileged:
@@ -234,14 +256,14 @@ class TransformerPolicy(nn.Module):
             x_privileged = None
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        x = x.permute(1, 0, 2)
+        x = x_emb.view(batch_size * self.allies, 1 + self.minerals + self.drones, self.d_model).permute(1, 0, 2)
         if self.transformer_layers > 0:
             x = self.transformer(x, src_key_padding_mask=mask)
         x = x.permute(1, 0, 2)
 
-        x = x[:, :self.allies, :]
+        x = x[:, 0, :]
         x = F.relu(self.final_layer(x))
-        x = x.view(batch_size, self.allies * self.d_model * self.dim_feedforward_ratio)
+        x = x.view(batch_size, self.allies, self.d_model * self.dim_feedforward_ratio)
 
         return x, x_privileged
 
