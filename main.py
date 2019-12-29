@@ -496,6 +496,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = PolicyV2(**kwargs)
     elif version == 'v3':
         policy = Policy(**kwargs)
+    elif version == 'transformer_v1':
+        policy = TransformerPolicy(**kwargs)
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
