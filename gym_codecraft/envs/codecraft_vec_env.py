@@ -323,8 +323,8 @@ class CodeCraftVecEnv(object):
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
                 self.games[game] = (game_id, pid)
                 observation = codecraft.observe(game_id, pid)
-                # TODO
-                # obs[stride * i:stride * (i + 1)] = codecraft.observation_to_np(observation)
+                # TODO: use actual observation
+                obs[stride * i:stride * (i + 1)] = 0.0 # codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
                 infos.append({'episode': {
