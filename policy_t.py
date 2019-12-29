@@ -229,13 +229,14 @@ class TransformerPolicy(nn.Module):
         # If the ally is nonexistant, it's output will be ignored anyway
         # Derive from original tensor to keep on device
         mask = (xs[:, :, :, GLOBAL_FEATURES + 7] * 0 != 0).view(batch_size, self.allies, 1) # Position 7 is hitpoints
-        x_emb = self.self_embedding(xs)
+        actual_mask = (xs[:, :, :, GLOBAL_FEATURES + 7] == 0).view(batch_size, self.allies, 1)
+        x_emb = self.self_embedding(xs, ~actual_mask)
 
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.allies, self.minerals, MSTRIDE)
             mineral_mask = (xm[:, :, :, 3] == 0).view(batch_size, self.allies, self.minerals)
-            xm = self.mineral_embedding(xm)
+            xm = self.mineral_embedding(xm, ~mineral_mask)
             mask = torch.cat((mask, mineral_mask), dim=2)
             x_emb = torch.cat((x_emb, xm), dim=2)
 
@@ -243,7 +244,7 @@ class TransformerPolicy(nn.Module):
             # properties of closest minerals
             xd = x[:, endmins:enddrones].view(batch_size, self.allies, self.drones, DSTRIDE)
             drone_mask = (xd[:, :, :, 7] == 0).view(batch_size, self.allies, self.drones) # Position 7 is hitpoints
-            xd = self.drone_embedding(xd)
+            xd = self.drone_embedding(xd, ~drone_mask)
             mask = torch.cat((mask, drone_mask), dim=2)
             x_emb = torch.cat((x_emb, xd), dim=2)
 
@@ -272,10 +273,59 @@ class TransformerPolicy(nn.Module):
         pass
 
 
+# Computes a running mean/variance of input features and performs normalization.
+# https://www.johndcook.com/blog/standard_deviation/
+class Normalization(nn.Module):
+    def __init__(self, cliprange=5):
+        super(Normalization, self).__init__()
+
+        self.count = 0
+        self.mean = None
+        self.squares_sum = None
+        self.cliprange = cliprange
+
+    def update(self, input, mask):
+        features = input.size()[-1]
+        if mask is not None:
+            input = input[mask, :]
+        else:
+            input = input.reshape(-1, features)
+        count = input.numel() / features
+        if count == 0:
+            return
+        mean = input.mean(dim=0)
+        if self.mean is None:
+            self.count = count
+            self.mean = mean
+            self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
+        else:
+            self.count += count
+            new_mean = self.mean + (mean - self.mean) * count / self.count
+            # This is probably not quite right because it applies multiple updates simultaneously.
+            self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
+            self.mean = new_mean
+        print("Count", self.count)
+        print("Mean", self.mean)
+        print("Stddev", self.stddev())
+
+    def forward(self, input, mask=None):
+        with torch.no_grad():
+            if self.training:
+                self.update(input, mask=mask)
+            if self.mean is not None:
+                input = (input - self.mean) / (self.stddev() + 1e-8)
+            input = torch.clamp(input, -self.cliprange, self.cliprange)
+        return input
+
+    def stddev(self):
+        return torch.sqrt(self.squares_sum / (self.count - 1))
+
+
 class ItemEmbedding(nn.Module):
     def __init__(self, d_in, d_model, d_ff, norm_fn):
         super(ItemEmbedding, self).__init__()
 
+        self.normalize = Normalization()
         self.linear_0 = nn.Linear(d_in, d_model)
         self.norm_0 = norm_fn(d_model)
 
@@ -286,7 +336,9 @@ class ItemEmbedding(nn.Module):
         # self.linear_2.weight.data.fill_(0.0)
         # self.linear_2.bias.data.fill_(0.0)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
+        x = self.normalize(x, mask)
+
         x = self.norm_0(F.relu(self.linear_0(x)))
 
         x2 = F.relu(self.linear_1(x))
