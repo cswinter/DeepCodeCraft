@@ -324,6 +324,8 @@ class CodeCraftVecEnv(object):
                 self.games[game] = (game_id, pid)
                 observation = codecraft.observe(game_id, pid)
                 # TODO: use actual observation
+                if not obs.flags['WRITEABLE']:
+                    obs = obs.copy()
                 obs[stride * i:stride * (i + 1)] = 0.0 # codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
