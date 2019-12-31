@@ -276,13 +276,13 @@ class TransformerPolicy(nn.Module):
 # Computes a running mean/variance of input features and performs normalization.
 # https://www.johndcook.com/blog/standard_deviation/
 class Normalization(nn.Module):
-    def __init__(self, cliprange=5):
+    def __init__(self, num_features, cliprange=5):
         super(Normalization, self).__init__()
 
-        self.count = 0
-        self.mean = None
-        self.squares_sum = None
         self.cliprange = cliprange
+        self.register_buffer('count', torch.tensor(0))
+        self.register_buffer('mean', torch.zeros(num_features))
+        self.register_buffer('squares_sum', torch.zeros(num_features))
 
     def update(self, input, mask):
         features = input.size()[-1]
@@ -294,19 +294,15 @@ class Normalization(nn.Module):
         if count == 0:
             return
         mean = input.mean(dim=0)
-        if self.mean is None:
-            self.count = count
+        self.count += count
+        if self.count == 0:
             self.mean = mean
             self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
-            self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
             self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
             self.mean = new_mean
-        print("Count", self.count)
-        print("Mean", self.mean)
-        print("Stddev", self.stddev())
 
     def forward(self, input, mask=None):
         with torch.no_grad():
@@ -325,7 +321,7 @@ class ItemEmbedding(nn.Module):
     def __init__(self, d_in, d_model, d_ff, norm_fn):
         super(ItemEmbedding, self).__init__()
 
-        self.normalize = Normalization()
+        self.normalize = Normalization(d_in)
         self.linear_0 = nn.Linear(d_in, d_model)
         self.norm_0 = norm_fn(d_model)
 
