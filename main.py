@@ -498,6 +498,30 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = Policy(**kwargs)
     elif version == 'transformer_v1':
         policy = TransformerPolicy(**kwargs)
+        # This model didn't have the params on it's Normalize layer saved - need to backfill manually :(
+        if name.endswith("jumping-totem-100M.pt"):
+            policy.self_embedding.normalize.count = 382405392.0
+            policy.self_embedding.normalize.mean = torch.tensor(
+                [0.1220, -0.0122, -0.0332, -0.0351, -0.0493,  0.0661, -0.3715, -0.5018, 0.4990,  0.4910,
+                 0.2545,  0.4910,  0.0000,  0.0000, -0.8230,  1.0000],
+            ).to(device)
+            policy.self_embedding.normalize.stddev = lambda: torch.tensor(
+                [0.0890, 0.3567, 0.3637, 0.7138, 0.6977, 0.0892, 0.9284, 0.8650, 0.2667,
+                 0.4999, 0.2500, 0.4999, 0.0000, 0.0000, 0.5680, 0.0000]
+            ).to(device)
+            policy.mineral_embedding.normalize.count = 1465606824.0
+            policy.mineral_embedding.normalize.mean = torch.tensor([0.0146, 0.0236, 0.5068, 0.2037]).to(device)
+            policy.mineral_embedding.normalize.stddev = lambda: torch.tensor([0.4094, 0.4130, 0.2866, 0.1520]).to(device)
+            policy.drone_embedding.normalize.count = 889158346.0
+            policy.drone_embedding.normalize.mean = torch.tensor(
+                [-2.7168e-04, -1.1618e-02, -4.6683e-02, -2.0150e-02,  4.4679e-02,
+                 -5.9865e-01, -7.7697e-01,  3.7921e-01,  2.8120e-01,  3.5940e-01,
+                 2.8120e-01,  0.0000e+00,  0.0000e+00, -7.5037e-01,  1.2427e-01]
+            ).to(device)
+            policy.drone_embedding.normalize.stddev = lambda: torch.tensor(
+                [0.3811, 0.3875, 0.7165, 0.6957, 0.0831, 0.8010, 0.6295, 0.2315, 0.4496,
+                 0.2248, 0.4496, 0.0000, 0.0000, 0.6610, 0.9922]
+            ).to(device)
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
