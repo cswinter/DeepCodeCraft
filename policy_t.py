@@ -59,7 +59,7 @@ class TransformerPolicy(nn.Module):
         self.use_privileged = use_privileged
 
         if norm == 'none':
-            norm_fn = lambda x: None
+            norm_fn = lambda x: nn.Sequential()
         elif norm == 'batchnorm':
             norm_fn = lambda n: nn.BatchNorm2d(n)
         elif norm == 'layernorm':
