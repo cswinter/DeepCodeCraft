@@ -115,17 +115,13 @@ class TransformerPolicy(nn.Module):
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
 
-        self.epsilon = 1e-4 if fp16 else 1e-8
-
     def evaluate(self, observation, action_masks, privileged_obs):
         if self.fp16:
             action_masks = action_masks.half()
         probs, v = self.forward(observation, privileged_obs)
         probs = probs.view(-1, self.allies, 8)
-        probs = probs * action_masks + self.epsilon  # Add small value to prevent crash when no action is possible
-        # We get device-side assert when using fp16 here (needs more investigation)
-        # print(probs)
-        action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
+        probs = probs * action_masks + 1e-8  # Add small value to prevent crash when no action is possible
+        action_dist = distributions.Categorical(probs)
         actions = action_dist.sample()
         entropy = action_dist.entropy()[action_masks.sum(2) != 0]
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
@@ -145,8 +141,6 @@ class TransformerPolicy(nn.Module):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
-            action_masks = action_masks.half()
-            old_logprobs = old_logprobs.half()
 
         x, x_privileged = self.latents(obs, privileged_obs)
         vin = F.max_pool2d(x, kernel_size=(self.allies, 1))
@@ -163,7 +157,7 @@ class TransformerPolicy(nn.Module):
         # add small value to prevent degenerate probability distribution when no action is possible
         # gradients still get blocked by the action mask
         # TODO: mask actions by setting logits to -inf?
-        probs = probs * action_masks + self.epsilon
+        probs = probs * action_masks + 1e-8
 
         dist = distributions.Categorical(probs)
         entropy = dist.entropy()
@@ -219,7 +213,7 @@ class TransformerPolicy(nn.Module):
 
     def latents(self, x, x_privileged):
         if self.fp16:
-            # Normalization layers perform fp16 conversion for x after normalization
+            x = x.half()
             x_privileged = x_privileged.half()
 
         endallies = (DSTRIDE + GLOBAL_FEATURES) * self.allies
@@ -286,10 +280,9 @@ class Normalization(nn.Module):
         super(Normalization, self).__init__()
 
         self.cliprange = cliprange
-        self.register_buffer('count', torch.tensor(0))
-        self.register_buffer('mean', torch.zeros(num_features))
-        self.register_buffer('squares_sum', torch.zeros(num_features))
-        self.fp16 = False
+        self.count = 0
+        self.mean = None
+        self.squares_sum = None
 
     def update(self, input, mask):
         features = input.size()[-1]
@@ -301,12 +294,11 @@ class Normalization(nn.Module):
         if count == 0:
             return
         mean = input.mean(dim=0)
+        self.count += count
         if self.count == 0:
-            self.count += count
             self.mean = mean
             self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
-            self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
             self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
@@ -316,29 +308,13 @@ class Normalization(nn.Module):
         with torch.no_grad():
             if self.training:
                 self.update(input, mask=mask)
-            if self.count > 1:
-                input = (input - self.mean) / self.stddev()
+            if self.mean is not None:
+                input = (input - self.mean) / (self.stddev() + 1e-8)
             input = torch.clamp(input, -self.cliprange, self.cliprange)
-            if (input == float('-inf')).sum() > 0 \
-                    or (input == float('inf')).sum() > 0 \
-                    or (input != input).sum() > 0:
-                print(input)
-                print(self.squares_sum)
-                print(self.stddev())
-                print(input)
-                raise Exception("OVER/UNDERFLOW DETECTED!")
-
-        return input.half() if self.fp16 else input
-
-    def enable_fp16(self):
-        # Convert buffers back to fp32, fp16 has insufficient precision and runs into overflow on squares_sum
-        self.float()
-        self.fp16 = True
+        return input
 
     def stddev(self):
-        sd = torch.sqrt(self.squares_sum / (self.count - 1))
-        sd[sd == 0] = 1
-        return sd
+        return torch.sqrt(self.squares_sum / (self.count - 1))
 
 
 class ItemEmbedding(nn.Module):

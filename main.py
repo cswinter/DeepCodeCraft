@@ -14,7 +14,8 @@ import wandb
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
-from policy_t import TransformerPolicy
+from policy_t import TransformerPolicy, Normalization
+import policy_t_old
 from policy import Policy
 from policy_v1 import PolicyV1
 from policy_v2 import PolicyV2
@@ -113,6 +114,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     if hps.fp16:
         policy = policy.half()
+        for layer in policy.modules():
+            if isinstance(layer, Normalization):
+                layer.enable_fp16()
 
     wandb.watch(policy)
 
@@ -497,9 +501,9 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     elif version == 'v3':
         policy = Policy(**kwargs)
     elif version == 'transformer_v1':
-        policy = TransformerPolicy(**kwargs)
         # This model didn't have the params on it's Normalize layer saved - need to backfill manually :(
         if name.endswith("jumping-totem-100M.pt"):
+            policy = policy_t_old.TransformerPolicy(**kwargs)
             policy.self_embedding.normalize.count = 382405392.0
             policy.self_embedding.normalize.mean = torch.tensor(
                 [0.1220, -0.0122, -0.0332, -0.0351, -0.0493,  0.0661, -0.3715, -0.5018, 0.4990,  0.4910,
@@ -522,6 +526,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
                 [0.3811, 0.3875, 0.7165, 0.6957, 0.0831, 0.8010, 0.6295, 0.2315, 0.4496,
                  0.2248, 0.4496, 0.0000, 0.0000, 0.6610, 0.9922]
             ).to(device)
+        else:
+            policy = TransformerPolicy(**kwargs)
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
@@ -564,7 +570,7 @@ def explained_variance(ypred,y):
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    torch.set_printoptions(threshold=25000)
+    # torch.set_printoptions(threshold=25000)
 
     hps = HyperParams()
     args_parser = hps.args_parser()
