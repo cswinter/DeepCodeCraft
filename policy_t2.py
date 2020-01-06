@@ -376,14 +376,15 @@ class FFResblock(nn.Module):
 
         self.linear_1 = nn.Linear(d_model, d_ff)
         self.linear_2 = nn.Linear(d_ff, d_model)
-        self.norm = norm_fn(d_model)
+        self.norm1 = norm_fn(d_ff)
+        self.norm2 = norm_fn(d_model)
 
         # self.linear_2.weight.data.fill_(0.0)
         # self.linear_2.bias.data.fill_(0.0)
 
     def forward(self, x, mask=None):
-        x2 = F.relu(self.linear_1(x))
-        x = x + F.relu(self.linear_2(x2))
-        x = self.norm(x)
+        x2 = F.relu(self.norm1(self.linear_1(x)))
+        x2 = F.relu(self.norm2(self.linear_2(x2)))
+        x = x + x2
         return x
 
