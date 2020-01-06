@@ -14,7 +14,8 @@ import wandb
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
-from policy_t import TransformerPolicy, Normalization
+from policy_t import TransformerPolicy
+from policy_t2 import TransformerPolicy2, InputNorm
 import policy_t_old
 from policy import Policy
 from policy_v1 import PolicyV1
@@ -87,8 +88,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy(
-            hps.transformer_layers,
+        policy = TransformerPolicy2(
             hps.d_model,
             hps.nhead,
             hps.dim_feedforward_ratio,
@@ -115,7 +115,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.fp16:
         policy = policy.half()
         for layer in policy.modules():
-            if isinstance(layer, Normalization):
+            if isinstance(layer, InputNorm):
                 layer.enable_fp16()
 
     wandb.watch(policy)
