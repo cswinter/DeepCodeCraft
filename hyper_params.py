@@ -84,28 +84,28 @@ class HyperParams:
         hps.bs = 1024
         hps.clip_vf = True
         hps.cliprange = 0.2
+        hps.d_model = 512
         hps.dconv_pooling = 'both'
-        hps.depth = 4
+        hps.dim_feedforward_ratio = 2
         hps.eval_envs = 256
         hps.eval_frequency = 5e5
         hps.eval_timesteps = 1100
         hps.fp16 = False
-        hps.gamma = 0.99
+        hps.gamma = 0.997
         hps.lamb = 0.95
         hps.lr = 0.0003
         hps.lr_ratios = 1.0
         hps.max_grad_norm = 20.0
-        hps.mconv_pooling = 'max'
         hps.momentum = 0.9
         hps.norm = 'layernorm'
         hps.norm_advs = True
         hps.num_envs = 64
-        hps.num_self_play = 24
-        hps.num_self_play_schedule = '3e6:32'
+        hps.num_self_play = 32
+        hps.num_self_play_schedule = ''
         hps.objective = envs.Objective.ARENA_MEDIUM
         hps.obs_allies = 4
         hps.obs_drones = 4
-        hps.obs_global_drones = 10
+        hps.obs_global_drones = 0
         hps.obs_minerals = 4
         hps.optimizer = 'Adam'
         hps.ppo = True
@@ -123,7 +123,6 @@ class HyperParams:
         hps.vf_coef = 1.0
         hps.warmup = 0
         hps.weight_decay = 0.0001
-        hps.width = 2048
         hps.zero_init_vf = True
 
         return hps
