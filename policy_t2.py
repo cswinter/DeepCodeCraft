@@ -382,8 +382,7 @@ class FFResblock(nn.Module):
         # self.linear_2.bias.data.fill_(0.0)
 
     def forward(self, x, mask=None):
-        x2 = F.relu(self.linear_1(x))
-        x = x + F.relu(self.linear_2(x2))
-        x = self.norm(x)
+        x2 = self.linear_2(F.relu(self.linear_1(x)))
+        x = self.norm(x + x2)
         return x
 
