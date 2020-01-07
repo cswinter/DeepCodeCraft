@@ -528,6 +528,10 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             ).to(device)
         else:
             policy = TransformerPolicy(**kwargs)
+    elif version == 'transformer_v2':
+        policy = TransformerPolicy2(**kwargs)
+    else:
+        raise Exception(f"Unknown policy version {version}")
 
     policy.load_state_dict(checkpoint['model_state_dict'])
     policy.to(device)
