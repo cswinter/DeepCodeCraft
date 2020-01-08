@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 
+import spatial
 from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES, MSTRIDE, DSTRIDE
 
 
@@ -86,6 +87,7 @@ class TransformerPolicy2(nn.Module):
         self.linear2 = nn.Linear(d_model * dim_feedforward_ratio, d_model)
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
+        self.norm_map = norm_fn(d_model // 64)
 
         self.downscale = nn.Linear(d_model, d_model // 64)
 
@@ -231,16 +233,24 @@ class TransformerPolicy2(nn.Module):
         x_emb_self = self.self_resblock(self.self_embedding(xs, ~actual_mask))
         x_emb = x_emb_self
 
-        # origin = xs[:, :, :, GLOBAL_FEATURES:GLOBAL_FEATURES+2].view(batch_size, self.allies, 2)
-        # direction = xs[:, :, :, GLOBAL_FEATURES+2:GLOBAL_FEATURES+4].view(batch_size, self.allies, 2)
+        # TODO: remove reshape once obs are shared between allies
+        origin = xs[:, :, :, GLOBAL_FEATURES:GLOBAL_FEATURES+2].reshape(batch_size * self.allies, 1, 2)
+        # TODO: remove for abspos
+        origin.fill_(0.0)
+        # TODO: remove reshape once obs are shared between allies
+        direction_switched = xs[:, :, :, GLOBAL_FEATURES+2:GLOBAL_FEATURES+4].reshape(batch_size * self.allies, 1, 2)
+        # TODO: remove once new version of obs is used
+        direction = direction_switched.clone()
+        direction[:, :, 0] = direction_switched[:, :, 1]
+        direction[:, :, 1] = direction_switched[:, :, 0]
 
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.allies, self.minerals, MSTRIDE)
 
-            # xm_pos = xm[:, :, :, 0:2].view(batch_size, self.minerals, 2)
-            # xm_relpos = relative_positions(origin, direction, xm_pos)
-            # xm[:, :, :, 0:2] = xm_relpos.view(batch_size, self.allies, self.minerals, 2)
+            xm_pos = xm[:, :, :, 0:2].reshape(batch_size * self.allies, self.minerals, 2)
+            xm_relpos = spatial.relative_positions(origin, direction, xm_pos)
+            xm[:, :, :, 0:2] = xm_relpos.view(batch_size, self.allies, self.minerals, 2)
 
             mineral_mask = (xm[:, :, :, 3] == 0).view(batch_size, self.allies, self.minerals)
             xm = self.mineral_resblock(self.mineral_embedding(xm, ~mineral_mask))
@@ -250,6 +260,11 @@ class TransformerPolicy2(nn.Module):
         if self.drones > 0:
             # properties of closest minerals
             xd = x[:, endmins:enddrones].view(batch_size, self.allies, self.drones, DSTRIDE)
+
+            xd_pos = xd[:, :, :, 0:2].reshape(batch_size * self.allies, self.drones, 2)
+            xd_relpos = spatial.relative_positions(origin, direction, xd_pos)
+            xd[:, :, :, 0:2] = xd_relpos.view(batch_size, self.allies, self.drones, 2)
+
             drone_mask = (xd[:, :, :, 7] == 0).view(batch_size, self.allies, self.drones) # Position 7 is hitpoints
             xd = self.drone_resblock(self.drone_embedding(xd, ~drone_mask))
             mask = torch.cat((mask, drone_mask), dim=2)
@@ -276,9 +291,9 @@ class TransformerPolicy2(nn.Module):
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
-        # mins = xm.view(batch_size, self.minerals, self.d_model) * (1 - mineral_mask.float()).view(batch_size, self.minerals, 1)
-        # mins = F.relu(self.downscale(mins))
-        # nearby_map = spatial_scatter(
+        #mins = xm.view(batch_size, self.minerals, self.d_model) * (1 - mineral_mask.float()).view(batch_size, self.minerals, 1)
+        #mins = F.relu(self.downscale(mins))
+        #nearby_map = spatial.spatial_scatter(
         #    items=mins,
         #    positions=xm_relpos,
         #    nray=8,
@@ -286,7 +301,7 @@ class TransformerPolicy2(nn.Module):
         #    inner_radius=50 / 2000,
         #)
         #nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
-        # x = torch.cat([x, nearby_map], dim=2)
+        #x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x)
         x = x.view(batch_size, self.allies, self.d_model * self.dim_feedforward_ratio)
