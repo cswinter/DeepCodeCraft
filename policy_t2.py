@@ -1,4 +1,5 @@
 import torch
+from torch.nn.init import xavier_uniform_
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
@@ -105,6 +106,9 @@ class TransformerPolicy2(nn.Module):
             self.value_head.bias.data.fill_(0.0)
 
         self.epsilon = 1e-4 if fp16 else 1e-8
+
+        self._reset_parameters()
+
 
     def evaluate(self, observation, action_masks, privileged_obs):
         if self.fp16:
@@ -291,6 +295,11 @@ class TransformerPolicy2(nn.Module):
     def param_groups(self):
         # TODO?
         pass
+
+    def _reset_parameters(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                xavier_uniform_(p)
 
 
 # Computes a running mean/variance of input features and performs normalization.
