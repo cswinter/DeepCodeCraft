@@ -82,12 +82,15 @@ class TransformerPolicy2(nn.Module):
             num_heads=nhead,
             dropout=dropout,
         )
+        self.linear1 = nn.Linear(d_model, d_model * dim_feedforward_ratio)
+        self.linear2 = nn.Linear(d_model * dim_feedforward_ratio, d_model)
         self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
 
         self.downscale = nn.Linear(d_model, d_model // 64)
 
         self.final_layer = nn.Sequential(
-            FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn),
+            #FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn),
             nn.Linear(d_model, d_model * dim_feedforward_ratio),
             nn.ReLU(),
         )
@@ -270,6 +273,8 @@ class TransformerPolicy2(nn.Module):
             key_padding_mask=mask
         )
         x = self.norm1(x + target)
+        x2 = self.linear2(F.relu(self.linear1(x)))
+        x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
         # mins = xm.view(batch_size, self.minerals, self.d_model) * (1 - mineral_mask.float()).view(batch_size, self.minerals, 1)
         # mins = F.relu(self.downscale(mins))
