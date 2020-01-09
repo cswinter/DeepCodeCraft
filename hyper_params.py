@@ -37,7 +37,8 @@ class HyperParams:
         self.nhead = 8
         self.dim_feedforward_ratio = 4
         self.transformer_layers = 2
-        self.dropout = 0.0 # Try 0.1?
+        self.dropout = 0.0  # Try 0.1?
+        self.nearby_map = False     # Construct map of nearby objects populated with scatter connections
 
         # Observations
         self.obs_allies = 2         # Max number of controllable allies per player

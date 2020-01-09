@@ -106,8 +106,11 @@ class JobQueue:
                 logging.info(f"Output in {logpath}")
 
                 with open(logpath, "w+") as outfile:
-                    retcode = subprocess.call(["python3", "main.py", "--out-dir", out_dir] + args,
-                                              stdout=outfile, stderr=outfile, cwd=dir)
+                    retcode = subprocess.call(
+                        ["python3", "main.py", "--out-dir", out_dir] + args,
+                        env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(job.device)),
+                        stdout=outfile, stderr=outfile, cwd=dir
+                    )
                 if retcode != 0:
                     logging.warning(f"Command {job_desc} returned non-zero exit status {retcode}. Logs: {logpath}")
                 else:

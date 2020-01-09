@@ -18,7 +18,8 @@ class TransformerPolicy2(nn.Module):
                  fp16,
                  norm,
                  obs_config=DEFAULT_OBS_CONFIG,
-                 use_privileged=False):
+                 use_privileged=False,
+                 nearby_map=False):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -36,6 +37,7 @@ class TransformerPolicy2(nn.Module):
             use_privileged=use_privileged,
             norm=norm,
             obs_config=obs_config,
+            nearby_map=nearby_map,
         )
 
         self.obs_config = obs_config
@@ -51,6 +53,7 @@ class TransformerPolicy2(nn.Module):
         self.nhead = nhead
         self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
+        self.nearby_map = nearby_map
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -91,14 +94,14 @@ class TransformerPolicy2(nn.Module):
 
         self.downscale = nn.Linear(d_model, d_model // 64)
 
+        final_width = d_model
+        if nearby_map:
+            final_width += d_model
         self.final_layer = nn.Sequential(
-            #FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn),
-            nn.Linear(d_model, d_model * dim_feedforward_ratio),
+            nn.Linear(final_width, d_model * dim_feedforward_ratio),
             nn.ReLU(),
         )
 
-
-        # TODO: just input final drone item?
         self.policy_head = nn.Linear(d_model * dim_feedforward_ratio, 8)
         if small_init_pi:
             self.policy_head.weight.data *= 0.01
@@ -118,7 +121,6 @@ class TransformerPolicy2(nn.Module):
         probs = probs.view(-1, self.allies, 8)
         probs = probs * action_masks + self.epsilon  # Add small value to prevent crash when no action is possible
         # We get device-side assert when using fp16 here (needs more investigation)
-        # print(probs)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
         actions = action_dist.sample()
         entropy = action_dist.entropy()[action_masks.sum(2) != 0]
@@ -244,6 +246,8 @@ class TransformerPolicy2(nn.Module):
         direction[:, :, 0] = direction_switched[:, :, 1]
         direction[:, :, 1] = direction_switched[:, :, 0]
 
+        obj_positions = None
+
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endallies:endmins].view(batch_size, self.allies, self.minerals, MSTRIDE)
@@ -251,6 +255,7 @@ class TransformerPolicy2(nn.Module):
             xm_pos = xm[:, :, :, 0:2].reshape(batch_size * self.allies, self.minerals, 2)
             xm_relpos = spatial.relative_positions(origin, direction, xm_pos)
             xm[:, :, :, 0:2] = xm_relpos.view(batch_size, self.allies, self.minerals, 2)
+            obj_positions = xm_relpos
 
             mineral_mask = (xm[:, :, :, 3] == 0).view(batch_size, self.allies, self.minerals)
             xm = self.mineral_resblock(self.mineral_embedding(xm, ~mineral_mask))
@@ -264,6 +269,10 @@ class TransformerPolicy2(nn.Module):
             xd_pos = xd[:, :, :, 0:2].reshape(batch_size * self.allies, self.drones, 2)
             xd_relpos = spatial.relative_positions(origin, direction, xd_pos)
             xd[:, :, :, 0:2] = xd_relpos.view(batch_size, self.allies, self.drones, 2)
+            if obj_positions is None:
+                obj_positions = xd_relpos
+            else:
+                obj_positions = torch.cat([obj_positions, xd_relpos], dim=2)
 
             drone_mask = (xd[:, :, :, 7] == 0).view(batch_size, self.allies, self.drones) # Position 7 is hitpoints
             xd = self.drone_resblock(self.drone_embedding(xd, ~drone_mask))
@@ -291,17 +300,20 @@ class TransformerPolicy2(nn.Module):
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
-        #mins = xm.view(batch_size, self.minerals, self.d_model) * (1 - mineral_mask.float()).view(batch_size, self.minerals, 1)
-        #mins = F.relu(self.downscale(mins))
-        #nearby_map = spatial.spatial_scatter(
-        #    items=mins,
-        #    positions=xm_relpos,
-        #    nray=8,
-        #    nring=8,
-        #    inner_radius=50 / 2000,
-        #)
-        #nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
-        #x = torch.cat([x, nearby_map], dim=2)
+
+        if self.nearby_map:
+            items = x_emb.view(batch_size * self.allies, 1 + self.minerals + self.drones, self.d_model)
+            items = self.norm_map(F.relu(self.downscale(items[:, 1:, :])))
+            items = items * (1 - mask[:, 1:].float().unsqueeze(-1))
+            nearby_map = spatial.spatial_scatter(
+                items=items,
+                positions=obj_positions,
+                nray=8,
+                nring=8,
+                inner_radius=40 / 1000,
+            )
+            nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
+            x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x)
         x = x.view(batch_size, self.allies, self.d_model * self.dim_feedforward_ratio)

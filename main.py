@@ -98,7 +98,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hps.fp16,
             norm=hps.norm,
             obs_config=obs_config,
-            use_privileged=hps.obs_global_drones > 0).to(device)
+            use_privileged=hps.obs_global_drones > 0,
+            nearby_map=hps.nearby_map
+        ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
@@ -596,7 +598,6 @@ def main():
     for key, value in vars(args).items():
         if value is not None and hasattr(hps, key):
             setattr(hps, key, value)
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
 
     config = vars(hps)
     config['commit'] = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
