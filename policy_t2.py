@@ -300,11 +300,13 @@ class TransformerPolicy2(nn.Module):
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
+        x = x.view(batch_size, self.allies, self.d_model)
 
         if self.nearby_map:
             items = x_emb.view(batch_size * self.allies, 1 + self.minerals + self.drones, self.d_model)
             items = self.norm_map(F.relu(self.downscale(items[:, 1:, :])))
             items = items * (1 - mask[:, 1:].float().unsqueeze(-1))
+            obj_positions = obj_positions.view(batch_size * self.allies, 1, self.minerals + self.drones, 2)
             nearby_map = spatial.spatial_scatter(
                 items=items,
                 positions=obj_positions,
