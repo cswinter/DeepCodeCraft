@@ -50,9 +50,16 @@ def polar_indices(
         inner_radius
 ):  # (N, L_s, L), (N, L_s, L)
     distances = torch.sqrt(positions[:, :, :, 0] ** 2 + positions[:, :, :, 1] ** 2)
-    distance_indices = torch.clamp_max(distances / inner_radius, nring - 1).floor().long()
+    distance_indices = torch.clamp(distances / inner_radius, min=0, max=nring-1).floor().long()
     angles = torch.atan2(positions[:, :, :, 1], positions[:, :, :, 0]) + math.pi
-    angular_indices = (angles / (2 * math.pi) * nray).floor().long()
+    # There is one angle value that can result in index of exactly nray, clamp it to nray-1
+    angular_indices = torch.clamp_max((angles / (2 * math.pi) * nray).floor().long(), nray-1)
+
+    assert angular_indices.min() >= 0, f'Negative angular index: {angular_indices.min()}'
+    assert angular_indices.max() < nray, f'invalid angular index: {angular_indices.max()} >= {nray}'
+    assert distance_indices.min() >= 0, f'Negative distance index: {distance_indices.min()}'
+    assert distance_indices.max() < nring, f'invalid distance index: {distance_indices.max()} >= {nring}'
+
     return distance_indices, angular_indices
 
 
