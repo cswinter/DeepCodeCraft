@@ -67,6 +67,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         minerals=hps.obs_minerals,
         global_drones=hps.obs_global_drones,
         relative_positions=hps.obs_relative_positions,
+        v2=True,
     )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")

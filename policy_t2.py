@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.distributions as distributions
 
 import spatial
-from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES, MSTRIDE, DSTRIDE
+from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES_V2, MSTRIDE_V2, DSTRIDE_V2
 
 
 class TransformerPolicy2(nn.Module):
@@ -23,6 +23,7 @@ class TransformerPolicy2(nn.Module):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
+        assert obs_config.drones >= obs_config.allies
 
         self.version = 'transformer_v2'
 
@@ -43,6 +44,7 @@ class TransformerPolicy2(nn.Module):
         self.obs_config = obs_config
         self.allies = obs_config.allies
         self.drones = obs_config.drones
+        self.enemies = self.drones - self.allies
         self.minerals = obs_config.minerals
         if hasattr(obs_config, 'global_drones'):
             self.global_drones = obs_config.global_drones
@@ -67,14 +69,14 @@ class TransformerPolicy2(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.self_embedding = InputEmbedding(DSTRIDE + GLOBAL_FEATURES, d_model, norm_fn)
+        self.self_embedding = InputEmbedding(DSTRIDE_V2, d_model, norm_fn)
         self.self_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
         # TODO: same embedding for self and other drones?
-        self.drone_embedding = InputEmbedding(DSTRIDE, d_model, norm_fn)
-        self.drone_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
+        self.drone_embedding = InputEmbedding(DSTRIDE_V2, d_model, norm_fn)
+        self.enemy_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
 
         if self.minerals > 0:
-            self.mineral_embedding = InputEmbedding(MSTRIDE, d_model, norm_fn)
+            self.mineral_embedding = InputEmbedding(MSTRIDE_V2, d_model, norm_fn)
             self.mineral_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
 
         if use_privileged:
@@ -218,68 +220,60 @@ class TransformerPolicy2(nn.Module):
             # Normalization layers perform fp16 conversion for x after normalization
             x_privileged = x_privileged.half()
 
-        endallies = (DSTRIDE + GLOBAL_FEATURES) * self.allies
-        endmins = endallies + MSTRIDE * self.minerals * self.allies
-        enddrones = endmins + DSTRIDE * self.drones * self.allies
+        endglobals = GLOBAL_FEATURES_V2
+        endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.allies
+        endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.drones
+        endmins = endenemies + MSTRIDE_V2 * self.minerals
 
         # Dimensions: batch, items, properties
 
         batch_size = x.size()[0]
-        # global features and properties of the drone controlled by this network
-        xs = x[:, :endallies].view(batch_size, self.allies, 1, DSTRIDE + GLOBAL_FEATURES)
+        # properties of the drone controlled by this network
+        xs = x[:, endglobals:endallies].view(batch_size, self.allies, DSTRIDE_V2)
+        print('allies', xs[0, 0])
         # Ensures that at least one mask element is present, otherwise we get NaN in attention softmax
         # If the ally is nonexistant, it's output will be ignored anyway
         # Derive from original tensor to keep on device
-        mask = (xs[:, :, :, GLOBAL_FEATURES + 7] * 0 != 0).view(batch_size, self.allies, 1) # Position 7 is hitpoints
-        actual_mask = (xs[:, :, :, GLOBAL_FEATURES + 7] == 0).view(batch_size, self.allies, 1)
+        mask = xs[:, :, 7] * 0 != 0  # Position 7 is hitpoints
+        actual_mask = xs[:, :, 7] == 0
         x_emb_self = self.self_resblock(self.self_embedding(xs, ~actual_mask))
         x_emb = x_emb_self
 
-        # TODO: remove reshape once obs are shared between allies
-        origin = xs[:, :, :, GLOBAL_FEATURES:GLOBAL_FEATURES+2].reshape(batch_size * self.allies, 1, 2)
-        # TODO: remove for abspos
-        origin.fill_(0.0)
-        # TODO: remove reshape once obs are shared between allies
-        direction_switched = xs[:, :, :, GLOBAL_FEATURES+2:GLOBAL_FEATURES+4].reshape(batch_size * self.allies, 1, 2)
-        # TODO: remove once new version of obs is used
-        direction = direction_switched.clone()
-        direction[:, :, 0] = direction_switched[:, :, 1]
-        direction[:, :, 1] = direction_switched[:, :, 0]
+        origin = xs[:, :, 0:2]
+        direction = xs[:, :, 2:4]
 
-        obj_positions = None
+        xs_relpos = spatial.relative_positions(origin, direction, origin)
+        obj_positions = xs_relpos
+
+        if self.enemies > 0:
+            # properties of closest minerals
+            xd = x[:, endallies:endenemies].view(batch_size, self.enemies, DSTRIDE_V2)
+            print('enemies', xs[0])
+
+            xd_pos = xd[:, :, 0:2]
+            xd_relpos = spatial.relative_positions(origin, direction, xd_pos)
+            obj_positions = torch.cat([obj_positions, xd_relpos], dim=2)
+
+            enemy_mask = xd[:, :, 7] == 0  # Position 7 is hitpoints
+            xd = self.enemy_resblock(self.drone_embedding(xd, ~enemy_mask))
+            mask = torch.cat((mask, enemy_mask), dim=1)
+            x_emb = torch.cat((x_emb, xd), dim=1)
 
         if self.minerals > 0:
             # properties of closest minerals
-            xm = x[:, endallies:endmins].view(batch_size, self.allies, self.minerals, MSTRIDE)
+            xm = x[:, endenemies:endmins].view(batch_size, self.minerals, MSTRIDE_V2)
+            print('mins', xm[0])
 
-            xm_pos = xm[:, :, :, 0:2].reshape(batch_size * self.allies, self.minerals, 2)
+            xm_pos = xm[:, :, 0:2]
             xm_relpos = spatial.relative_positions(origin, direction, xm_pos)
-            xm[:, :, :, 0:2] = xm_relpos.view(batch_size, self.allies, self.minerals, 2)
-            obj_positions = xm_relpos
+            obj_positions = torch.cat([obj_positions, xm_relpos], dim=2)
 
-            mineral_mask = (xm[:, :, :, 3] == 0).view(batch_size, self.allies, self.minerals)
+            mineral_mask = xm[:, :, 2] == 0
             xm = self.mineral_resblock(self.mineral_embedding(xm, ~mineral_mask))
-            mask = torch.cat((mask, mineral_mask), dim=2)
-            x_emb = torch.cat((x_emb, xm), dim=2)
+            mask = torch.cat((mask, mineral_mask), dim=1)
+            x_emb = torch.cat((x_emb, xm), dim=1)
 
-        if self.drones > 0:
-            # properties of closest minerals
-            xd = x[:, endmins:enddrones].view(batch_size, self.allies, self.drones, DSTRIDE)
-
-            xd_pos = xd[:, :, :, 0:2].reshape(batch_size * self.allies, self.drones, 2)
-            xd_relpos = spatial.relative_positions(origin, direction, xd_pos)
-            xd[:, :, :, 0:2] = xd_relpos.view(batch_size, self.allies, self.drones, 2)
-            if obj_positions is None:
-                obj_positions = xd_relpos
-            else:
-                obj_positions = torch.cat([obj_positions, xd_relpos], dim=2)
-
-            drone_mask = (xd[:, :, :, 7] == 0).view(batch_size, self.allies, self.drones) # Position 7 is hitpoints
-            xd = self.drone_resblock(self.drone_embedding(xd, ~drone_mask))
-            mask = torch.cat((mask, drone_mask), dim=2)
-            x_emb = torch.cat((x_emb, xd), dim=2)
-
-        mask = mask.view(batch_size * self.allies, 1 + self.minerals + self.drones)
+        mask = mask.view(batch_size, self.drones + self.minerals)
 
         # TODO: self.use_privileged
         if self.use_privileged:
@@ -288,8 +282,8 @@ class TransformerPolicy2(nn.Module):
             x_privileged = None
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        source = x_emb.view(batch_size * self.allies, 1 + self.minerals + self.drones, self.d_model).permute(1, 0, 2)
-        target = x_emb_self.view(batch_size * self.allies, 1, self.d_model).permute(1, 0, 2)
+        source = x_emb.permute(1, 0, 2)
+        target = x_emb_self.permute(1, 0, 2)
         x, attn_weights = self.multihead_attention(
             query=target,
             key=source,
@@ -300,20 +294,20 @@ class TransformerPolicy2(nn.Module):
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
-        x = x.view(batch_size, self.allies, self.d_model)
 
         if self.nearby_map:
-            items = x_emb.view(batch_size * self.allies, 1 + self.minerals + self.drones, self.d_model)
-            items = self.norm_map(F.relu(self.downscale(items[:, 1:, :])))
-            items = items * (1 - mask[:, 1:].float().unsqueeze(-1))
-            obj_positions = obj_positions.view(batch_size * self.allies, 1, self.minerals + self.drones, 2)
+            items = self.norm_map(F.relu(self.downscale(x_emb)))
+            items = items * (1 - mask.float().unsqueeze(-1))
             nearby_map = spatial.spatial_scatter(
                 items=items,
                 positions=obj_positions,
                 nray=8,
                 nring=8,
-                inner_radius=40 / 1000,
+                inner_radius=40,
             )
+            print(items[0, 0:2])
+            print(obj_positions[0, 0:2])
+            print(nearby_map[0, 0, 0, :, :])
             nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
             x = torch.cat([x, nearby_map], dim=2)
 
