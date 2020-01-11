@@ -19,7 +19,10 @@ class TransformerPolicy2(nn.Module):
                  norm,
                  obs_config=DEFAULT_OBS_CONFIG,
                  use_privileged=False,
-                 nearby_map=False):
+                 nearby_map=False,
+                 ring_width=40,
+                 nrays=8,
+                 nrings=8):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -56,6 +59,9 @@ class TransformerPolicy2(nn.Module):
         self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
         self.nearby_map = nearby_map
+        self.ring_width = ring_width
+        self.nrays = nrays
+        self.nrings = nrings
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -92,9 +98,9 @@ class TransformerPolicy2(nn.Module):
         self.linear2 = nn.Linear(d_model * dim_feedforward_ratio, d_model)
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
-        self.norm_map = norm_fn(d_model // 64)
+        self.norm_map = norm_fn(d_model // (nrings * nrays))
 
-        self.downscale = nn.Linear(d_model, d_model // 64)
+        self.downscale = nn.Linear(d_model, d_model // (nrings * nrays))
 
         final_width = d_model
         if nearby_map:
@@ -230,7 +236,6 @@ class TransformerPolicy2(nn.Module):
         batch_size = x.size()[0]
         # properties of the drone controlled by this network
         xs = x[:, endglobals:endallies].view(batch_size, self.allies, DSTRIDE_V2)
-        print('allies', xs[0, 0])
         # Ensures that at least one mask element is present, otherwise we get NaN in attention softmax
         # If the ally is nonexistant, it's output will be ignored anyway
         # Derive from original tensor to keep on device
@@ -248,7 +253,6 @@ class TransformerPolicy2(nn.Module):
         if self.enemies > 0:
             # properties of closest minerals
             xd = x[:, endallies:endenemies].view(batch_size, self.enemies, DSTRIDE_V2)
-            print('enemies', xs[0])
 
             xd_pos = xd[:, :, 0:2]
             xd_relpos = spatial.relative_positions(origin, direction, xd_pos)
@@ -262,7 +266,6 @@ class TransformerPolicy2(nn.Module):
         if self.minerals > 0:
             # properties of closest minerals
             xm = x[:, endenemies:endmins].view(batch_size, self.minerals, MSTRIDE_V2)
-            print('mins', xm[0])
 
             xm_pos = xm[:, :, 0:2]
             xm_relpos = spatial.relative_positions(origin, direction, xm_pos)
@@ -301,13 +304,10 @@ class TransformerPolicy2(nn.Module):
             nearby_map = spatial.spatial_scatter(
                 items=items,
                 positions=obj_positions,
-                nray=8,
-                nring=8,
-                inner_radius=40,
+                nray=self.nrays,
+                nring=self.nrings,
+                inner_radius=self.ring_width,
             )
-            print(items[0, 0:2])
-            print(obj_positions[0, 0:2])
-            print(nearby_map[0, 0, 0, :, :])
             nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
             x = torch.cat([x, nearby_map], dim=2)
 
