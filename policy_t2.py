@@ -23,7 +23,8 @@ class TransformerPolicy2(nn.Module):
                  ring_width=40,
                  nrays=8,
                  nrings=8,
-                 map_conv=False):
+                 map_conv=False,
+                 map_conv_kernel_size=3):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -43,6 +44,12 @@ class TransformerPolicy2(nn.Module):
             norm=norm,
             obs_config=obs_config,
             nearby_map=nearby_map,
+
+            ring_width=ring_width,
+            nrays=nrays,
+            nrings=nrings,
+            map_conv=map_conv,
+            map_conv_kernel_size=map_conv_kernel_size,
         )
 
         self.obs_config = obs_config
@@ -64,6 +71,7 @@ class TransformerPolicy2(nn.Module):
         self.nrays = nrays
         self.nrings = nrings
         self.map_conv = map_conv
+        self.map_conv_kernel_size = map_conv_kernel_size
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -105,9 +113,9 @@ class TransformerPolicy2(nn.Module):
         self.downscale = nn.Linear(d_model, self.map_channels)
         self.norm_map = norm_fn(self.map_channels)
         self.conv1 = spatial.ZeroPaddedCylindricalConv2d(
-            self.map_channels, dim_feedforward_ratio * self.map_channels, kernel_size=3)
+            self.map_channels, dim_feedforward_ratio * self.map_channels, kernel_size=map_conv_kernel_size)
         self.conv2 = spatial.ZeroPaddedCylindricalConv2d(
-            dim_feedforward_ratio * self.map_channels, self.map_channels, kernel_size=3)
+            dim_feedforward_ratio * self.map_channels, self.map_channels, kernel_size=map_conv_kernel_size)
         self.norm_conv = norm_fn(self.map_channels)
 
         final_width = d_model
