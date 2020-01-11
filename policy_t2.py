@@ -22,7 +22,8 @@ class TransformerPolicy2(nn.Module):
                  nearby_map=False,
                  ring_width=40,
                  nrays=8,
-                 nrings=8):
+                 nrings=8,
+                 map_conv=False):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -62,6 +63,7 @@ class TransformerPolicy2(nn.Module):
         self.ring_width = ring_width
         self.nrays = nrays
         self.nrings = nrings
+        self.map_conv = map_conv
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -98,9 +100,15 @@ class TransformerPolicy2(nn.Module):
         self.linear2 = nn.Linear(d_model * dim_feedforward_ratio, d_model)
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
-        self.norm_map = norm_fn(d_model // (nrings * nrays))
 
-        self.downscale = nn.Linear(d_model, d_model // (nrings * nrays))
+        self.map_channels = d_model // (nrings * nrays)
+        self.downscale = nn.Linear(d_model, self.map_channels)
+        self.norm_map = norm_fn(self.map_channels)
+        self.conv1 = spatial.ZeroPaddedCylindricalConv2d(
+            self.map_channels, dim_feedforward_ratio * self.map_channels, kernel_size=3)
+        self.conv2 = spatial.ZeroPaddedCylindricalConv2d(
+            dim_feedforward_ratio * self.map_channels, self.map_channels, kernel_size=3)
+        self.norm_conv = norm_fn(self.map_channels)
 
         final_width = d_model
         if nearby_map:
@@ -307,7 +315,12 @@ class TransformerPolicy2(nn.Module):
                 nray=self.nrays,
                 nring=self.nrings,
                 inner_radius=self.ring_width,
-            )
+            ).view(batch_size * self.allies, self.map_channels, self.nrings, self.nrays)
+            if self.map_conv:
+                nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
+                nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
+                nearby_map = nearby_map.permute(0, 3, 2, 1)
+                nearby_map = self.norm_conv(nearby_map + nearby_map2)
             nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
             x = torch.cat([x, nearby_map], dim=2)
 

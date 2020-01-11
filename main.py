@@ -104,6 +104,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             ring_width=hps.nm_ring_width,
             nrays=hps.nm_nrays,
             nrings=hps.nm_nrings,
+            map_conv=hps.map_conv,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:

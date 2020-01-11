@@ -42,6 +42,7 @@ class HyperParams:
         self.nm_ring_width = 40     # Width of circles on nearby map
         self.nm_nrays = 8           # Number of rays on nearby map
         self.nm_nrings = 8          # Number of rings on nearby map
+        self.map_conv = False       # Whether to perform convolution on nearby map
 
         # Observations
         self.obs_allies = 2         # Max number of controllable allies per player
