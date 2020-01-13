@@ -540,14 +540,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
 
     optimizer = None
     if optimizer_fn:
-        group0, group1, group2 = policy.param_groups()
-        optimizer = optimizer_fn([
-            {'params': group2},
-            {'params': group1, 'lr': hps.lr * hps.lr_ratios},
-            {'params': group0, 'lr': hps.lr * hps.lr_ratios * hps.lr_ratios},
-        ],
-            **optimizer_kwargs
-        )
+        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
         if 'optimizer_state_dict' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             for state in optimizer.state.values():
