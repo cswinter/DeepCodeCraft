@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_scatter import scatter_add
+from torch_scatter import scatter_add, scatter_mean
 
 
 # N: Batch size
@@ -48,19 +48,22 @@ def polar_indices(
         nray,
         nring,
         inner_radius
-):  # (N, L_s, L), (N, L_s, L)
+):  # (N, L_s, L), (N, L_s, L), (N, L_s, L), (N, L_s, L)
     distances = torch.sqrt(positions[:, :, :, 0] ** 2 + positions[:, :, :, 1] ** 2)
     distance_indices = torch.clamp(distances / inner_radius, min=0, max=nring-1).floor().long()
     angles = torch.atan2(positions[:, :, :, 1], positions[:, :, :, 0]) + math.pi
     # There is one angle value that can result in index of exactly nray, clamp it to nray-1
     angular_indices = torch.clamp_max((angles / (2 * math.pi) * nray).floor().long(), nray-1)
 
+    distance_offsets = torch.clamp_max(distances / inner_radius - distance_indices.float() - 0.5, max=2)
+    angular_offsets = angles / (2 * math.pi) * nray - angular_indices.float() - 0.5
+
     assert angular_indices.min() >= 0, f'Negative angular index: {angular_indices.min()}'
     assert angular_indices.max() < nray, f'invalid angular index: {angular_indices.max()} >= {nray}'
     assert distance_indices.min() >= 0, f'Negative distance index: {distance_indices.min()}'
     assert distance_indices.max() < nring, f'invalid distance index: {distance_indices.max()} >= {nring}'
 
-    return distance_indices, angular_indices
+    return distance_indices, angular_indices, distance_offsets, angular_offsets
 
 
 def spatial_scatter(
@@ -69,12 +72,14 @@ def spatial_scatter(
         nray,
         nring,
         inner_radius,
-        out=None
-):  # (N, L_s, C, nring, nray)
+        embed_offsets=False,
+):  # (N, L_s, C', nring, nray) where C' = C + 2 if embed_offsets else C
     n, l, c = items.size()
-    ls = positions.size(1)
+    _, ls, _, _ = positions.size()
+    _, _, _, c2 = positions.size()
 
-    distance_index, angular_index = polar_indices(positions, nray, nring, inner_radius)
+    distance_index, angular_index, distance_offsets, angular_offsets = \
+        polar_indices(positions, nray, nring, inner_radius)
     #print("distance index", distance_index.size(), distance_index)
     #print("angular index", angular_index.size(), angular_index)
     index = distance_index * nray + angular_index
@@ -82,9 +87,18 @@ def spatial_scatter(
     items = items.view(n, 1, l, c)
     #print("items", items.size(), items)
     #print("index", index.size(), index)
-    return scatter_add(items, index, dim=2, dim_size=nray * nring, out=out) \
+    scattered_items = scatter_add(items, index, dim=2, dim_size=nray * nring) \
         .permute(0, 1, 3, 2) \
         .reshape(n, ls, c, nring, nray)
+
+    if embed_offsets is not None:
+        offsets = torch.cat([distance_offsets.unsqueeze(-1), angular_offsets.unsqueeze(-1)], dim=3)
+        scattered_nonshared = scatter_mean(offsets, index, dim=2, dim_size=nray * nring) \
+            .permute(0, 1, 3, 2) \
+            .reshape(n, ls, 2, nring, nray)
+        return torch.cat([scattered_nonshared, scattered_items], dim=2)
+    else:
+        return scattered_items
 
 
 class ZeroPaddedCylindricalConv2d(nn.Module):

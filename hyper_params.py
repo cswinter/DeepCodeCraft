@@ -37,13 +37,14 @@ class HyperParams:
         self.nhead = 8
         self.dim_feedforward_ratio = 4
         self.transformer_layers = 2
-        self.dropout = 0.0  # Try 0.1?
-        self.nearby_map = False     # Construct map of nearby objects populated with scatter connections
-        self.nm_ring_width = 40     # Width of circles on nearby map
-        self.nm_nrays = 8           # Number of rays on nearby map
-        self.nm_nrings = 8          # Number of rings on nearby map
-        self.map_conv = False       # Whether to perform convolution on nearby map
-        self.mc_kernel_size = 3     # Size of convolution kernel for nearby map
+        self.dropout = 0.0             # Try 0.1?
+        self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
+        self.nm_ring_width = 40        # Width of circles on nearby map
+        self.nm_nrays = 8              # Number of rays on nearby map
+        self.nm_nrings = 8             # Number of rings on nearby map
+        self.map_conv = False          # Whether to perform convolution on nearby map
+        self.mc_kernel_size = 3        # Size of convolution kernel for nearby map
+        self.map_embed_offset = False  # Whether the nearby map has 2 channels corresponding to the offset of objects within the tile
 
         # Observations
         self.obs_allies = 2         # Max number of controllable allies per player

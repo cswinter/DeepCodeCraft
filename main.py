@@ -105,6 +105,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             nrays=hps.nm_nrays,
             nrings=hps.nm_nrings,
             map_conv=hps.map_conv,
+            map_embed_offset=hps.map_embed_offset,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:

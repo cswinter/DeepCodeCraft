@@ -24,7 +24,8 @@ class TransformerPolicy2(nn.Module):
                  nrays=8,
                  nrings=8,
                  map_conv=False,
-                 map_conv_kernel_size=3):
+                 map_conv_kernel_size=3,
+                 map_embed_offset=False):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -50,6 +51,7 @@ class TransformerPolicy2(nn.Module):
             nrings=nrings,
             map_conv=map_conv,
             map_conv_kernel_size=map_conv_kernel_size,
+            map_embed_offset=map_embed_offset,
         )
 
         self.obs_config = obs_config
@@ -72,6 +74,7 @@ class TransformerPolicy2(nn.Module):
         self.nrings = nrings
         self.map_conv = map_conv
         self.map_conv_kernel_size = map_conv_kernel_size
+        self.map_embed_offset = map_embed_offset
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -110,8 +113,9 @@ class TransformerPolicy2(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
         self.map_channels = d_model // (nrings * nrays)
-        self.downscale = nn.Linear(d_model, self.map_channels)
-        self.norm_map = norm_fn(self.map_channels)
+        map_item_channels = self.map_channels - 2 if self.map_embed_offset else self.map_channels
+        self.downscale = nn.Linear(d_model, map_item_channels)
+        self.norm_map = norm_fn(map_item_channels)
         self.conv1 = spatial.ZeroPaddedCylindricalConv2d(
             self.map_channels, dim_feedforward_ratio * self.map_channels, kernel_size=map_conv_kernel_size)
         self.conv2 = spatial.ZeroPaddedCylindricalConv2d(
@@ -307,7 +311,7 @@ class TransformerPolicy2(nn.Module):
             query=target,
             key=source,
             value=source,
-            key_padding_mask=mask
+            key_padding_mask=mask,
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
@@ -323,7 +327,9 @@ class TransformerPolicy2(nn.Module):
                 nray=self.nrays,
                 nring=self.nrings,
                 inner_radius=self.ring_width,
+                embed_offsets=self.map_embed_offset,
             ).view(batch_size * self.allies, self.map_channels, self.nrings, self.nrays)
+            print(nearby_map[0, 0:2, :, :])
             if self.map_conv:
                 nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
