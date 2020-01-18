@@ -25,7 +25,9 @@ class TransformerPolicy2(nn.Module):
                  nrings=8,
                  map_conv=False,
                  map_conv_kernel_size=3,
-                 map_embed_offset=False):
+                 map_embed_offset=False,
+                 item_ff=True,
+                 ):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
@@ -52,6 +54,7 @@ class TransformerPolicy2(nn.Module):
             map_conv=map_conv,
             map_conv_kernel_size=map_conv_kernel_size,
             map_embed_offset=map_embed_offset,
+            item_ff=item_ff,
         )
 
         self.obs_config = obs_config
@@ -75,6 +78,7 @@ class TransformerPolicy2(nn.Module):
         self.map_conv = map_conv
         self.map_conv_kernel_size = map_conv_kernel_size
         self.map_embed_offset = map_embed_offset
+        self.item_ff = item_ff
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -89,14 +93,16 @@ class TransformerPolicy2(nn.Module):
             raise Exception(f'Unexpected normalization layer {norm}')
 
         self.self_embedding = InputEmbedding(DSTRIDE_V2, d_model, norm_fn)
-        self.self_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
         # TODO: same embedding for self and other drones?
         self.drone_embedding = InputEmbedding(DSTRIDE_V2, d_model, norm_fn)
-        self.enemy_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
+        if self.item_ff:
+            self.self_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
+            self.enemy_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
 
         if self.minerals > 0:
             self.mineral_embedding = InputEmbedding(MSTRIDE_V2, d_model, norm_fn)
-            self.mineral_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
+            if self.item_ff:
+                self.mineral_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
 
         if use_privileged:
             # TODO
@@ -261,7 +267,9 @@ class TransformerPolicy2(nn.Module):
         # Derive from original tensor to keep on device
         mask = xs[:, :, 7] * 0 != 0  # Position 7 is hitpoints
         actual_mask = xs[:, :, 7] == 0
-        x_emb_self = self.self_resblock(self.self_embedding(xs, ~actual_mask))
+        x_emb_self = self.self_embedding(xs, ~actual_mask)
+        if self.item_ff:
+            x_emb_self = self.self_resblock(x_emb_self)
         x_emb = x_emb_self
 
         origin = xs[:, :, 0:2]
@@ -279,7 +287,9 @@ class TransformerPolicy2(nn.Module):
             obj_positions = torch.cat([obj_positions, xd_relpos], dim=2)
 
             enemy_mask = xd[:, :, 7] == 0  # Position 7 is hitpoints
-            xd = self.enemy_resblock(self.drone_embedding(xd, ~enemy_mask))
+            xd = self.drone_embedding(xd, ~enemy_mask)
+            if self.item_ff:
+                xd = self.enemy_resblock(xd)
             mask = torch.cat((mask, enemy_mask), dim=1)
             x_emb = torch.cat((x_emb, xd), dim=1)
 
@@ -292,7 +302,9 @@ class TransformerPolicy2(nn.Module):
             obj_positions = torch.cat([obj_positions, xm_relpos], dim=2)
 
             mineral_mask = xm[:, :, 2] == 0
-            xm = self.mineral_resblock(self.mineral_embedding(xm, ~mineral_mask))
+            xm = self.mineral_embedding(xm, ~mineral_mask)
+            if self.item_ff:
+                xm = self.mineral_resblock(xm)
             mask = torch.cat((mask, mineral_mask), dim=1)
             x_emb = torch.cat((x_emb, xm), dim=1)
 
@@ -329,7 +341,6 @@ class TransformerPolicy2(nn.Module):
                 inner_radius=self.ring_width,
                 embed_offsets=self.map_embed_offset,
             ).view(batch_size * self.allies, self.map_channels, self.nrings, self.nrays)
-            print(nearby_map[0, 0:2, :, :])
             if self.map_conv:
                 nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)

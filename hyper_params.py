@@ -45,6 +45,7 @@ class HyperParams:
         self.map_conv = False          # Whether to perform convolution on nearby map
         self.mc_kernel_size = 3        # Size of convolution kernel for nearby map
         self.map_embed_offset = False  # Whether the nearby map has 2 channels corresponding to the offset of objects within the tile
+        self.item_ff = True            # Adds itemwise ff resblock after initial embedding before transformer
 
         # Observations
         self.obs_allies = 2         # Max number of controllable allies per player
