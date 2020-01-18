@@ -91,7 +91,7 @@ def spatial_scatter(
         .permute(0, 1, 3, 2) \
         .reshape(n, ls, c, nring, nray)
 
-    if embed_offsets is not None:
+    if embed_offsets:
         offsets = torch.cat([distance_offsets.unsqueeze(-1), angular_offsets.unsqueeze(-1)], dim=3)
         scattered_nonshared = scatter_mean(offsets, index, dim=2, dim_size=nray * nring) \
             .permute(0, 1, 3, 2) \
