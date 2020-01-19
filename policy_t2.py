@@ -28,6 +28,7 @@ class TransformerPolicy2(nn.Module):
                  map_conv_kernel_size=3,
                  map_embed_offset=False,
                  item_ff=True,
+                 relpos_attn=False,
                  ):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
@@ -56,6 +57,7 @@ class TransformerPolicy2(nn.Module):
             map_conv_kernel_size=map_conv_kernel_size,
             map_embed_offset=map_embed_offset,
             item_ff=item_ff,
+            relpos_attn=relpos_attn,
         )
 
         self.obs_config = obs_config
@@ -129,9 +131,16 @@ class TransformerPolicy2(nn.Module):
             dim_feedforward_ratio * self.map_channels, self.map_channels, kernel_size=map_conv_kernel_size)
         self.norm_conv = norm_fn(self.map_channels)
 
+        if relpos_attn:
+            self.norm_relpos = InputNorm(3)
+        else:
+            self.norm_relpos = None
+
         final_width = d_model
         if nearby_map:
             final_width += d_model
+        if relpos_attn:
+            final_width += 3 * nhead
         self.final_layer = nn.Sequential(
             nn.Linear(final_width, d_model * dim_feedforward_ratio),
             nn.ReLU(),
@@ -260,6 +269,7 @@ class TransformerPolicy2(nn.Module):
 
         # Dimensions: batch, items, properties
 
+        # TODO: use global properties
         batch_size = x.size()[0]
         # properties of the drone controlled by this network
         xs = x[:, endglobals:endallies].view(batch_size, self.allies, DSTRIDE_V2)
@@ -330,6 +340,16 @@ class TransformerPolicy2(nn.Module):
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
         x = x.permute(1, 0, 2)
+
+        if self.norm_relpos is not None:
+            dist = obj_positions.norm(p=2, dim=3).unsqueeze(-1)
+            relpos = obj_positions / (dist + self.epsilon)
+            relpos = self.norm_relpos(torch.cat([relpos, torch.sqrt(dist)], dim=3))
+            attn_weights = attn_weights.view(batch_size, self.nhead, self.allies, self.drones + self.minerals)
+            # TODO: add bias?
+            attpos_output = torch.matmul(attn_weights, relpos)
+            attpos_output = attpos_output.permute(0, 2, 1, 3).view(batch_size, self.allies, 3 * self.nhead)
+            x = torch.cat([x, attpos_output], dim=2)
 
         if self.nearby_map:
             items = self.norm_map(F.relu(self.downscale(x_emb)))
