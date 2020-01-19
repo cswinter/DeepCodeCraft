@@ -39,7 +39,7 @@ class HyperParams:
         self.transformer_layers = 2
         self.dropout = 0.0             # Try 0.1?
         self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
-        self.nm_ring_width = 40        # Width of circles on nearby map
+        self.nm_ring_width = 30        # Width of circles on nearby map
         self.nm_nrays = 8              # Number of rays on nearby map
         self.nm_nrings = 8             # Number of rings on nearby map
         self.map_conv = False          # Whether to perform convolution on nearby map
