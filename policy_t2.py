@@ -345,10 +345,12 @@ class TransformerPolicy2(nn.Module):
             dist = obj_positions.norm(p=2, dim=3).unsqueeze(-1)
             relpos = obj_positions / (dist + self.epsilon)
             relpos = self.norm_relpos(torch.cat([relpos, torch.sqrt(dist)], dim=3))
-            attn_weights = attn_weights.view(batch_size, self.nhead, self.allies, self.drones + self.minerals)
+            relpos = relpos.view(batch_size, 1, self.allies, self.drones + self.minerals, 3)
+            attn_weights = attn_weights.view(batch_size, self.nhead, self.allies, 1, self.drones + self.minerals)
             # TODO: add bias?
             attpos_output = torch.matmul(attn_weights, relpos)
-            attpos_output = attpos_output.permute(0, 2, 1, 3).view(batch_size, self.allies, 3 * self.nhead)
+            attpos_output = attpos_output.permute(0, 2, 1, 3, 4)
+            attpos_output = attpos_output.reshape(batch_size, self.allies, 3 * self.nhead)
             x = torch.cat([x, attpos_output], dim=2)
 
         if self.nearby_map:
