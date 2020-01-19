@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 
+from multihead_attention import MultiheadAttention
 import spatial
 from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES_V2, MSTRIDE_V2, DSTRIDE_V2
 
@@ -108,7 +109,7 @@ class TransformerPolicy2(nn.Module):
             # TODO
             pass
 
-        self.multihead_attention = nn.MultiheadAttention(
+        self.multihead_attention = MultiheadAttention(
             embed_dim=d_model,
             num_heads=nhead,
             dropout=dropout,
