@@ -66,7 +66,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         drones=hps.obs_drones,
         minerals=hps.obs_minerals,
         global_drones=hps.obs_global_drones,
-        relative_positions=hps.obs_relative_positions,
+        relative_positions=False,
         v2=True,
     )
     if torch.cuda.is_available():
@@ -106,7 +106,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             nrings=hps.nm_nrings,
             map_conv=hps.map_conv,
             map_embed_offset=hps.map_embed_offset,
-            relpos_attn=hps.relpos_attn,
+            keep_abspos=hps.obs_keep_abspos,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:

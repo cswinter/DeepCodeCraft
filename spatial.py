@@ -67,16 +67,15 @@ def polar_indices(
 
 
 def spatial_scatter(
-        items,      # (N, L, C)
+        items,      # (N, L_s, L, C)
         positions,  # (N, L_s, L, 2)
         nray,
         nring,
         inner_radius,
         embed_offsets=False,
 ):  # (N, L_s, C', nring, nray) where C' = C + 2 if embed_offsets else C
-    n, l, c = items.size()
-    _, ls, _, _ = positions.size()
-    _, _, _, c2 = positions.size()
+    n, ls, l, c = items.size()
+    assert (n, ls, l, 2) == positions.size(), f'Expect size {(n, ls, l, 2)} for positions, actual: {positions.size()}'
 
     distance_index, angular_index, distance_offsets, angular_offsets = \
         polar_indices(positions, nray, nring, inner_radius)

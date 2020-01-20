@@ -46,14 +46,13 @@ class HyperParams:
         self.mc_kernel_size = 3        # Size of convolution kernel for nearby map
         self.map_embed_offset = False  # Whether the nearby map has 2 channels corresponding to the offset of objects within the tile
         self.item_ff = True            # Adds itemwise ff resblock after initial embedding before transformer
-        self.relpos_attn = False       # Attend to relative object positions
 
         # Observations
         self.obs_allies = 2         # Max number of controllable allies per player
         self.obs_drones = 4         # Max number of drones observed by each drone
         self.obs_minerals = 0       # Max number of minerals observed by each drone
         self.obs_global_drones = 0  # Max number of (possibly hidden) drones observed by value function
-        self.obs_relative_positions = True # Create copy of observations for each controllable drone with all positions relative to that drone
+        self.obs_keep_abspos = True # Have features for both absolute and relative positions on each object
         self.use_privileged = False # Whether value function has access to hidden information
 
         # Eval
