@@ -10,9 +10,10 @@ from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEAT
 
 class TransformerPolicy2(nn.Module):
     def __init__(self,
-                 d_model,
+                 d_agent,
+                 d_item,
+                 dff_ratio,
                  nhead,
-                 dim_feedforward_ratio,
                  dropout,
                  small_init_pi,
                  zero_init_vf,
@@ -38,9 +39,10 @@ class TransformerPolicy2(nn.Module):
         self.version = 'transformer_v2'
 
         self.kwargs = dict(
-            d_model=d_model,
+            d_agent=d_agent,
+            d_item=d_item,
+            dff_ratio=dff_ratio,
             nhead=nhead,
-            dim_feedforward_ratio=dim_feedforward_ratio,
             dropout=dropout,
             small_init_pi=small_init_pi,
             zero_init_vf=zero_init_vf,
@@ -70,9 +72,10 @@ class TransformerPolicy2(nn.Module):
         else:
             self.global_drones = 0
 
-        self.d_model = d_model
+        self.d_agent = d_agent
+        self.d_item = d_item
+        self.dff_ratio = dff_ratio
         self.nhead = nhead
-        self.dim_feedforward_ratio = dim_feedforward_ratio
         self.dropout = dropout
         self.nearby_map = nearby_map
         self.ring_width = ring_width
@@ -95,15 +98,15 @@ class TransformerPolicy2(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.self_embedding = InputEmbedding(DSTRIDE_V2, d_model, norm_fn)
+        self.agent_embedding = InputEmbedding(DSTRIDE_V2, d_agent, norm_fn)
         if self.item_ff:
-            self.self_resblock = FFResblock(d_model, d_model * dim_feedforward_ratio, norm_fn)
+            self.agent_resblock = FFResblock(d_agent, d_agent * dff_ratio, norm_fn)
 
         # TODO: same embedding for self and other drones?
         self.ally_net = ItemBlock(
             DSTRIDE_V2,
-            d_model,
-            d_model * dim_feedforward_ratio,
+            d_item,
+            d_item * dff_ratio,
             norm_fn,
             self.item_ff,
             keep_abspos=keep_abspos,
@@ -111,8 +114,8 @@ class TransformerPolicy2(nn.Module):
         )
         self.enemy_net = ItemBlock(
             DSTRIDE_V2,
-            d_model,
-            d_model * dim_feedforward_ratio,
+            d_item,
+            d_item * dff_ratio,
             norm_fn,
             self.item_ff,
             keep_abspos=keep_abspos,
@@ -120,8 +123,8 @@ class TransformerPolicy2(nn.Module):
         )
         self.mineral_net = ItemBlock(
             MSTRIDE_V2,
-            d_model,
-            d_model * dim_feedforward_ratio,
+            d_item,
+            d_item * dff_ratio,
             norm_fn,
             self.item_ff,
             keep_abspos=keep_abspos,
@@ -133,39 +136,41 @@ class TransformerPolicy2(nn.Module):
             pass
 
         self.multihead_attention = MultiheadAttention(
-            embed_dim=d_model,
+            embed_dim=d_agent,
+            kdim=d_item,
+            vdim=d_item,
             num_heads=nhead,
             dropout=dropout,
         )
-        self.linear1 = nn.Linear(d_model, d_model * dim_feedforward_ratio)
-        self.linear2 = nn.Linear(d_model * dim_feedforward_ratio, d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.linear1 = nn.Linear(d_agent, d_agent * dff_ratio)
+        self.linear2 = nn.Linear(d_agent * dff_ratio, d_agent)
+        self.norm1 = nn.LayerNorm(d_agent)
+        self.norm2 = nn.LayerNorm(d_agent)
 
-        self.map_channels = d_model // (nrings * nrays)
+        self.map_channels = d_agent // (nrings * nrays)
         map_item_channels = self.map_channels - 2 if self.map_embed_offset else self.map_channels
-        self.downscale = nn.Linear(d_model, map_item_channels)
+        self.downscale = nn.Linear(d_item, map_item_channels)
         self.norm_map = norm_fn(map_item_channels)
         self.conv1 = spatial.ZeroPaddedCylindricalConv2d(
-            self.map_channels, dim_feedforward_ratio * self.map_channels, kernel_size=map_conv_kernel_size)
+            self.map_channels, dff_ratio * self.map_channels, kernel_size=map_conv_kernel_size)
         self.conv2 = spatial.ZeroPaddedCylindricalConv2d(
-            dim_feedforward_ratio * self.map_channels, self.map_channels, kernel_size=map_conv_kernel_size)
+            dff_ratio * self.map_channels, self.map_channels, kernel_size=map_conv_kernel_size)
         self.norm_conv = norm_fn(self.map_channels)
 
-        final_width = d_model
+        final_width = d_agent
         if nearby_map:
-            final_width += d_model
+            final_width += d_agent
         self.final_layer = nn.Sequential(
-            nn.Linear(final_width, d_model * dim_feedforward_ratio),
+            nn.Linear(final_width, d_agent * dff_ratio),
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(d_model * dim_feedforward_ratio, 8)
+        self.policy_head = nn.Linear(d_agent * dff_ratio, 8)
         if small_init_pi:
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
-        self.value_head = nn.Linear(d_model * dim_feedforward_ratio, 1)
+        self.value_head = nn.Linear(d_agent * dff_ratio, 1)
         if zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
@@ -297,9 +302,9 @@ class TransformerPolicy2(nn.Module):
         mask = xa[:, :, 7] * 0 != 0  # Position 7 is hitpoints
 
         # TODO: use global properties
-        agents = self.self_embedding(xa, ~actual_mask)
+        agents = self.agent_embedding(xa, ~actual_mask)
         if self.item_ff:
-            agents = self.self_resblock(agents)
+            agents = self.agent_resblock(agents)
 
         if self.enemies > 0:
             # properties of closest minerals
@@ -328,22 +333,25 @@ class TransformerPolicy2(nn.Module):
             x_privileged = None
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        source = items.view(batch_size * self.allies, self.drones + self.minerals, self.d_model).permute(1, 0, 2)
-        target = agents.view(1, batch_size * self.allies, self.d_model)
+        source = items.view(batch_size * self.allies, self.drones + self.minerals, self.d_item).permute(1, 0, 2)
+        target = agents.view(1, batch_size * self.allies, self.d_agent)
+        expanded_mask = mask.unsqueeze(1)\
+            .expand(batch_size, self.allies, self.drones + self.minerals)\
+            .reshape(batch_size * self.allies, self.drones + self.minerals)
         x, attn_weights = self.multihead_attention(
             query=target,
             key=source,
             value=source,
-            key_padding_mask=mask,
+            key_padding_mask=expanded_mask,
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
-        x = x.view(batch_size, self.allies, self.d_model)
+        x = x.view(batch_size, self.allies, self.d_agent)
 
         if self.nearby_map:
             items = self.norm_map(F.relu(self.downscale(items)))
-            items = items * (1 - mask.float().view(batch_size, self.allies, self.drones + self.minerals, 1))
+            items = items * (1 - mask.float().view(batch_size, 1, self.drones + self.minerals, 1))
             nearby_map = spatial.spatial_scatter(
                 items=items,
                 positions=relpos,
@@ -357,11 +365,11 @@ class TransformerPolicy2(nn.Module):
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
                 nearby_map = nearby_map.permute(0, 3, 2, 1)
                 nearby_map = self.norm_conv(nearby_map + nearby_map2)
-            nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_model)
+            nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_agent)
             x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x)
-        x = x.view(batch_size, self.allies, self.d_model * self.dim_feedforward_ratio)
+        x = x.view(batch_size, self.allies, self.d_agent * self.dff_ratio)
 
         return x, x_privileged
 
@@ -387,7 +395,7 @@ class InputNorm(nn.Module):
             if len(input.size()) == 4:
                 batch_size, nally, nitem, features = input.size()
                 assert (batch_size, nitem) == mask.size()
-                input = input[mask.unsqueeze(1), :]
+                input = input[mask.unsqueeze(1).expand(input.size()[:-1]), :]
             elif len(input.size()) == 3:
                 batch_size, nally, features = input.size()
                 assert (batch_size, nally) == mask.size()

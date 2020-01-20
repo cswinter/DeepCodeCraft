@@ -79,13 +79,8 @@ def spatial_scatter(
 
     distance_index, angular_index, distance_offsets, angular_offsets = \
         polar_indices(positions, nray, nring, inner_radius)
-    #print("distance index", distance_index.size(), distance_index)
-    #print("angular index", angular_index.size(), angular_index)
     index = distance_index * nray + angular_index
     index = index.unsqueeze(-1)
-    items = items.view(n, 1, l, c)
-    #print("items", items.size(), items)
-    #print("index", index.size(), index)
     scattered_items = scatter_add(items, index, dim=2, dim_size=nray * nring) \
         .permute(0, 1, 3, 2) \
         .reshape(n, ls, c, nring, nray)

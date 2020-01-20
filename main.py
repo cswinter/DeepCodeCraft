@@ -90,9 +90,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
     resume_steps = 0
     if hps.resume_from == '':
         policy = TransformerPolicy2(
-            hps.d_model,
+            hps.d_agent,
+            hps.d_item,
+            hps.dff_ratio,
             hps.nhead,
-            hps.dim_feedforward_ratio,
             hps.dropout,
             hps.small_init_pi,
             hps.zero_init_vf,

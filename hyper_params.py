@@ -33,9 +33,10 @@ class HyperParams:
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
 
         # Policy (transformer)
-        self.d_model = 512
+        self.d_agent = 512
+        self.d_item = 128
+        self.dff_ratio = 4
         self.nhead = 8
-        self.dim_feedforward_ratio = 4
         self.transformer_layers = 2
         self.dropout = 0.0             # Try 0.1?
         self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
@@ -92,9 +93,8 @@ class HyperParams:
         hps.bs = 1024
         hps.clip_vf = True
         hps.cliprange = 0.2
-        hps.d_model = 512
         hps.dconv_pooling = 'both'
-        hps.dim_feedforward_ratio = 2
+        hps.dff_ratio = 2
         hps.eval_envs = 256
         hps.eval_frequency = 5e5
         hps.eval_timesteps = 1100
@@ -140,9 +140,8 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY_2V2
 
-        hps.d_model = 512
         hps.nhead = 8
-        hps.dim_feedforward_ratio = 2
+        hps.dff_ratio = 2
         hps.transformer_layers = 1
 
         hps.obs_allies = 2
@@ -208,8 +207,7 @@ class HyperParams:
     def allied_wealth():
         hps = HyperParams()
         hps.clip_vf = True
-        hps.d_model = 512
-        hps.dim_feedforward_ratio = 2
+        hps.dff_ratio = 2
         hps.eval_envs = 0
         hps.gamma = 0.99
         hps.lamb = 0.95
