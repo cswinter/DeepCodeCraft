@@ -98,37 +98,26 @@ class TransformerPolicy2(nn.Module):
         else:
             raise Exception(f'Unexpected normalization layer {norm}')
 
-        self.agent_embedding = InputEmbedding(DSTRIDE_V2, d_agent, norm_fn)
-        if self.item_ff:
-            self.agent_resblock = FFResblock(d_agent, d_agent * dff_ratio, norm_fn)
-
-        # TODO: same embedding for self and other drones?
+        self.agent_embedding = ItemBlock(
+            DSTRIDE_V2 + GLOBAL_FEATURES_V2, d_agent, d_agent * dff_ratio, norm_fn, True,
+            keep_abspos=False,
+            mask_feature=7,  # Feature 7 is hitpoints
+        )
+        # TODO: same embedding for enemy/allied drones?
         self.ally_net = ItemBlock(
-            DSTRIDE_V2,
-            d_item,
-            d_item * dff_ratio,
-            norm_fn,
-            self.item_ff,
+            DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
-            mask_feature=7  # Feature 7 is hitpoints
+            mask_feature=7,  # Feature 7 is hitpoints
         )
         self.enemy_net = ItemBlock(
-            DSTRIDE_V2,
-            d_item,
-            d_item * dff_ratio,
-            norm_fn,
-            self.item_ff,
+            DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
-            mask_feature=7  # Feature 7 is hitpoints
+            mask_feature=7,  # Feature 7 is hitpoints
         )
         self.mineral_net = ItemBlock(
-            MSTRIDE_V2,
-            d_item,
-            d_item * dff_ratio,
-            norm_fn,
-            self.item_ff,
+            MSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
-            mask_feature=2  # Feature 2 is size
+            mask_feature=2,  # Feature 2 is size
         )
 
         if use_privileged:
@@ -281,30 +270,31 @@ class TransformerPolicy2(nn.Module):
             # Normalization layers perform fp16 conversion for x after normalization
             x_privileged = x_privileged.half()
 
+        batch_size = x.size()[0]
+
         endglobals = GLOBAL_FEATURES_V2
         endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.allies
         endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.drones
         endmins = endenemies + MSTRIDE_V2 * self.minerals
 
-        # Dimensions: batch, items, properties
+        globals = x[:, :endglobals]
 
-        batch_size = x.size()[0]
         # properties of the drone controlled by this network
         xa = x[:, endglobals:endallies].view(batch_size, self.allies, DSTRIDE_V2)
         origin = xa[:, :, 0:2].clone()
         direction = xa[:, :, 2:4].clone()
 
-        items, relpos, actual_mask = self.ally_net(xa, origin, direction)
+        items, relpos, _ = self.ally_net(xa, origin, direction)
 
         # Ensures that at least one mask element is present, otherwise we get NaN in attention softmax
         # If the ally is nonexistant, it's output will be ignored anyway
         # Derive from original tensor to keep on device
         mask = xa[:, :, 7] * 0 != 0  # Position 7 is hitpoints
 
-        # TODO: use global properties
-        agents = self.agent_embedding(xa, ~actual_mask)
-        if self.item_ff:
-            agents = self.agent_resblock(agents)
+        globals = globals.view(batch_size, 1, GLOBAL_FEATURES_V2) \
+            .expand(batch_size, self.allies, GLOBAL_FEATURES_V2)
+        xa = torch.cat([xa, globals], dim=2)
+        agents, _, _ = self.agent_embedding(xa)
 
         if self.enemies > 0:
             # properties of closest minerals
@@ -495,20 +485,24 @@ class ItemBlock(nn.Module):
         if resblock:
             self.resblock = FFResblock(d_model, d_ff, norm_fn)
 
-    def forward(self, x, origin, direction):
+    def forward(self, x, origin=None, direction=None):
         batch_size, items, features = x.size()
-        _, allies, _ = origin.size()
-
-        pos = x[:, :, 0:2]
-        relpos = spatial.relative_positions(origin, direction, pos)
         mask = x[:, :, self.mask_feature] == 0
 
-        x = x.view(batch_size, 1, items, features)\
-            .expand(batch_size, allies, items, features)
-        if self.keep_abspos:
-            x = torch.cat([x, relpos], dim=3)
+        if origin is not None:
+            _, allies, _ = origin.size()
+
+            pos = x[:, :, 0:2]
+            relpos = spatial.relative_positions(origin, direction, pos)
+
+            x = x.view(batch_size, 1, items, features)\
+                .expand(batch_size, allies, items, features)
+            if self.keep_abspos:
+                x = torch.cat([x, relpos], dim=3)
+            else:
+                x[:, :, :, 0:2] = relpos
         else:
-            x[:, :, :, 0:2] = relpos
+            relpos = None
 
         x = self.embedding(x, ~mask)
         if self.resblock is not None:
