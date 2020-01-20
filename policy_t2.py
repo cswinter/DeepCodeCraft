@@ -100,8 +100,9 @@ class TransformerPolicy2(nn.Module):
 
         self.agent_embedding = ItemBlock(
             DSTRIDE_V2 + GLOBAL_FEATURES_V2, d_agent, d_agent * dff_ratio, norm_fn, True,
-            keep_abspos=False,
+            keep_abspos=True,
             mask_feature=7,  # Feature 7 is hitpoints
+            relpos=False,
         )
         # TODO: same embedding for enemy/allied drones?
         self.ally_net = ItemBlock(
@@ -474,11 +475,14 @@ class FFResblock(nn.Module):
 
 
 class ItemBlock(nn.Module):
-    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock, keep_abspos, mask_feature):
+    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock, keep_abspos, mask_feature, relpos=True):
         super(ItemBlock, self).__init__()
 
-        if keep_abspos:
-            d_in += 2
+        if relpos:
+            if keep_abspos:
+                d_in += 3
+            else:
+                d_in += 1
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
         self.mask_feature = mask_feature
         self.keep_abspos = keep_abspos
@@ -494,13 +498,16 @@ class ItemBlock(nn.Module):
 
             pos = x[:, :, 0:2]
             relpos = spatial.relative_positions(origin, direction, pos)
+            dist = relpos.norm(p=2, dim=3).unsqueeze(-1)
+            direction = relpos / (dist + 1e-8)
 
             x = x.view(batch_size, 1, items, features)\
                 .expand(batch_size, allies, items, features)
             if self.keep_abspos:
-                x = torch.cat([x, relpos], dim=3)
+                x = torch.cat([x, direction, torch.sqrt(dist)], dim=3)
             else:
                 x[:, :, :, 0:2] = relpos
+                x = torch.cat([x, torch.sqrt(dist)], dim=3)
         else:
             relpos = None
 
