@@ -302,7 +302,7 @@ class TransformerPolicy2(nn.Module):
             xe = x[:, endallies:endenemies].view(batch_size, self.enemies, DSTRIDE_V2)
 
             items_e, relpos_e, mask_e = self.enemy_net(xe, origin, direction)
-            items = torch.cat([items, items_e], dim=1)
+            items = torch.cat([items, items_e], dim=2)
             mask = torch.cat([mask, mask_e], dim=1)
             relpos = torch.cat([relpos, relpos_e], dim=2)
 
