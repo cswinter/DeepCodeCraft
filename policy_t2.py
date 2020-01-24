@@ -214,11 +214,13 @@ class TransformerPolicy2(nn.Module):
         # TODO: mask actions by setting logits to -inf?
         probs = probs * action_masks + self.epsilon
 
+        active_agents = torch.clamp_min((action_masks.sum(dim=2) > 0).float().sum(dim=1), min=1)
+
         dist = distributions.Categorical(probs)
         entropy = dist.entropy()
         logprobs = dist.log_prob(actions)
         ratios = torch.exp(logprobs - old_logprobs)
-        advantages = advantages.view(-1, 1)
+        advantages = advantages.view(-1, 1) / active_agents.view(-1, 1)
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
