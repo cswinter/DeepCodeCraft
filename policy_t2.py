@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 
+from gather import topk_by
 from multihead_attention import MultiheadAttention
 import spatial
 from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES_V2, MSTRIDE_V2, DSTRIDE_V2
@@ -19,6 +20,10 @@ class TransformerPolicy2(nn.Module):
                  zero_init_vf,
                  fp16,
                  norm,
+                 agents,
+                 nally,
+                 nenemy,
+                 nmineral,
                  obs_config=DEFAULT_OBS_CONFIG,
                  use_privileged=False,
                  nearby_map=False,
@@ -50,6 +55,10 @@ class TransformerPolicy2(nn.Module):
             use_privileged=use_privileged,
             norm=norm,
             obs_config=obs_config,
+            agents=agents,
+            nally=nally,
+            nenemy=nenemy,
+            nmineral=nmineral,
             nearby_map=nearby_map,
 
             ring_width=ring_width,
@@ -63,10 +72,11 @@ class TransformerPolicy2(nn.Module):
         )
 
         self.obs_config = obs_config
-        self.allies = obs_config.allies
-        self.drones = obs_config.drones
-        self.enemies = self.drones - self.allies
-        self.minerals = obs_config.minerals
+        self.agents = agents
+        self.nally = nally
+        self.nenemy = nenemy
+        self.nmineral = nmineral
+        self.nitem = nally + nenemy + nmineral
         if hasattr(obs_config, 'global_drones'):
             self.global_drones = obs_config.global_drones
         else:
@@ -109,16 +119,19 @@ class TransformerPolicy2(nn.Module):
             DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
             mask_feature=7,  # Feature 7 is hitpoints
+            topk=nally,
         )
         self.enemy_net = ItemBlock(
             DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
             mask_feature=7,  # Feature 7 is hitpoints
+            topk=nenemy,
         )
         self.mineral_net = ItemBlock(
             MSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
             mask_feature=2,  # Feature 2 is size
+            topk=nmineral,
         )
 
         if use_privileged:
@@ -170,8 +183,9 @@ class TransformerPolicy2(nn.Module):
     def evaluate(self, observation, action_masks, privileged_obs):
         if self.fp16:
             action_masks = action_masks.half()
+        action_masks = action_masks[:, :self.agents, :]
         probs, v = self.forward(observation, privileged_obs)
-        probs = probs.view(-1, self.allies, 8)
+        probs = probs.view(-1, self.agents, 8)
         probs = probs * action_masks + self.epsilon  # Add small value to prevent crash when no action is possible
         # We get device-side assert when using fp16 here (needs more investigation)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
@@ -197,8 +211,9 @@ class TransformerPolicy2(nn.Module):
             action_masks = action_masks.half()
             old_logprobs = old_logprobs.half()
 
+        action_masks = action_masks[:, :self.agents, :]
         x, x_privileged = self.latents(obs, privileged_obs)
-        vin = F.max_pool2d(x, kernel_size=(self.allies, 1))
+        vin = F.max_pool2d(x, kernel_size=(self.agents, 1))
         values = self.value_head(vin).view(-1)
         # TODO
         #if self.use_privileged:
@@ -207,7 +222,7 @@ class TransformerPolicy2(nn.Module):
         #    vin = pooled.view(batch_size, -1)
         logits = self.policy_head(x)
         probs = F.softmax(logits, dim=2)
-        probs = probs.view(-1, self.allies, 8)
+        probs = probs.view(-1, self.agents, 8)
 
         # add small value to prevent degenerate probability distribution when no action is possible
         # gradients still get blocked by the action mask
@@ -255,7 +270,7 @@ class TransformerPolicy2(nn.Module):
         #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
         #else:
         #    vin = pooled.view(batch_size, -1)
-        vin = F.max_pool2d(x, kernel_size=(self.allies, 1))
+        vin = F.max_pool2d(x, kernel_size=(self.agents, 1))
         values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
@@ -276,48 +291,43 @@ class TransformerPolicy2(nn.Module):
         batch_size = x.size()[0]
 
         endglobals = GLOBAL_FEATURES_V2
-        endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.allies
-        endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.drones
-        endmins = endenemies + MSTRIDE_V2 * self.minerals
+        endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.allies
+        endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.drones
+        endmins = endenemies + MSTRIDE_V2 * self.obs_config.minerals
 
         globals = x[:, :endglobals]
 
         # properties of the drone controlled by this network
-        xa = x[:, endglobals:endallies].view(batch_size, self.allies, DSTRIDE_V2)
-        origin = xa[:, :, 0:2].clone()
-        direction = xa[:, :, 2:4].clone()
-
-        items, relpos, _ = self.ally_net(xa, origin, direction)
-
-        # Ensures that at least one mask element is present, otherwise we get NaN in attention softmax
-        # If the ally is nonexistant, it's output will be ignored anyway
-        # Derive from original tensor to keep on device
-        mask = xa[:, :, 7] * 0 != 0  # Position 7 is hitpoints
-
+        xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
+        xagent = xally[:, :self.agents, :]
         globals = globals.view(batch_size, 1, GLOBAL_FEATURES_V2) \
-            .expand(batch_size, self.allies, GLOBAL_FEATURES_V2)
-        xa = torch.cat([xa, globals], dim=2)
-        agents, _, _ = self.agent_embedding(xa)
+            .expand(batch_size, self.agents, GLOBAL_FEATURES_V2)
+        xagent = torch.cat([xagent, globals], dim=2)
+        agents, _, _ = self.agent_embedding(xagent)
 
-        if self.enemies > 0:
-            # properties of closest minerals
-            xe = x[:, endallies:endenemies].view(batch_size, self.enemies, DSTRIDE_V2)
+        origin = xagent[:, :, 0:2].clone()
+        direction = xagent[:, :, 2:4].clone()
+
+        items, relpos, mask = self.ally_net(xally, origin, direction)
+        # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
+        mask[:, :, 0] = 0
+
+        if self.nenemy > 0:
+            eobs = self.obs_config.drones - self.obs_config.allies
+            xe = x[:, endallies:endenemies].view(batch_size, eobs, DSTRIDE_V2)
 
             items_e, relpos_e, mask_e = self.enemy_net(xe, origin, direction)
             items = torch.cat([items, items_e], dim=2)
-            mask = torch.cat([mask, mask_e], dim=1)
+            mask = torch.cat([mask, mask_e], dim=2)
             relpos = torch.cat([relpos, relpos_e], dim=2)
 
-        if self.minerals > 0:
-            # properties of closest minerals
-            xm = x[:, endenemies:endmins].view(batch_size, self.minerals, MSTRIDE_V2)
+        if self.nmineral > 0:
+            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, MSTRIDE_V2)
 
             items_m, relpos_m, mask_m = self.mineral_net(xm, origin, direction)
             items = torch.cat([items, items_m], dim=2)
-            mask = torch.cat([mask, mask_m], dim=1)
+            mask = torch.cat([mask, mask_m], dim=2)
             relpos = torch.cat([relpos, relpos_m], dim=2)
-
-        mask = mask.view(batch_size, self.drones + self.minerals)
 
         # TODO: self.use_privileged
         if self.use_privileged:
@@ -326,25 +336,22 @@ class TransformerPolicy2(nn.Module):
             x_privileged = None
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        source = items.view(batch_size * self.allies, self.drones + self.minerals, self.d_item).permute(1, 0, 2)
-        target = agents.view(1, batch_size * self.allies, self.d_agent)
-        expanded_mask = mask.unsqueeze(1)\
-            .expand(batch_size, self.allies, self.drones + self.minerals)\
-            .reshape(batch_size * self.allies, self.drones + self.minerals)
+        source = items.view(batch_size * self.agents, self.nitem, self.d_item).permute(1, 0, 2)
+        target = agents.view(1, batch_size * self.agents, self.d_agent)
         x, attn_weights = self.multihead_attention(
             query=target,
             key=source,
             value=source,
-            key_padding_mask=expanded_mask,
+            key_padding_mask=mask.view(batch_size * self.agents, self.nitem),
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
-        x = x.view(batch_size, self.allies, self.d_agent)
+        x = x.view(batch_size, self.agents, self.d_agent)
 
         if self.nearby_map:
             items = self.norm_map(F.relu(self.downscale(items)))
-            items = items * (1 - mask.float().view(batch_size, 1, self.drones + self.minerals, 1))
+            items = items * (1 - mask.float().unsqueeze(-1))
             nearby_map = spatial.spatial_scatter(
                 items=items,
                 positions=relpos,
@@ -352,17 +359,17 @@ class TransformerPolicy2(nn.Module):
                 nring=self.nrings,
                 inner_radius=self.ring_width,
                 embed_offsets=self.map_embed_offset,
-            ).view(batch_size * self.allies, self.map_channels, self.nrings, self.nrays)
+            ).view(batch_size * self.agents, self.map_channels, self.nrings, self.nrays)
             if self.map_conv:
                 nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
                 nearby_map = nearby_map.permute(0, 3, 2, 1)
                 nearby_map = self.norm_conv(nearby_map + nearby_map2)
-            nearby_map = nearby_map.reshape(batch_size, self.allies, self.d_agent)
+            nearby_map = nearby_map.reshape(batch_size, self.agents, self.d_agent)
             x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x)
-        x = x.view(batch_size, self.allies, self.d_agent * self.dff_ratio)
+        x = x.view(batch_size, self.agents, self.d_agent * self.dff_ratio)
 
         return x, x_privileged
 
@@ -387,14 +394,13 @@ class InputNorm(nn.Module):
         if mask is not None:
             if len(input.size()) == 4:
                 batch_size, nally, nitem, features = input.size()
-                assert (batch_size, nitem) == mask.size()
-                input = input[mask.unsqueeze(1).expand(input.size()[:-1]), :]
+                assert (batch_size, nally, nitem) == mask.size()
             elif len(input.size()) == 3:
                 batch_size, nally, features = input.size()
                 assert (batch_size, nally) == mask.size()
-                input = input[mask, :]
             else:
                 raise Exception(f'Expecting 3 or 4 dimensions, actual: {len(input.size())}')
+            input = input[mask, :]
         else:
             features = input.size()[-1]
             input = input.reshape(-1, features)
@@ -477,7 +483,7 @@ class FFResblock(nn.Module):
 
 
 class ItemBlock(nn.Module):
-    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock, keep_abspos, mask_feature, relpos=True):
+    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock, keep_abspos, mask_feature, relpos=True, topk=None):
         super(ItemBlock, self).__init__()
 
         if relpos:
@@ -488,33 +494,41 @@ class ItemBlock(nn.Module):
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
         self.mask_feature = mask_feature
         self.keep_abspos = keep_abspos
+        self.topk = topk
         if resblock:
             self.resblock = FFResblock(d_model, d_ff, norm_fn)
 
     def forward(self, x, origin=None, direction=None):
         batch_size, items, features = x.size()
-        mask = x[:, :, self.mask_feature] == 0
 
         if origin is not None:
-            _, allies, _ = origin.size()
+            _, agents, _ = origin.size()
 
             pos = x[:, :, 0:2]
             relpos = spatial.relative_positions(origin, direction, pos)
-            dist = relpos.norm(p=2, dim=3).unsqueeze(-1)
-            direction = relpos / (dist + 1e-8)
+            dist = relpos.norm(p=2, dim=3)
+            direction = relpos / (dist.unsqueeze(-1) + 1e-8)
 
             x = x.view(batch_size, 1, items, features)\
-                .expand(batch_size, allies, items, features)
+                .expand(batch_size, agents, items, features)
             if self.keep_abspos:
-                x = torch.cat([x, direction, torch.sqrt(dist)], dim=3)
+                x = torch.cat([x, direction, torch.sqrt(dist.unsqueeze(-1))], dim=3)
             else:
                 x[:, :, :, 0:2] = relpos
-                x = torch.cat([x, torch.sqrt(dist)], dim=3)
+                x = torch.cat([x, torch.sqrt(dist.unsqueeze(-1))], dim=3)
+
+            if self.topk is not None:
+                x = topk_by(values=x, vdim=2, keys=-dist, kdim=2, k=self.topk)
+                relpos = topk_by(values=relpos, vdim=2, keys=-dist, kdim=2, k=self.topk)
+
+            mask = x[:, :, :, self.mask_feature] == 0
         else:
             relpos = None
+            mask = x[:, :, self.mask_feature] == 0
 
         x = self.embedding(x, ~mask)
         if self.resblock is not None:
             x = self.resblock(x)
 
         return x, relpos, mask
+

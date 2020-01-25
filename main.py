@@ -63,7 +63,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     obs_config = ObsConfig(
         allies=hps.obs_allies,
-        drones=hps.obs_drones,
+        drones=hps.obs_allies + hps.obs_enemies,
         minerals=hps.obs_minerals,
         global_drones=hps.obs_global_drones,
         relative_positions=False,
@@ -98,8 +98,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hps.small_init_pi,
             hps.zero_init_vf,
             hps.fp16,
-            norm=hps.norm,
+            agents=hps.agents,
+            nally=hps.nally,
+            nenemy=hps.nenemy,
+            nmineral=hps.nmineral,
             obs_config=obs_config,
+            norm=hps.norm,
             use_privileged=hps.obs_global_drones > 0,
             nearby_map=hps.nearby_map,
             ring_width=hps.nm_ring_width,
@@ -248,7 +252,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_logprobs = np.array(all_logprobs)
         all_obs = np.array(all_obs)
         all_privileged_obs = np.array(all_privileged_obs)
-        all_action_masks = np.array(all_action_masks)
+        all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
         all_probs = np.array(all_probs)
 
         for epoch in range(hps.sample_reuse):

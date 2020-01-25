@@ -47,14 +47,18 @@ class HyperParams:
         self.mc_kernel_size = 3        # Size of convolution kernel for nearby map
         self.map_embed_offset = False  # Whether the nearby map has 2 channels corresponding to the offset of objects within the tile
         self.item_ff = True            # Adds itemwise ff resblock after initial embedding before transformer
+        self.agents = 1                # Max number of simultaneously controllable drones
+        self.nally = 1                 # Max number of allies observed by each drone
+        self.nenemy = 0                # Max number of enemies observed by each drone
+        self.nmineral = 10             # Max number of minerals observed by each drone
 
         # Observations
-        self.obs_allies = 2         # Max number of controllable allies per player
-        self.obs_drones = 4         # Max number of drones observed by each drone
-        self.obs_minerals = 0       # Max number of minerals observed by each drone
-        self.obs_global_drones = 0  # Max number of (possibly hidden) drones observed by value function
-        self.obs_keep_abspos = True # Have features for both absolute and relative positions on each object
-        self.use_privileged = False # Whether value function has access to hidden information
+        self.obs_allies = 10          # Max number of allied drones returned by the env
+        self.obs_enemies = 10         # Max number of enemy drones returned by the env
+        self.obs_minerals = 10        # Max number of minerals returned by the env
+        self.obs_global_drones = 0    # Max number of (possibly hidden) drones observed by value function
+        self.obs_keep_abspos = True   # Have features for both absolute and relative positions on each object
+        self.use_privileged = False   # Whether value function has access to hidden information
 
         # Eval
         self.eval_envs = 256
@@ -219,10 +223,9 @@ class HyperParams:
         hps.num_envs = 64
         hps.num_self_play = 0
         hps.objective = envs.Objective.ALLIED_WEALTH
-        hps.obs_allies = 1
-        hps.obs_drones = 0
+        hps.nally = 1
+        hps.nmineral = 10
         hps.obs_global_drones = 0
-        hps.obs_minerals = 10
         hps.optimizer = 'Adam'
         hps.sample_reuse = 2
         hps.small_init_pi = False
