@@ -79,6 +79,7 @@ class HyperParams:
         self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
         self.cliprange = 0.2        # PPO cliprange
         self.clip_vf = True         # Use clipped value function objective
+        self.split_reward = False   # Split reward evenly amongst all active agents
 
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2

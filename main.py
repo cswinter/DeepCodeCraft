@@ -295,7 +295,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
                 policy_loss, value_loss, aproxkl, clipfrac =\
-                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef, advs, vals, amasks, actual_probs, op)
+                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef,
+                                    advs, vals, amasks, actual_probs, op, hps.split_reward)
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl

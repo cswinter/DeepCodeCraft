@@ -204,7 +204,8 @@ class TransformerPolicy2(nn.Module):
                  old_values,
                  action_masks,
                  old_probs,
-                 privileged_obs):
+                 privileged_obs,
+                 split_reward):
         if self.fp16:
             advantages = advantages.half()
             returns = returns.half()
@@ -235,7 +236,9 @@ class TransformerPolicy2(nn.Module):
         entropy = dist.entropy()
         logprobs = dist.log_prob(actions)
         ratios = torch.exp(logprobs - old_logprobs)
-        advantages = advantages.view(-1, 1) / active_agents.view(-1, 1)
+        advantages = advantages.view(-1, 1)
+        if split_reward:
+            advantages = advantages / active_agents.view(-1, 1)
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
