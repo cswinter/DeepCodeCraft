@@ -116,10 +116,7 @@ class HyperParams:
         hps.num_self_play = 32
         hps.num_self_play_schedule = ''
         hps.objective = envs.Objective.ARENA_MEDIUM
-        hps.obs_allies = 4
-        hps.obs_drones = 4
         hps.obs_global_drones = 0
-        hps.obs_minerals = 4
         hps.optimizer = 'Adam'
         hps.ppo = True
         hps.resblocks = 1
