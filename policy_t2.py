@@ -517,8 +517,7 @@ class ItemBlock(nn.Module):
             if self.keep_abspos:
                 x = torch.cat([x, direction, torch.sqrt(dist.unsqueeze(-1))], dim=3)
             else:
-                x[:, :, :, 0:2] = relpos
-                x = torch.cat([x, torch.sqrt(dist.unsqueeze(-1))], dim=3)
+                x = torch.cat([direction, x[:, :, :, 2:], torch.sqrt(dist.unsqueeze(-1))], dim=3)
 
             if self.topk is not None:
                 x = topk_by(values=x, vdim=2, keys=-dist, kdim=2, k=self.topk)

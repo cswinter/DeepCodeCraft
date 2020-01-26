@@ -57,7 +57,7 @@ class HyperParams:
         self.obs_enemies = 10         # Max number of enemy drones returned by the env
         self.obs_minerals = 10        # Max number of minerals returned by the env
         self.obs_global_drones = 0    # Max number of (possibly hidden) drones observed by value function
-        self.obs_keep_abspos = True   # Have features for both absolute and relative positions on each object
+        self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
         self.use_privileged = False   # Whether value function has access to hidden information
 
         # Eval
