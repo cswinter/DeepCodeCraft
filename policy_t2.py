@@ -35,6 +35,7 @@ class TransformerPolicy2(nn.Module):
                  map_embed_offset=False,
                  item_ff=True,
                  keep_abspos=False,
+                 ally_enemy_same=False,
                  ):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
@@ -69,6 +70,7 @@ class TransformerPolicy2(nn.Module):
             map_embed_offset=map_embed_offset,
             item_ff=item_ff,
             keep_abspos=keep_abspos,
+            ally_enemy_same=ally_enemy_same,
         )
 
         self.obs_config = obs_config
@@ -98,6 +100,7 @@ class TransformerPolicy2(nn.Module):
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
+        self.ally_enemy_same = ally_enemy_same
 
         if norm == 'none':
             norm_fn = lambda x: nn.Sequential()
@@ -114,19 +117,26 @@ class TransformerPolicy2(nn.Module):
             mask_feature=7,  # Feature 7 is hitpoints
             relpos=False,
         )
-        # TODO: same embedding for enemy/allied drones?
-        self.ally_net = ItemBlock(
-            DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
-            keep_abspos=keep_abspos,
-            mask_feature=7,  # Feature 7 is hitpoints
-            topk=nally,
-        )
-        self.enemy_net = ItemBlock(
-            DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
-            keep_abspos=keep_abspos,
-            mask_feature=7,  # Feature 7 is hitpoints
-            topk=nenemy,
-        )
+        if ally_enemy_same:
+            self.drone_net = ItemBlock(
+                DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                keep_abspos=keep_abspos,
+                mask_feature=7,  # Feature 7 is hitpoints
+                topk=nally+nenemy,
+            )
+        else:
+            self.ally_net = ItemBlock(
+                DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                keep_abspos=keep_abspos,
+                mask_feature=7,  # Feature 7 is hitpoints
+                topk=nally,
+            )
+            self.enemy_net = ItemBlock(
+                DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                keep_abspos=keep_abspos,
+                mask_feature=7,  # Feature 7 is hitpoints
+                topk=nenemy,
+            )
         self.mineral_net = ItemBlock(
             MSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
             keep_abspos=keep_abspos,
@@ -301,8 +311,7 @@ class TransformerPolicy2(nn.Module):
         globals = x[:, :endglobals]
 
         # properties of the drone controlled by this network
-        xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
-        xagent = xally[:, :self.agents, :]
+        xagent = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)[:, :self.agents, :]
         globals = globals.view(batch_size, 1, GLOBAL_FEATURES_V2) \
             .expand(batch_size, self.agents, GLOBAL_FEATURES_V2)
         xagent = torch.cat([xagent, globals], dim=2)
@@ -311,11 +320,16 @@ class TransformerPolicy2(nn.Module):
         origin = xagent[:, :, 0:2].clone()
         direction = xagent[:, :, 2:4].clone()
 
-        items, relpos, mask = self.ally_net(xally, origin, direction)
+        if self.ally_enemy_same:
+            xdrone = x[:, endglobals:endenemies].view(batch_size, self.obs_config.drones, DSTRIDE_V2)
+            items, relpos, mask = self.drone_net(xdrone, origin, direction)
+        else:
+            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
+            items, relpos, mask = self.ally_net(xally, origin, direction)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
         mask[:, :, 0] = 0
 
-        if self.nenemy > 0:
+        if self.nenemy > 0 and not self.ally_enemy_same:
             eobs = self.obs_config.drones - self.obs_config.allies
             xe = x[:, endallies:endenemies].view(batch_size, eobs, DSTRIDE_V2)
 
@@ -520,8 +534,10 @@ class ItemBlock(nn.Module):
                 x = torch.cat([direction, x[:, :, :, 2:], torch.sqrt(dist.unsqueeze(-1))], dim=3)
 
             if self.topk is not None:
-                x = topk_by(values=x, vdim=2, keys=-dist, kdim=2, k=self.topk)
-                relpos = topk_by(values=relpos, vdim=2, keys=-dist, kdim=2, k=self.topk)
+                empty = (x[:, :, :, self.mask_feature] == 0).float()
+                key = -dist - empty * 1e8
+                x = topk_by(values=x, vdim=2, keys=key, kdim=2, k=self.topk)
+                relpos = topk_by(values=relpos, vdim=2, keys=key, kdim=2, k=self.topk)
 
             mask = x[:, :, :, self.mask_feature] == 0
         else:

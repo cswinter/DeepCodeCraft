@@ -112,6 +112,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             map_conv=hps.map_conv,
             map_embed_offset=hps.map_embed_offset,
             keep_abspos=hps.obs_keep_abspos,
+            ally_enemy_same=hps.ally_enemy_same,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:

@@ -51,6 +51,7 @@ class HyperParams:
         self.nally = 1                 # Max number of allies observed by each drone
         self.nenemy = 0                # Max number of enemies observed by each drone
         self.nmineral = 10             # Max number of minerals observed by each drone
+        self.ally_enemy_same = True    # Use same weights for processing ally and enemy drones
 
         # Observations
         self.obs_allies = 10          # Max number of allied drones returned by the env
