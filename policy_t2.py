@@ -41,6 +41,7 @@ class TransformerPolicy2(nn.Module):
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
             'Must have at least one mineral or drones observation'
         assert obs_config.drones >= obs_config.allies
+        assert not use_privileged or (nmineral > 0 and nally > 0 and (nenemy > 0 or ally_enemy_same))
 
         self.version = 'transformer_v2'
 
@@ -145,8 +146,24 @@ class TransformerPolicy2(nn.Module):
         )
 
         if use_privileged:
-            # TODO
-            pass
+            self.pmineral_net = ItemBlock(
+                MSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                keep_abspos=True, relpos=False, mask_feature=2,
+            )
+            if ally_enemy_same:
+                self.pdrone_net = ItemBlock(
+                    DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                    keep_abspos=True, relpos=False, mask_feature=7,
+                )
+            else:
+                self.pally_net = ItemBlock(
+                    DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                    keep_abspos=True, relpos=False, mask_feature=7,
+                )
+                self.penemy_net = ItemBlock(
+                    DSTRIDE_V2, d_item, d_item * dff_ratio, norm_fn, self.item_ff,
+                    keep_abspos=True, relpos=False, mask_feature=7,
+                )
 
         self.multihead_attention = MultiheadAttention(
             embed_dim=d_agent,
@@ -183,7 +200,10 @@ class TransformerPolicy2(nn.Module):
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
-        self.value_head = nn.Linear(d_agent * dff_ratio, 1)
+        if self.use_privileged:
+            self.value_head = nn.Linear(d_agent * dff_ratio + 2 * d_item, 1)
+        else:
+            self.value_head = nn.Linear(d_agent * dff_ratio, 1)
         if zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
@@ -223,14 +243,16 @@ class TransformerPolicy2(nn.Module):
             old_logprobs = old_logprobs.half()
 
         action_masks = action_masks[:, :self.agents, :]
-        x, x_privileged = self.latents(obs, privileged_obs)
-        vin = F.max_pool2d(x, kernel_size=(self.agents, 1))
+        x, (pitems, pmask) = self.latents(obs, privileged_obs)
+        batch_size = x.size()[0]
+
+        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.dff_ratio)
+        if self.use_privileged:
+            pitems_max = pitems.max(dim=1).values
+            pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
+            vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
         values = self.value_head(vin).view(-1)
-        # TODO
-        #if self.use_privileged:
-        #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
-        #else:
-        #    vin = pooled.view(batch_size, -1)
+
         logits = self.policy_head(x)
         probs = F.softmax(logits, dim=2)
         probs = probs.view(-1, self.agents, 8)
@@ -277,13 +299,13 @@ class TransformerPolicy2(nn.Module):
 
     def forward(self, x, x_privileged):
         batch_size = x.size()[0]
-        x, x_privileged = self.latents(x, x_privileged)
-        # TODO
-        #if self.use_privileged:
-        #    vin = torch.cat([pooled.view(batch_size, -1), x_privileged.view(batch_size, -1)], dim=1)
-        #else:
-        #    vin = pooled.view(batch_size, -1)
-        vin = F.max_pool2d(x, kernel_size=(self.agents, 1))
+        x, (pitems, pmask) = self.latents(x, x_privileged)
+
+        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.dff_ratio)
+        if self.use_privileged:
+            pitems_max = pitems.max(dim=1).values
+            pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
+            vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
         values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
@@ -307,6 +329,7 @@ class TransformerPolicy2(nn.Module):
         endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.allies
         endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.drones
         endmins = endenemies + MSTRIDE_V2 * self.obs_config.minerals
+        endallenemies = endmins + DSTRIDE_V2 * (self.obs_config.drones - self.obs_config.allies)
 
         globals = x[:, :endglobals]
 
@@ -315,7 +338,7 @@ class TransformerPolicy2(nn.Module):
         globals = globals.view(batch_size, 1, GLOBAL_FEATURES_V2) \
             .expand(batch_size, self.agents, GLOBAL_FEATURES_V2)
         xagent = torch.cat([xagent, globals], dim=2)
-        agents, _, _ = self.agent_embedding(xagent)
+        agents, _, mask_agent = self.agent_embedding(xagent)
 
         origin = xagent[:, :, 0:2].clone()
         direction = xagent[:, :, 2:4].clone()
@@ -346,11 +369,26 @@ class TransformerPolicy2(nn.Module):
             mask = torch.cat([mask, mask_m], dim=2)
             relpos = torch.cat([relpos, relpos_m], dim=2)
 
-        # TODO: self.use_privileged
         if self.use_privileged:
-            x_privileged = self.privileged_net(x_privileged)
+            # TODO: use hidden enemies
+            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
+            eobs = self.obs_config.drones - self.obs_config.allies
+            xenemy = x[:, endmins:endallenemies].view(batch_size, eobs, DSTRIDE_V2)
+            if self.ally_enemy_same:
+                xdrone = torch.cat([xally, xenemy], dim=1)
+                pitems, _, pmask = self.pdrone_net(xdrone)
+            else:
+                pitems, _, pmask = self.pally_net(xally)
+                pitems_e, _, pmask_e = self.penemy_net(xenemy)
+                pitems = torch.cat([pitems, pitems_e], dim=1)
+                pmask = torch.cat([pmask, pmask_e], dim=1)
+            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, MSTRIDE_V2)
+            pitems_m, _, pmask_m = self.pmineral_net(xm)
+            pitems = torch.cat([pitems, pitems_m], dim=1)
+            pmask = torch.cat([pmask, pmask_m], dim=1)
         else:
-            x_privileged = None
+            pitems = None
+            pmask = None
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
         source = items.view(batch_size * self.agents, self.nitem, self.d_item).permute(1, 0, 2)
@@ -387,8 +425,9 @@ class TransformerPolicy2(nn.Module):
 
         x = self.final_layer(x)
         x = x.view(batch_size, self.agents, self.d_agent * self.dff_ratio)
+        x = x * (~mask_agent).float().unsqueeze(-1)
 
-        return x, x_privileged
+        return x, (pitems, pmask)
 
     def param_groups(self):
         # TODO?
@@ -547,6 +586,7 @@ class ItemBlock(nn.Module):
         x = self.embedding(x, ~mask)
         if self.resblock is not None:
             x = self.resblock(x)
+        x = x * (~mask).unsqueeze(-1).float()
 
         return x, relpos, mask
 

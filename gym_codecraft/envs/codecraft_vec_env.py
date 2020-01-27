@@ -392,7 +392,8 @@ class CodeCraftVecEnv(object):
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
                                           v2=True)
-        stride = GLOBAL_FEATURES_V2 + obs_config.drones * DSTRIDE_V2 + obs_config.minerals * MSTRIDE_V2
+        total_drones = 2 * obs_config.drones - obs_config.allies
+        stride = GLOBAL_FEATURES_V2 + total_drones * DSTRIDE_V2 + obs_config.minerals * MSTRIDE_V2
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
             if self.objective.vs():
@@ -447,19 +448,11 @@ class CodeCraftVecEnv(object):
 
             rews.append(reward)
 
-        privileged_obs_elems = obs_config.global_drones * num_envs * DSTRIDE_V2
-
         action_mask_elems = 8 * obs_config.allies * num_envs
-        if privileged_obs_elems > 0:
-            action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems] \
-                .reshape(-1, obs_config.allies, 8)
-        else:
-            action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, 8)
+        action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, 8)
 
-        if obs_config.global_drones > 0:
-            privileged_obs = obs[-privileged_obs_elems:].reshape(num_envs, obs_config.global_drones, DSTRIDE_V2)
-        else:
-            privileged_obs = np.zeros([num_envs, 1])
+        # TODO: merged with other obs, remove completely
+        privileged_obs = np.zeros([num_envs, 1])
 
         return obs[:stride * num_envs].reshape(num_envs, -1), \
                np.array(rews), \
