@@ -101,6 +101,7 @@ class HyperParams:
         hps.cliprange = 0.2
         hps.dconv_pooling = 'both'
         hps.dff_ratio = 2
+        hps.entropy_bonus = 0.001
         hps.eval_envs = 256
         hps.eval_frequency = 5e5
         hps.eval_timesteps = 1100
@@ -109,8 +110,10 @@ class HyperParams:
         hps.lamb = 0.95
         hps.lr = 0.0003
         hps.lr_ratios = 1.0
+        hps.map_conv = False
         hps.max_grad_norm = 20.0
         hps.momentum = 0.9
+        hps.nearby_map = True
         hps.norm = 'layernorm'
         hps.norm_advs = True
         hps.num_envs = 64
