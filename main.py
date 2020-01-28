@@ -508,7 +508,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     if hps:
         kwargs['obs_config'] = ObsConfig(
             allies=hps.obs_allies,
-            drones=hps.obs_drones,
+            drones=hps.obs_enemies+hps.obs_allies,
             minerals=hps.obs_minerals,
             global_drones=hps.obs_global_drones)
     if version is None:
