@@ -139,18 +139,23 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY_2V2
 
-        hps.nhead = 8
-        hps.dff_ratio = 2
-        hps.transformer_layers = 1
+        hps.steps = 10e6
 
+        hps.d_agent = 256
+        hps.d_item = 128
+
+        hps.agents = 2
+        hps.nally = 2
+        hps.nenemy = 2
+        hps.nmineral = 1
         hps.obs_allies = 2
-        hps.obs_drones = 3
-        hps.obs_minerals = 0
+        hps.obs_enemies = 2
+        hps.obs_minerals = 1  # Could be 0, currently incompatible with ally_enemy_same=False
 
         hps.eval_envs = 256
         hps.eval_timesteps = 360
         hps.eval_frequency = 1e5
-        hps.model_save_frequency = 10
+        hps.eval_symmetric = False
 
         return hps
 
@@ -161,8 +166,6 @@ class HyperParams:
 
         hps.d_agent = 256
         hps.d_item = 128
-        hps.ally_enemy_same = False
-        hps.entropy_bonus = 0
 
         hps.agents = 1
         hps.nally = 1
@@ -181,7 +184,6 @@ class HyperParams:
         hps.num_envs = 64
         hps.num_self_play = 32
         hps.seq_rosteps = 256
-
         hps.eval_symmetric = False
 
         return hps
