@@ -172,7 +172,7 @@ class HyperParams:
         hps.obs_enemies = 1
         hps.obs_minerals = 1  # Could be 0, currently incompatible with ally_enemy_same=False
 
-        hps.steps = 3e6
+        hps.steps = 1e6
 
         hps.eval_envs = 256
         hps.eval_frequency = 1e5

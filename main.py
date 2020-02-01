@@ -381,7 +381,7 @@ def eval(policy,
     if not opponents:
         if objective == envs.Objective.ARENA_TINY:
             opponents = {
-                'random': {'model_file': 'v3/random-v3.pt'},
+                'easy': {'model_file': 'arena_tiny/t2_random.pt'},
             }
         elif objective == envs.Objective.ARENA_TINY_2V2:
             opponents = {
