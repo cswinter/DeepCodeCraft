@@ -65,7 +65,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         allies=hps.obs_allies,
         drones=hps.obs_allies + hps.obs_enemies,
         minerals=hps.obs_minerals,
-        global_drones=hps.obs_global_drones,
+        global_drones=hps.obs_enemies if hps.use_privileged else 0,
         relative_positions=False,
         v2=True,
     )
@@ -104,7 +104,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             nmineral=hps.nmineral,
             obs_config=obs_config,
             norm=hps.norm,
-            use_privileged=hps.obs_global_drones > 0,
+            use_privileged=hps.use_privileged,
             nearby_map=hps.nearby_map,
             ring_width=hps.nm_ring_width,
             nrays=hps.nm_nrays,
