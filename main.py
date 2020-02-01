@@ -168,7 +168,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                  device=device,
                  objective=hps.objective,
                  eval_steps=hps.eval_timesteps,
-                 curr_step=total_steps)
+                 curr_step=total_steps,
+                 symmetric=hps.eval_symmetric)
             next_eval += hps.eval_frequency
             next_model_save -= 1
             if next_model_save == 0:
@@ -358,7 +359,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
              device=device,
              objective=hps.objective,
              eval_steps=hps.eval_timesteps,
-             curr_step=total_steps)
+             curr_step=total_steps,
+             symmetric=hps.eval_symmetric)
     save_policy(policy, out_dir, total_steps, optimizer)
 
 

@@ -58,6 +58,7 @@ class HyperParams:
         self.eval_timesteps = 360
         self.eval_frequency = 1e5
         self.model_save_frequency = 10
+        self.eval_symmetric = True
 
         # RL
         self.steps = 10e6           # Total number of timesteps
@@ -181,7 +182,7 @@ class HyperParams:
         hps.num_self_play = 32
         hps.seq_rosteps = 256
 
-        hps.symmetric_map = False
+        hps.eval_symmetric = False
 
         return hps
 
