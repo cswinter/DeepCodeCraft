@@ -392,6 +392,10 @@ def eval(policy,
             opponents = {
                 'easy': {'model_file': 'arena_medium/whole-sun-25M.pt'},
             }
+        elif objective == envs.Objective.ARENA:
+            opponents = {
+                'alpha': {'model_file': 'arena/visionary-surf-5M.pt'},
+            }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
 
@@ -512,6 +516,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             drones=hps.obs_enemies+hps.obs_allies,
             minerals=hps.obs_minerals,
             global_drones=hps.obs_global_drones)
+    if name.endswith('visionary-surf-5M.pt'):
+        kwargs['naction'] = 11
     if version is None:
         policy = PolicyV1(**kwargs)
     elif version == 'v2' or name.endswith('dashing-wildflower-25M.pt'):

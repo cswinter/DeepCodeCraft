@@ -36,7 +36,7 @@ class TransformerPolicy2(nn.Module):
                  item_ff=True,
                  keep_abspos=False,
                  ally_enemy_same=False,
-                 naction=8,
+                 naction=11,
                  ):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
@@ -73,6 +73,7 @@ class TransformerPolicy2(nn.Module):
             item_ff=item_ff,
             keep_abspos=keep_abspos,
             ally_enemy_same=ally_enemy_same,
+            naction=naction,
         )
 
         self.obs_config = obs_config
