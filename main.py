@@ -608,6 +608,8 @@ def main():
         hps = HyperParams.arena_tiny_2v2()
     elif args.hpset == 'arena_medium':
         hps = HyperParams.arena_medium()
+    elif args.hpset == 'arena':
+        hps = HyperParams.arena()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
