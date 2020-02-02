@@ -146,6 +146,50 @@ def map_arena_medium(randomize: bool, hardness: int):
     }
 
 
+def map_arena(randomize: bool, hardness: int):
+    if randomize:
+        hardness = np.random.randint(0, hardness)
+    if hardness == 0:
+        map_width = 1500
+        map_height = 1500
+        mineral_count = 2
+    elif hardness == 1:
+        map_width = 2000
+        map_height = 2000
+        mineral_count = 4
+    elif hardness == 2:
+        map_width = 2500
+        map_height = 2500
+        mineral_count = 6
+    else:
+        map_width = 3500
+        map_height = 2500
+        mineral_count = 6
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': mineral_count * [(1, 50)],
+        'player1Drones': [
+            drone_dict(spawn_x,
+                       spawn_y,
+                       constructors=1,
+                       storage_modules=2,
+                       missile_batteries=1)
+        ],
+        'player2Drones': [
+            drone_dict(-spawn_x,
+                       -spawn_y,
+                       constructors=1,
+                       storage_modules=2,
+                       missile_batteries=1)
+        ],
+    }
+
+
 class CodeCraftVecEnv(object):
     def __init__(self,
                  num_envs,
@@ -174,6 +218,7 @@ class CodeCraftVecEnv(object):
         self.obs_config = obs_config
         self.hardness = hardness
         self.symmetric = symmetric
+        self.builds = []
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -183,6 +228,16 @@ class CodeCraftVecEnv(object):
         elif objective == Objective.ARENA_MEDIUM:
             self.game_length = 3 * 60 * 60
             self.custom_map = map_arena_medium
+        elif objective == Objective.ARENA:
+            self.game_length = 3 * 60 * 60
+            self.builds = [
+                [1, 0, 1, 0, 0],
+                [0, 2, 0, 0, 0],
+                [0, 1, 0, 0, 1]
+            ]
+            self.custom_map = map_arena
+        self.build_costs = [sum(modules) for modules in self.builds]
+        self.naction = 8 + len(self.builds)
 
         self.games = []
         self.eplen = []
@@ -259,6 +314,8 @@ class CodeCraftVecEnv(object):
                     build = [[0, 1, 0, 0, 0]]
                 if action == 7:
                     harvest = True
+                if action >= 8:
+                    build = [self.builds[action - 8]]
                 player_actions2.append((move, turn, build, harvest))
             game_actions.append((game_id, player_id, player_actions2))
 
@@ -358,12 +415,12 @@ class CodeCraftVecEnv(object):
 
         privileged_obs_elems = obs_config.global_drones * num_envs * DSTRIDE
 
-        action_mask_elems = 8 * obs_config.allies * num_envs
+        action_mask_elems = self.naction * obs_config.allies * num_envs
         if privileged_obs_elems > 0:
             action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems] \
-                .reshape(-1, obs_config.allies, 8)
+                .reshape(-1, obs_config.allies, self.naction)
         else:
-            action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, 8)
+            action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, self.naction)
 
         if obs_config.global_drones > 0:
             privileged_obs = obs[-privileged_obs_elems:].reshape(num_envs, obs_config.global_drones, DSTRIDE)
@@ -375,7 +432,7 @@ class CodeCraftVecEnv(object):
                np.array(dones), \
                infos, \
                action_masks if self.use_action_masks \
-                   else np.ones([num_envs, obs_config.allies, 8], dtype=np.float32), \
+                   else np.ones([num_envs, obs_config.allies, self.naction], dtype=np.float32), \
                privileged_obs
 
     def observe_v2(self, obs_config, env_subset=None):
@@ -391,7 +448,8 @@ class CodeCraftVecEnv(object):
                                           minerals=obs_config.minerals,
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
-                                          v2=True)
+                                          v2=True,
+                                          extra_build_costs=self.build_costs)
         total_drones = 2 * obs_config.drones - obs_config.allies
         stride = GLOBAL_FEATURES_V2 + total_drones * DSTRIDE_V2 + obs_config.minerals * MSTRIDE_V2
         for i in range(num_envs):
@@ -448,8 +506,8 @@ class CodeCraftVecEnv(object):
 
             rews.append(reward)
 
-        action_mask_elems = 8 * obs_config.allies * num_envs
-        action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, 8)
+        action_mask_elems = self.naction * obs_config.allies * num_envs
+        action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, self.naction)
 
         # TODO: merged with other obs, remove completely
         privileged_obs = np.zeros([num_envs, 1])
@@ -459,7 +517,7 @@ class CodeCraftVecEnv(object):
                np.array(dones), \
                infos, \
                action_masks if self.use_action_masks \
-                   else np.ones([num_envs, obs_config.allies, 8], dtype=np.float32), \
+                   else np.ones([num_envs, obs_config.allies, self.naction], dtype=np.float32), \
                privileged_obs
 
     def close(self):
@@ -510,6 +568,7 @@ class Objective(Enum):
     ARENA_TINY = 'ARENA_TINY'
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
     ARENA_MEDIUM = 'ARENA_MEDIUM'
+    ARENA = 'ARENA'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
@@ -519,10 +578,17 @@ class Objective(Enum):
            return False
         elif self == Objective.ARENA_TINY or\
             self == Objective.ARENA_TINY_2V2 or\
-            self == Objective.ARENA_MEDIUM:
+            self == Objective.ARENA_MEDIUM or \
+            self == Objective.ARENA:
             return True
         else:
             raise Exception(f'Objective.vs not implemented for {self}')
+
+    def naction(self):
+        if self == Objective.ARENA:
+            return 11
+        else:
+            return 8
 
 
 def dist2(x1, y1, x2, y2):

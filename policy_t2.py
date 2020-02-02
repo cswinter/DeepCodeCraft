@@ -36,6 +36,7 @@ class TransformerPolicy2(nn.Module):
                  item_ff=True,
                  keep_abspos=False,
                  ally_enemy_same=False,
+                 naction=8,
                  ):
         super(TransformerPolicy2, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
@@ -98,6 +99,7 @@ class TransformerPolicy2(nn.Module):
         self.map_conv_kernel_size = map_conv_kernel_size
         self.map_embed_offset = map_embed_offset
         self.item_ff = item_ff
+        self.naction = naction
 
         self.fp16 = fp16
         self.use_privileged = use_privileged
@@ -195,7 +197,7 @@ class TransformerPolicy2(nn.Module):
             nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(d_agent * dff_ratio, 8)
+        self.policy_head = nn.Linear(d_agent * dff_ratio, naction)
         if small_init_pi:
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
@@ -215,7 +217,7 @@ class TransformerPolicy2(nn.Module):
             action_masks = action_masks.half()
         action_masks = action_masks[:, :self.agents, :]
         probs, v = self.forward(observation, privileged_obs)
-        probs = probs.view(-1, self.agents, 8)
+        probs = probs.view(-1, self.agents, self.naction)
         probs = probs * action_masks + self.epsilon  # Add small value to prevent crash when no action is possible
         # We get device-side assert when using fp16 here (needs more investigation)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
@@ -255,7 +257,7 @@ class TransformerPolicy2(nn.Module):
 
         logits = self.policy_head(x)
         probs = F.softmax(logits, dim=2)
-        probs = probs.view(-1, self.agents, 8)
+        probs = probs.view(-1, self.agents, self.naction)
 
         # add small value to prevent degenerate probability distribution when no action is possible
         # gradients still get blocked by the action mask

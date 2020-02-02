@@ -91,8 +91,11 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
-def observe_batch_raw(game_ids, allies, drones, minerals, global_drones, relative_positions, v2):
+def observe_batch_raw(game_ids, allies, drones, minerals, global_drones, relative_positions, v2, extra_build_costs = []):
     retries = RETRIES
+    ebcstr = ''
+    if len(extra_build_costs) > 0:
+        ebcstr = ''.join([f'&actions={c}' for c in extra_build_costs])
     url = f'http://localhost:9000/batch-observation?' \
         f'json=false&' \
         f'allies={allies}&' \
@@ -100,7 +103,7 @@ def observe_batch_raw(game_ids, allies, drones, minerals, global_drones, relativ
         f'minerals={minerals}&' \
         f'globalDrones={global_drones}&' \
         f'relativePositions={"true" if relative_positions else "false"}&' \
-        f'v2={"true" if v2 else "false"}'
+        f'v2={"true" if v2 else "false"}' + ebcstr
     while retries > 0:
         try:
             response = requests.get(url,

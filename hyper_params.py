@@ -22,11 +22,11 @@ class HyperParams:
         # Policy (transformer)
         self.d_agent = 512
         self.d_item = 128
-        self.dff_ratio = 4
+        self.dff_ratio = 2
         self.nhead = 8
         self.transformer_layers = 2
         self.dropout = 0.0             # Try 0.1?
-        self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
+        self.nearby_map = True         # Construct map of nearby objects populated with scatter connections
         self.nm_ring_width = 30        # Width of circles on nearby map
         self.nm_nrays = 8              # Number of rays on nearby map
         self.nm_nrings = 8             # Number of rings on nearby map
@@ -87,50 +87,29 @@ class HyperParams:
     @staticmethod
     def arena_medium():
         hps = HyperParams()
-        hps.action_delay = 0
+        hps.objective = envs.Objective.ARENA_MEDIUM
+
+        hps.steps = 25e6
+
+        hps.agents = 4
+        hps.nenemy = 5
+        hps.nally = 5
+        hps.nmineral = 5
+
         hps.batches_per_update = 2
         hps.bs = 1024
-        hps.clip_vf = True
-        hps.cliprange = 0.2
-        hps.dconv_pooling = 'both'
-        hps.dff_ratio = 2
-        hps.entropy_bonus = 0.001
+        hps.seq_rosteps = 256
+        hps.num_envs = 64
+        hps.num_self_play = 32
+
         hps.eval_envs = 256
         hps.eval_frequency = 5e5
         hps.eval_timesteps = 1100
-        hps.fp16 = False
+
         hps.gamma = 0.997
-        hps.lamb = 0.95
-        hps.lr = 0.0003
-        hps.lr_ratios = 1.0
-        hps.map_conv = False
-        hps.max_grad_norm = 20.0
-        hps.momentum = 0.9
-        hps.nearby_map = True
-        hps.norm = 'layernorm'
-        hps.norm_advs = True
-        hps.num_envs = 64
-        hps.num_self_play = 32
-        hps.num_self_play_schedule = ''
-        hps.objective = envs.Objective.ARENA_MEDIUM
-        hps.obs_global_drones = 0
-        hps.optimizer = 'Adam'
-        hps.ppo = True
-        hps.resblocks = 1
-        hps.rewscale = 1.0
-        hps.sample_reuse = 2
-        hps.seq_rosteps = 256
-        hps.shuffle = True
-        hps.small_init_pi = False
-        hps.steps = 25e6
+
         hps.symmetric_map = True
         hps.task_hardness = 0
-        hps.use_action_masks = True
-        hps.use_privileged = False
-        hps.vf_coef = 1.0
-        hps.warmup = 0
-        hps.weight_decay = 0.0001
-        hps.zero_init_vf = True
 
         return hps
 
@@ -139,7 +118,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY_2V2
 
-        hps.steps = 10e6
+        hps.steps = 15e6
 
         hps.d_agent = 256
         hps.d_item = 128

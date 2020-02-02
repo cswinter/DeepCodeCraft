@@ -113,6 +113,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             map_embed_offset=hps.map_embed_offset,
             keep_abspos=hps.obs_keep_abspos,
             ally_enemy_same=hps.ally_enemy_same,
+            naction=hps.objective.naction(),
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
@@ -385,9 +386,7 @@ def eval(policy,
             }
         elif objective == envs.Objective.ARENA_TINY_2V2:
             opponents = {
-                'random': {'model_file': 'v3/random.pt'},
-                'easy': {'model_file': 'v3/helpful-glade-10M.pt'},
-                'medium': {'model_file': 'v3/bright-elevator-43M.pt'},
+                'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
             }
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
