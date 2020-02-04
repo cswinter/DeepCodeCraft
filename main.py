@@ -394,7 +394,7 @@ def eval(policy,
             }
         elif objective == envs.Objective.ARENA:
             opponents = {
-                'alpha': {'model_file': 'arena/visionary-surf-5M.pt'},
+                'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
             }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
