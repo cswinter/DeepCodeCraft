@@ -513,9 +513,12 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     if hps:
         kwargs['obs_config'] = ObsConfig(
             allies=hps.obs_allies,
-            drones=hps.obs_enemies+hps.obs_allies,
+            drones=hps.obs_allies + hps.obs_enemies,
             minerals=hps.obs_minerals,
-            global_drones=hps.obs_global_drones)
+            global_drones=hps.obs_enemies if hps.use_privileged else 0,
+            relative_positions=False,
+            v2=True,
+        )
     if name.endswith('visionary-surf-5M.pt'):
         kwargs['naction'] = 11
     if version is None:
