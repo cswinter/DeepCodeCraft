@@ -122,6 +122,9 @@ class HyperParams:
 
         hps.steps = 25e6
 
+        hps.d_agent = 256
+        hps.d_item = 128
+
         hps.agents = 4
         hps.nenemy = 5
         hps.nally = 5
@@ -150,10 +153,12 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY_2V2
 
-        hps.steps = 15e6
+        hps.steps = 25e6
 
         hps.d_agent = 256
         hps.d_item = 128
+
+        hps.entropy_bonus = 0.001
 
         hps.agents = 2
         hps.nally = 2
@@ -175,8 +180,10 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY
 
-        hps.d_agent = 256
-        hps.d_item = 128
+        hps.steps = 2e6
+
+        hps.d_agent = 128
+        hps.d_item = 64
 
         hps.agents = 1
         hps.nally = 1
@@ -185,8 +192,6 @@ class HyperParams:
         hps.obs_allies = 1
         hps.obs_enemies = 1
         hps.obs_minerals = 1  # Could be 0, currently incompatible with ally_enemy_same=False
-
-        hps.steps = 1e6
 
         hps.eval_envs = 256
         hps.eval_frequency = 1e5
