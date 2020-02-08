@@ -17,9 +17,6 @@ from hyper_params import HyperParams
 from policy_t import TransformerPolicy
 from policy_t2 import TransformerPolicy2, InputNorm
 import policy_t_old
-from policy import Policy
-from policy_v1 import PolicyV1
-from policy_v2 import PolicyV2
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +387,8 @@ def eval(policy,
             }
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
-                'easy': {'model_file': 'arena_medium/whole-sun-25M.pt'},
+                # Scores -0.32 vs previous best, jumping-totem-100M
+                'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
             }
         elif objective == envs.Objective.ARENA:
             opponents = {
@@ -519,15 +517,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             relative_positions=False,
             v2=True,
         )
-    if name.endswith('visionary-surf-5M.pt'):
-        kwargs['naction'] = 11
-    if version is None:
-        policy = PolicyV1(**kwargs)
-    elif version == 'v2' or name.endswith('dashing-wildflower-25M.pt'):
-        policy = PolicyV2(**kwargs)
-    elif version == 'v3':
-        policy = Policy(**kwargs)
-    elif version == 'transformer_v1':
+    if version == 'transformer_v1':
         # This model didn't have the params on it's Normalize layer saved - need to backfill manually :(
         if name.endswith("jumping-totem-100M.pt"):
             policy = policy_t_old.TransformerPolicy(**kwargs)
