@@ -442,10 +442,14 @@ class PolicyTMem(nn.Module):
 
         if self.lstm:
             x = x.view(timesteps, sequences * self.agents, self.final_width)
+            hidden_state_mask = (~mask_agent).float().view(timesteps, sequences * self.agents)
             x2 = []
             for t in range(timesteps):
-                # TODO: hidden state resets
-                out, hidden_state = self.lstm(x[t].unsqueeze(0), hidden_state)
+                # TODO: need stable slot assignment and way to detect when drone is replaced
+                out, (hidden, cell) = self.lstm(x[t].unsqueeze(0), hidden_state)
+                hidden = hidden * hidden_state_mask[t].view(1, -1, 1)
+                cell = cell * hidden_state_mask[t].view(1, -1, 1)
+                hidden_state = (hidden, cell)
                 x2.append(out)
             if len(x2) == 1:
                 x = x2[0]
