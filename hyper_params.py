@@ -18,13 +18,14 @@ class HyperParams:
         self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
+        self.tbptt_seq_len = 0      # Length of sequences for truncated backpropagation through time.
 
         # Policy (transformer)
         self.d_agent = 256
         self.d_item = 128
         self.dff_ratio = 2
         self.nhead = 8
-        self.transformer_layers = 2
+        self.transformer_layers = 1
         self.dropout = 0.0             # Try 0.1?
         self.nearby_map = True         # Construct map of nearby objects populated with scatter connections
         self.nm_ring_width = 30        # Width of circles on nearby map
@@ -201,31 +202,23 @@ class HyperParams:
     @staticmethod
     def allied_wealth():
         hps = HyperParams()
-        hps.clip_vf = True
-        hps.dff_ratio = 2
-        hps.eval_envs = 0
-        hps.gamma = 0.99
-        hps.lamb = 0.95
-        hps.lr = 0.0003
-        hps.max_grad_norm = 20.0
-        hps.momentum = 0.9
-        hps.norm = 'layernorm'
-        hps.norm_advs = True
-        hps.num_envs = 64
-        hps.num_self_play = 0
         hps.objective = envs.Objective.ALLIED_WEALTH
+
+        hps.steps = 1e6
+
+        hps.d_agent = 256
+        hps.d_item = 64
+
+        hps.eval_envs = 0
+        hps.num_self_play = 0
+
         hps.nally = 1
         hps.nmineral = 10
+        hps.obs_allies = 1
+        hps.obs_enemies = 0
         hps.obs_global_drones = 0
-        hps.optimizer = 'Adam'
-        hps.sample_reuse = 2
-        hps.small_init_pi = False
-        hps.transformer_layers = 1
-        hps.use_action_masks = True
+
         hps.use_privileged = False
-        hps.vf_coef = 1.0
-        hps.weight_decay = 0.0001
-        hps.zero_init_vf = True
 
         return hps
 

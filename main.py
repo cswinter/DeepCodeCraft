@@ -16,6 +16,7 @@ from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
 from policy_t import TransformerPolicy
 from policy_t2 import TransformerPolicy2, InputNorm
+from policy_mem import PolicyTMem
 import policy_t_old
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy2(
+        policy = PolicyTMem(
             hps.d_agent,
             hps.d_item,
             hps.dff_ratio,
@@ -111,6 +112,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             keep_abspos=hps.obs_keep_abspos,
             ally_enemy_same=hps.ally_enemy_same,
             naction=hps.objective.naction(),
+            memory=hps.tbptt_seq_len > 0,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
@@ -141,6 +143,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
+    hidden_state = None
+    if hps.tbptt_seq_len > 0:
+        hidden_state = (
+            torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
+            torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
+        )
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -158,7 +166,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        obs_config=obs_config,
                                        symmetric=hps.symmetric_map,
                                        hardness=hps.task_hardness)
-            obs, action_masks, privileged_obs = env.reset()
+            obs, action_masks = env.reset()
+            action_masks = torch.tensor(action_masks).to(device)
+            obs = torch.tensor(obs).to(device)
 
         if total_steps >= next_eval and hps.eval_envs > 0:
             eval(policy=policy,
@@ -184,30 +194,32 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_rewards = []
         all_dones = []
         all_action_masks = []
-        all_privileged_obs = []
+        all_hidden_states = []
+        all_cell_states = []
 
         policy.eval()
         with torch.no_grad():
             # Rollout
             for step in range(hps.seq_rosteps):
-                obs_tensor = torch.tensor(obs).to(device)
-                privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-                action_masks_tensor = torch.tensor(action_masks).to(device)
-                actions, logprobs, entropy, values, probs =\
-                    policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
-                actions = actions.cpu().numpy()
+                if hps.tbptt_seq_len > 0 and step % hps.tbptt_seq_len == 0:
+                    all_hidden_states.append(hidden_state[0].detach())
+                    all_cell_states.append(hidden_state[1].detach())
 
-                entropies.extend(entropy.detach().cpu().numpy())
+                actions, logprobs, entropy, values, probs, hidden_state =\
+                    policy.evaluate(obs, action_masks, hidden_state)
 
-                all_action_masks.extend(action_masks)
-                all_obs.extend(obs)
-                all_privileged_obs.extend(privileged_obs)
-                all_actions.extend(actions)
-                all_logprobs.extend(logprobs.detach().cpu().numpy())
-                all_values.extend(values)
-                all_probs.extend(probs)
+                entropies.extend(entropy.cpu().numpy())
+                all_action_masks.append(action_masks)
+                all_obs.append(obs)
+                all_actions.append(actions)
+                all_logprobs.append(logprobs.detach())
+                all_probs.append(probs)
 
-                obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions)
+                all_values.extend(values.cpu().numpy())
+
+                obs, rews, dones, infos, action_masks = env.step(actions.cpu().numpy())
+                obs = torch.tensor(obs).to(device)
+                action_masks = torch.tensor(action_masks).to(device)
 
                 all_rewards.extend(rews)
                 all_dones.extend(dones)
@@ -218,18 +230,15 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                     completed_episodes += 1
 
-        obs_tensor = torch.tensor(obs).to(device)
-        action_masks_tensor = torch.tensor(action_masks).to(device)
-        privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-        _, _, _, final_values, final_probs =\
-            policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+        _, _, _, final_values, final_probs, hidden_state =\
+            policy.evaluate(obs, action_masks, hidden_state)
 
+        final_values = final_values.cpu().numpy()
         all_rewards = np.array(all_rewards) * hps.rewscale
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         all_values = np.array(all_values)
         last_gae = np.zeros(hps.num_envs)
         for t in reversed(range(hps.seq_rosteps)):
-            # TODO: correct for action delay?
             # TODO: vectorize
             for i in range(hps.num_envs):
                 ti = t * hps.num_envs + i
@@ -248,18 +257,22 @@ def train(hps: HyperParams, out_dir: str) -> None:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         explained_var = explained_variance(all_values, all_returns)
 
-        all_actions = np.array(all_actions)
-        all_logprobs = np.array(all_logprobs)
-        all_obs = np.array(all_obs)
-        all_privileged_obs = np.array(all_privileged_obs)
-        all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
-        all_probs = np.array(all_probs)
+        all_obs = torch.cat(all_obs, dim=0)
+        all_returns = torch.tensor(all_returns).to(device)
+        all_actions = torch.cat(all_actions, dim=0)
+        all_logprobs = torch.cat(all_logprobs, dim=0)
+        all_values = torch.tensor(all_values).to(device)
+        advantages = torch.tensor(advantages).to(device)
+        all_action_masks = torch.cat(all_action_masks, dim=0)[:, :hps.agents, :]
+        all_probs = torch.cat(all_probs, dim=0)
+        if hps.tbptt_seq_len > 0:
+            all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1)
+            all_cell_states = torch.cat(all_cell_states, dim=0).unsqueeze(1)
 
         for epoch in range(hps.sample_reuse):
             if hps.shuffle:
                 perm = np.random.permutation(len(all_obs))
                 all_obs = all_obs[perm]
-                all_privileged_obs = all_privileged_obs[perm]
                 all_returns = all_returns[perm]
                 all_actions = all_actions[perm]
                 all_logprobs = all_logprobs[perm]
@@ -280,23 +293,32 @@ def train(hps: HyperParams, out_dir: str) -> None:
             for batch in range(num_minibatches):
                 if batch % hps.batches_per_update == 0:
                     optimizer.zero_grad()
+                if hps.tbptt_seq_len > 0:
+                    # TODO: remove
+                    assert num_minibatches == all_hidden_states.size(0)
 
                 start = hps.bs * batch
                 end = hps.bs * (batch + 1)
 
-                o = torch.tensor(all_obs[start:end]).to(device)
-                op = torch.tensor(all_privileged_obs[start:end]).to(device)
-                actions = torch.tensor(all_actions[start:end]).to(device)
-                probs = torch.tensor(all_logprobs[start:end]).to(device)
-                returns = torch.tensor(all_returns[start:end]).to(device)
-                advs = torch.tensor(advantages[start:end]).to(device)
-                vals = torch.tensor(all_values[start:end]).to(device)
-                amasks = torch.tensor(all_action_masks[start:end]).to(device)
-                actual_probs = torch.tensor(all_probs[start:end]).to(device)
-
-                policy_loss, value_loss, aproxkl, clipfrac =\
-                    policy.backprop(hps, o, actions, probs, returns, hps.vf_coef,
-                                    advs, vals, amasks, actual_probs, op, hps.split_reward)
+                hidden = None
+                obs_mini_batch = all_obs[start:end]
+                if hps.tbptt_seq_len > 0:
+                    obs_mini_batch = obs_mini_batch.view(hps.tbptt_seq_len, hps.num_envs, -1)
+                    hidden = (all_hidden_states[batch], all_cell_states[batch])
+                policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(
+                    hps,
+                    obs_mini_batch,
+                    all_actions[start:end],
+                    all_logprobs[start:end],
+                    all_returns[start:end],
+                    hps.vf_coef,
+                    advantages[start:end],
+                    all_values[start:end],
+                    all_action_masks[start:end],
+                    all_probs[start:end],
+                    hps.split_reward,
+                    hidden_state=hidden
+                )
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
@@ -324,13 +346,13 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'entropy': sum(entropies) / len(entropies) / np.log(2),
             'explained variance': explained_var,
             'gradnorm': gradnorm * hps.bs / hps.rosteps,
-            'advantages': wandb.Histogram(advantages),
-            'values': wandb.Histogram(all_values),
+            'advantages': wandb.Histogram(advantages.cpu()),
+            'values': wandb.Histogram(all_values.cpu()),
             'meanval': all_values.mean(),
-            'returns': wandb.Histogram(all_returns),
-            'meanret': all_returns.mean(),
-            'actions': wandb.Histogram(np.array(all_actions[all_agent_masks])),
-            'observations': wandb.Histogram(np.array(all_obs)),
+            'returns': wandb.Histogram(all_returns.cpu()),
+            'meanret': all_returns.cpu().numpy().mean(),
+            'actions': wandb.Histogram(np.array(all_actions[all_agent_masks].cpu())),
+            'observations': wandb.Histogram(all_obs.cpu()),
             'obs_max': all_obs.max(),
             'obs_min': all_obs.min(),
             'rewards': wandb.Histogram(np.array(all_rewards)),
