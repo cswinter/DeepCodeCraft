@@ -56,6 +56,8 @@ def warmup_lr_schedule(warmup_steps: int):
 def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
+    assert(hps.seq_rosteps % hps.tbptt_seq_len == 0)
+    assert(hps.bs % hps.tbptt_seq_len == 0)
 
     next_model_save = hps.model_save_frequency
 
@@ -112,7 +114,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             keep_abspos=hps.obs_keep_abspos,
             ally_enemy_same=hps.ally_enemy_same,
             naction=hps.objective.naction(),
-            memory=hps.tbptt_seq_len > 0,
+            memory=hps.tbptt_seq_len > 1,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
@@ -144,7 +146,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
     hidden_state = None
-    if hps.tbptt_seq_len > 0:
+    if hps.tbptt_seq_len > 1:
         hidden_state = (
             torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
             torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
@@ -201,7 +203,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         with torch.no_grad():
             # Rollout
             for step in range(hps.seq_rosteps):
-                if hps.tbptt_seq_len > 0 and step % hps.tbptt_seq_len == 0:
+                if hps.tbptt_seq_len > 1 and step % hps.tbptt_seq_len == 0:
                     all_hidden_states.append(hidden_state[0].detach())
                     all_cell_states.append(hidden_state[1].detach())
 
@@ -257,29 +259,35 @@ def train(hps: HyperParams, out_dir: str) -> None:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         explained_var = explained_variance(all_values, all_returns)
 
-        all_obs = torch.cat(all_obs, dim=0)
-        all_returns = torch.tensor(all_returns).to(device)
-        all_actions = torch.cat(all_actions, dim=0)
-        all_logprobs = torch.cat(all_logprobs, dim=0)
-        all_values = torch.tensor(all_values).to(device)
-        advantages = torch.tensor(advantages).to(device)
-        all_action_masks = torch.cat(all_action_masks, dim=0)[:, :hps.agents, :]
-        all_probs = torch.cat(all_probs, dim=0)
-        if hps.tbptt_seq_len > 0:
-            all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1)
-            all_cell_states = torch.cat(all_cell_states, dim=0).unsqueeze(1)
+        dtime = hps.tbptt_seq_len
+        dbatch = (hps.seq_rosteps * hps.num_envs) // dtime
+
+        def timeslice(tensor):
+            return tensor.view(hps.seq_rosteps, hps.num_envs, -1).permute(1, 0, 2)\
+                .reshape(dbatch, dtime, -1).permute(1, 0, 2)
+        all_obs = timeslice(torch.cat(all_obs, dim=0))
+        all_returns = timeslice(torch.tensor(all_returns).to(device))
+        all_actions = timeslice(torch.cat(all_actions, dim=0))
+        all_logprobs = timeslice(torch.cat(all_logprobs, dim=0))
+        all_values = timeslice(torch.tensor(all_values).to(device))
+        advantages = timeslice(torch.tensor(advantages).to(device))
+        all_action_masks = timeslice(torch.cat(all_action_masks, dim=0)[:, :hps.agents, :]).view(dtime, dbatch, hps.agents, -1)
+        all_probs = timeslice(torch.cat(all_probs, dim=0))
+        if hps.tbptt_seq_len > 1:
+            all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1).view(dbatch, hps.d_agent)
+            all_cell_states = torch.cat(all_cell_states, dim=0).unsqueeze(1).view(dbatch, hps.d_agent)
 
         for epoch in range(hps.sample_reuse):
             if hps.shuffle:
-                perm = np.random.permutation(len(all_obs))
-                all_obs = all_obs[perm]
-                all_returns = all_returns[perm]
-                all_actions = all_actions[perm]
-                all_logprobs = all_logprobs[perm]
-                all_values = all_values[perm]
-                advantages = advantages[perm]
-                all_action_masks = all_action_masks[perm]
-                all_probs = all_probs[perm]
+                perm = np.random.permutation(dbatch)
+                all_obs = all_obs[:, perm, :]
+                all_returns = all_returns[:, perm, :]
+                all_actions = all_actions[:, perm, :]
+                all_logprobs = all_logprobs[:, perm, :]
+                all_values = all_values[:, perm, :]
+                advantages = advantages[:, perm, :]
+                all_action_masks = all_action_masks[:, perm, :, :]
+                all_probs = all_probs[:, perm, :]
 
             # Policy Update
             policy_loss_sum = 0
@@ -293,29 +301,28 @@ def train(hps: HyperParams, out_dir: str) -> None:
             for batch in range(num_minibatches):
                 if batch % hps.batches_per_update == 0:
                     optimizer.zero_grad()
-                if hps.tbptt_seq_len > 0:
-                    # TODO: remove
-                    assert num_minibatches == all_hidden_states.size(0)
 
-                start = hps.bs * batch
-                end = hps.bs * (batch + 1)
+                start = hps.bs * batch // dtime
+                end = hps.bs * (batch + 1) // dtime
 
                 hidden = None
-                obs_mini_batch = all_obs[start:end]
-                if hps.tbptt_seq_len > 0:
-                    obs_mini_batch = obs_mini_batch.view(hps.tbptt_seq_len, hps.num_envs, -1)
-                    hidden = (all_hidden_states[batch], all_cell_states[batch])
+                if hps.tbptt_seq_len > 1:
+                    hidden = (
+                        all_hidden_states[start:end, :].unsqueeze(0),
+                        all_cell_states[start:end, :].unsqueeze(0),
+                    )
+                print(all_obs.size(), all_actions.size(), all_logprobs.size(), all_returns.size(), all_values.size(), all_action_masks.size(), all_probs.size())
                 policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(
                     hps,
-                    obs_mini_batch,
-                    all_actions[start:end],
-                    all_logprobs[start:end],
-                    all_returns[start:end],
+                    all_obs[:, start:end, :],
+                    all_actions[:, start:end, :].reshape(-1),
+                    all_logprobs[:, start:end, :].reshape(-1),
+                    all_returns[:, start:end, :].reshape(-1),
                     hps.vf_coef,
-                    advantages[start:end],
-                    all_values[start:end],
-                    all_action_masks[start:end],
-                    all_probs[start:end],
+                    advantages[:, start:end, :].reshape(-1),
+                    all_values[:, start:end, :].reshape(-1),
+                    all_action_masks[:, start:end, :, :].reshape(dtime * (end - start), hps.agents, -1),
+                    all_probs[:, start:end, :].reshape(dtime * (end - start), -1),
                     hps.split_reward,
                     hidden_state=hidden
                 )
@@ -334,7 +341,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         total_steps += hps.rosteps
         throughput = int(hps.rosteps / (time.time() - episode_start))
 
-        all_agent_masks = all_action_masks.sum(2) != 0
+        all_agent_masks = all_action_masks.sum(3) != 0
         metrics = {
             'loss': policy_loss_sum / num_minibatches,
             'value_loss': value_loss_sum / num_minibatches,
@@ -350,7 +357,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'values': wandb.Histogram(all_values.cpu()),
             'meanval': all_values.mean(),
             'returns': wandb.Histogram(all_returns.cpu()),
-            'meanret': all_returns.cpu().numpy().mean(),
+            'meanret': all_returns.mean(),
             'actions': wandb.Histogram(np.array(all_actions[all_agent_masks].cpu())),
             'observations': wandb.Histogram(all_obs.cpu()),
             'obs_max': all_obs.max(),

@@ -18,7 +18,7 @@ class HyperParams:
         self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
-        self.tbptt_seq_len = 0      # Length of sequences for truncated backpropagation through time.
+        self.tbptt_seq_len = 1      # Length of sequences for truncated backpropagation through time.
 
         # Policy (transformer)
         self.d_agent = 256
