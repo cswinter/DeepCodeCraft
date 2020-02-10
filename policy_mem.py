@@ -38,6 +38,7 @@ class PolicyTMem(nn.Module):
                  ally_enemy_same=False,
                  naction=8,
                  memory=True,
+                 obs_last_action=False,
                  ):
         super(PolicyTMem, self).__init__()
         assert obs_config.drones > 0 or obs_config.minerals > 0,\
@@ -45,7 +46,7 @@ class PolicyTMem(nn.Module):
         assert obs_config.drones >= obs_config.allies
         assert not use_privileged or (nmineral > 0 and nally > 0 and (nenemy > 0 or ally_enemy_same))
 
-        self.version = 'transformer_v2'
+        self.version = 'transformer_lstm'
 
         self.kwargs = dict(
             d_agent=d_agent,
@@ -76,6 +77,7 @@ class PolicyTMem(nn.Module):
             ally_enemy_same=ally_enemy_same,
             naction=naction,
             memory=memory,
+            obs_last_action=obs_last_action,
         )
 
         self.obs_config = obs_config
@@ -118,7 +120,8 @@ class PolicyTMem(nn.Module):
             raise Exception(f'Unexpected normalization layer {norm}')
 
         self.agent_embedding = ItemBlock(
-            DSTRIDE_V2 + GLOBAL_FEATURES_V2, d_agent, d_agent * dff_ratio, norm_fn, True,
+            DSTRIDE_V2 + GLOBAL_FEATURES_V2 + (8 if obs_last_action else 0),
+            d_agent, d_agent * dff_ratio, norm_fn, True,
             keep_abspos=True,
             mask_feature=7,  # Feature 7 is hitpoints
             relpos=False,
@@ -200,6 +203,10 @@ class PolicyTMem(nn.Module):
         self.final_layer = None
         if memory:
             self.lstm = nn.LSTM(input_size=self.final_width, hidden_size=d_agent)
+            self.final_layer = nn.Sequential(
+                nn.Linear(d_agent, d_agent),
+                nn.ReLU(),
+            )
         else:
             self.final_layer = nn.Sequential(
                 nn.Linear(self.final_width, d_agent),
@@ -287,11 +294,9 @@ class PolicyTMem(nn.Module):
         ratios = torch.exp(logprobs - old_logprobs)
         if split_reward:
             advantages = advantages / active_agents.view(-1)
-        print(advantages.size(), ratios.size())
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
-            print('pl', vanilla_policy_loss.size(), clipped_policy_loss.size())
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
         else:
             policy_loss = -vanilla_policy_loss.mean()
@@ -304,7 +309,6 @@ class PolicyTMem(nn.Module):
         vanilla_value_loss = (values - returns) ** 2
         clipped_value_loss = (clipped_values - returns) ** 2
         if hps.clip_vf:
-            print('vl', vanilla_value_loss.size(), clipped_value_loss.size())
             value_loss = torch.max(vanilla_value_loss, clipped_value_loss).mean()
         else:
             value_loss = vanilla_value_loss.mean()
@@ -318,7 +322,7 @@ class PolicyTMem(nn.Module):
 
     def forward(self, x, hidden_state):
         batch_size = x.size()[0]
-        x, (pitems, pmask), new_hidden_state = self.latents(x, hidden_state)
+        x, (pitems, pmask), hidden_state = self.latents(x, hidden_state)
 
         vin = x.max(dim=1).values.view(batch_size, self.d_agent)
         if self.use_privileged:
@@ -331,7 +335,7 @@ class PolicyTMem(nn.Module):
         probs = F.softmax(logits, dim=2)
 
         # return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
-        return probs, values, new_hidden_state
+        return probs, values, hidden_state
 
     def logits(self, x, hidden_state):
         x, _, _ = self.latents(x, hidden_state)
@@ -340,11 +344,15 @@ class PolicyTMem(nn.Module):
     def latents(self, x, hidden_state):
         if len(x.size()) == 2:
             x = x.unsqueeze(0)
+        #x.fill_(0.0)
         timesteps, sequences, _ = x.size()
         batch_size = timesteps * sequences
+        #print(x.size())
+        # print('INPUT', x[:, :, 0:5])
 
+        ASTRIDE = DSTRIDE_V2 + (8 if self.obs_config.obs_last_action else 0)
         endglobals = GLOBAL_FEATURES_V2
-        endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.allies
+        endallies = GLOBAL_FEATURES_V2 + ASTRIDE * self.obs_config.allies
         endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.drones
         endmins = endenemies + MSTRIDE_V2 * self.obs_config.minerals
         endallenemies = endmins + DSTRIDE_V2 * (self.obs_config.drones - self.obs_config.allies)
@@ -352,26 +360,28 @@ class PolicyTMem(nn.Module):
         globals = x[:, :, :endglobals]
 
         # properties of the drone controlled by this network
-        xagent = x[:, :, endglobals:endallies].reshape(batch_size, self.obs_config.allies, DSTRIDE_V2)[:, :self.agents, :]
+        xagent = x[:, :, endglobals:endallies].reshape(batch_size, self.obs_config.allies, ASTRIDE)[:, :self.agents, :]
         globals = globals.reshape(batch_size, 1, GLOBAL_FEATURES_V2) \
             .expand(batch_size, self.agents, GLOBAL_FEATURES_V2)
         xagent = torch.cat([xagent, globals], dim=2)
         agents, _, mask_agent = self.agent_embedding(xagent)
+        # print('AGENTS', agents.view(timesteps, sequences, self.obs_config.allies, self.d_agent)[:, :, :, 0:5])
 
         origin = xagent[:, :, 0:2].clone()
         direction = xagent[:, :, 2:4].clone()
 
+        xally = x[:, :, endglobals:endallies].reshape(batch_size, self.obs_config.allies, ASTRIDE)[:, :, :DSTRIDE_V2]
+        eobs = self.obs_config.drones - self.obs_config.allies
         if self.ally_enemy_same:
-            xdrone = x[:, :, endglobals:endenemies].reshape(batch_size, self.obs_config.drones, DSTRIDE_V2)
+            xe = x[:, :, endallies:endenemies].reshape(batch_size, eobs, DSTRIDE_V2)
+            xdrone = torch.cat([xally, xe], dim=1)
             items, relpos, mask = self.drone_net(xdrone, origin, direction)
         else:
-            xally = x[:, :, endglobals:endallies].reshape(batch_size, self.obs_config.allies, DSTRIDE_V2)
             items, relpos, mask = self.ally_net(xally, origin, direction)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
         mask[:, :, 0] = 0
 
         if self.nenemy > 0 and not self.ally_enemy_same:
-            eobs = self.obs_config.drones - self.obs_config.allies
             xe = x[:, :, endallies:endenemies].reshape(batch_size, eobs, DSTRIDE_V2)
 
             items_e, relpos_e, mask_e = self.enemy_net(xe, origin, direction)
@@ -388,7 +398,6 @@ class PolicyTMem(nn.Module):
             relpos = torch.cat([relpos, relpos_m], dim=2)
 
         if self.use_privileged:
-            xally = x[:, :, endglobals:endallies].reshape(batch_size, self.obs_config.allies, DSTRIDE_V2)
             eobs = self.obs_config.drones - self.obs_config.allies
             xenemy = x[:, :, endmins:endallenemies].reshape(batch_size, eobs, DSTRIDE_V2)
             if self.ally_enemy_same:
@@ -446,25 +455,36 @@ class PolicyTMem(nn.Module):
             x2 = []
             for t in range(timesteps):
                 # TODO: need stable slot assignment and way to detect when drone is replaced
+                # print(f'HIDDEN{t}', hidden_state[0][0, 0, 0].item(), hidden_state[1][0, 0, 0].item())
                 out, (hidden, cell) = self.lstm(x[t].unsqueeze(0), hidden_state)
-                hidden = hidden * hidden_state_mask[t].view(1, -1, 1)
-                cell = cell * hidden_state_mask[t].view(1, -1, 1)
+                #hidden = hidden * hidden_state_mask[t].view(1, -1, 1)
+                #cell = cell * hidden_state_mask[t].view(1, -1, 1)
                 hidden_state = (hidden, cell)
-                x2.append(out)
+                # print(f'HIDDEN{t+1}', hidden_state[0][0, :, 0:3], hidden_state[1][0, :, 0:3])
+                x2.append(hidden)
+                #print(t, hidden_state[0][0, 0, 0:2], out[0, 0, 0:2])
             if len(x2) == 1:
                 x = x2[0]
             else:
                 x = torch.cat(x2, dim=0)
-        else:
-            x = self.final_layer(x)
+        x = self.final_layer(x)
         x = x.view(batch_size, self.agents, self.d_agent)
-        x = x * (~mask_agent).float().unsqueeze(-1)
+        #x = x * (~mask_agent).float().unsqueeze(-1)
 
         return x, (pitems, pmask), hidden_state
 
     def param_groups(self):
         # TODO?
         pass
+
+    def initial_hidden_state(self, dbatch, device):
+        if self.lstm is None:
+            return None
+        else:
+            return (
+                torch.zeros((1, dbatch, self.d_agent)).to(device),
+                torch.zeros((1, dbatch, self.d_agent)).to(device),
+            )
 
 
 # Computes a running mean/variance of input features and performs normalization.
@@ -511,7 +531,7 @@ class InputNorm(nn.Module):
 
     def forward(self, input, mask=None):
         with torch.no_grad():
-            if self.training:
+            if self.training and False:
                 self.update(input, mask=mask)
             if self.count > 1:
                 input = (input - self.mean) / self.stddev()

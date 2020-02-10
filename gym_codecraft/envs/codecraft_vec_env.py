@@ -15,6 +15,7 @@ class ObsConfig:
     global_drones: int = 0
     relative_positions: bool = True
     v2: bool = False
+    obs_last_action: bool = False
 
 
 GLOBAL_FEATURES = 1
@@ -80,6 +81,38 @@ def map_arena_tiny(randomize: bool, hardness: int):
                        missile_batteries=missiles_batteries,
                        shield_generators=4 - missiles_batteries)
         ],
+    }
+
+
+def map_chase(randomize: bool, hardness: int):
+    engines = 1#np.random.randint(0, 2)
+    shields = 0#np.random.randint(0, 2)
+    return {
+        'mapWidth': 1500,
+        'mapHeight': 1500,
+        'minerals': [],
+        'player1Drones': [
+            drone_dict(np.random.randint(-650, 650),
+                       np.random.randint(-650, 650),
+                       engines=engines,
+                       storage_modules=1-engines)
+        ],
+        'player2Drones': [
+            drone_dict(np.random.randint(-650, 650),
+                       np.random.randint(-650, 650),
+                       missile_batteries=1,
+                       shield_generators=shields)
+        ],
+    }
+
+
+def map_dance(randomize: bool, hardness: int):
+    return {
+        'mapWidth': 10000,
+        'mapHeight': 10000,
+        'minerals': [],
+        'player1Drones': [drone_dict(0, 0, shield_generators=1)],
+        'player2Drones': [drone_dict(4500, 4500, shield_generators=1)],
     }
 
 
@@ -222,6 +255,15 @@ class CodeCraftVecEnv(object):
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
+        elif objective == Objective.CHASE:
+            self.game_length = 30 * 60
+            self.custom_map = map_chase
+        elif objective == Objective.DANCE:
+            self.game_length = 30 * 60
+            self.custom_map = map_dance
+            self.next_action_index = [0 for _ in range(num_envs)]
+            self.last_action_correct = [0 for _ in range(num_envs)]
+            self.action_sequence = [3, 4, 4, 4, 4]
         elif objective == Objective.ARENA_TINY_2V2:
             self.game_length = 1 * 30 * 60
             self.custom_map = map_arena_tiny_2v2
@@ -293,8 +335,8 @@ class CodeCraftVecEnv(object):
 
     def step_async(self, actions, env_subset=None):
         game_actions = []
-        games = [self.games[env] for env in env_subset] if env_subset else self.games
-        for ((game_id, player_id), player_actions) in zip(games, actions):
+        games = [(env, self.games[env]) for env in env_subset] if env_subset else list(enumerate(self.games))
+        for ((env, (game_id, player_id)), player_actions) in zip(games, actions):
             player_actions2 = []
             for action in player_actions:
                 # 0-5: turn/movement (4 is no turn, no movement)
@@ -317,6 +359,18 @@ class CodeCraftVecEnv(object):
                 if action >= 8:
                     build = [self.builds[action - 8]]
                 player_actions2.append((move, turn, build, harvest))
+                if self.objective == Objective.DANCE:
+                    i = self.next_action_index[env]
+                    if self.action_sequence[i] == action:
+                        self.next_action_index[env] = (i + 1) % len(self.action_sequence)
+                        self.last_action_correct[env] = 1  #min(self.last_action_correct[env] + 1, 1)
+                        #if env == 0:
+                        #     print(action, '+1')
+                    else:
+                        self.next_action_index[env] = 0
+                        self.last_action_correct[env] = -1
+                        #if env == 0:
+                        #     print(action, '-1')
             game_actions.append((game_id, player_id, player_actions2))
 
         codecraft.act_batch(game_actions, disable_harvest=self.objective == Objective.DISTANCE_TO_CRYSTAL)
@@ -336,15 +390,21 @@ class CodeCraftVecEnv(object):
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
                                           v2=True,
-                                          extra_build_costs=self.build_costs)
-        total_drones = 2 * obs_config.drones - obs_config.allies
-        stride = GLOBAL_FEATURES_V2 + total_drones * DSTRIDE_V2 + obs_config.minerals * MSTRIDE_V2
+                                          extra_build_costs=self.build_costs,
+                                          obs_last_action=obs_config.obs_last_action)
+        enemy_drones = 2 * (obs_config.drones - obs_config.allies)
+        allied_drone_stride = DSTRIDE_V2 + (8 if obs_config.obs_last_action else 0)
+        stride = GLOBAL_FEATURES_V2 + obs_config.allies * allied_drone_stride + enemy_drones * DSTRIDE_V2 +\
+                 obs_config.minerals * MSTRIDE_V2
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 1]
                 enemy_score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
+            elif self.objective == Objective.DANCE:
+                score = 0.0 if self.score[game] is None else self.score[game]
+                score += self.last_action_correct[game]
             elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 1] * 0.1
             elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500, Objective.DISTANCE_TO_ORIGIN]:
@@ -449,6 +509,8 @@ class Objective(Enum):
     DISTANCE_TO_ORIGIN = 'DISTANCE_TO_ORIGIN'
     DISTANCE_TO_1000_500 = 'DISTANCE_TO_1000_500'
     ARENA_TINY = 'ARENA_TINY'
+    CHASE = 'CHASE'
+    DANCE = 'DANCE'
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
     ARENA_MEDIUM = 'ARENA_MEDIUM'
     ARENA = 'ARENA'
@@ -457,9 +519,11 @@ class Objective(Enum):
         if self == Objective.ALLIED_WEALTH or\
            self == Objective.DISTANCE_TO_CRYSTAL or\
            self == Objective.DISTANCE_TO_ORIGIN or\
-           self == Objective.DISTANCE_TO_1000_500:
+           self == Objective.DISTANCE_TO_1000_500 or\
+           self == Objective.DANCE:
            return False
         elif self == Objective.ARENA_TINY or\
+            self == Objective.CHASE or\
             self == Objective.ARENA_TINY_2V2 or\
             self == Objective.ARENA_MEDIUM or \
             self == Objective.ARENA:

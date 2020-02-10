@@ -68,6 +68,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         global_drones=hps.obs_enemies if hps.use_privileged else 0,
         relative_positions=False,
         v2=True,
+        obs_last_action=hps.obs_last_action,
     )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -115,6 +116,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             ally_enemy_same=hps.ally_enemy_same,
             naction=hps.objective.naction(),
             memory=hps.tbptt_seq_len > 1,
+            obs_last_action=hps.obs_last_action,
         ).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
@@ -145,12 +147,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
-    hidden_state = None
-    if hps.tbptt_seq_len > 1:
-        hidden_state = (
-            torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
-            torch.zeros((1, hps.num_envs, hps.d_agent)).to(device),
-        )
+    hidden_state = policy.initial_hidden_state(hps.num_envs, device)
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -232,8 +229,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                     completed_episodes += 1
 
-        _, _, _, final_values, final_probs, hidden_state =\
-            policy.evaluate(obs, action_masks, hidden_state)
+            _, _, _, final_values, final_probs, hidden_state =\
+                policy.evaluate(obs, action_masks, hidden_state)
 
         final_values = final_values.cpu().numpy()
         all_rewards = np.array(all_rewards) * hps.rewscale
@@ -288,6 +285,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 advantages = advantages[:, perm, :]
                 all_action_masks = all_action_masks[:, perm, :, :]
                 all_probs = all_probs[:, perm, :]
+                all_hidden_states = all_hidden_states[perm, :]
+                all_cell_states = all_cell_states[perm, :]
 
             # Policy Update
             policy_loss_sum = 0
@@ -311,7 +310,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         all_hidden_states[start:end, :].unsqueeze(0),
                         all_cell_states[start:end, :].unsqueeze(0),
                     )
-                print(all_obs.size(), all_actions.size(), all_logprobs.size(), all_returns.size(), all_values.size(), all_action_masks.size(), all_probs.size())
                 policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(
                     hps,
                     all_obs[:, start:end, :],
@@ -402,121 +400,124 @@ def eval(policy,
          randomize=False,
          hardness=10,
          symmetric=True):
-    if printerval is None:
-        printerval = eval_steps
+    with torch.no_grad():
 
-    if not opponents:
-        if objective == envs.Objective.ARENA_TINY:
-            opponents = {
-                'easy': {'model_file': 'arena_tiny/t2_random.pt'},
-            }
-        elif objective == envs.Objective.ARENA_TINY_2V2:
-            opponents = {
-                'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
-            }
-        elif objective == envs.Objective.ARENA_MEDIUM:
-            opponents = {
-                # Scores -0.32 vs previous best, jumping-totem-100M
-                'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
-            }
-        elif objective == envs.Objective.ARENA:
-            opponents = {
-                'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
-            }
-        else:
-            raise Exception(f'No eval opponents configured for {objective}')
+        if printerval is None:
+            printerval = eval_steps
 
-    policy.eval()
-    env = envs.CodeCraftVecEnv(num_envs,
-                               num_envs // 2,
-                               objective,
-                               action_delay=0,
-                               stagger=False,
-                               fair=not symmetric,
-                               use_action_masks=True,
-                               obs_config=policy.obs_config,
-                               randomize=randomize,
-                               hardness=hardness,
-                               symmetric=symmetric)
+        if not opponents:
+            if objective == envs.Objective.ARENA_TINY:
+                opponents = {
+                    'easy': {'model_file': 'arena_tiny/t2_random.pt'},
+                }
+            elif objective == envs.Objective.ARENA_TINY_2V2:
+                opponents = {
+                    'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
+                }
+            elif objective == envs.Objective.ARENA_MEDIUM:
+                opponents = {
+                    # Scores -0.32 vs previous best, jumping-totem-100M
+                    'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
+                }
+            elif objective == envs.Objective.ARENA:
+                opponents = {
+                    'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
+                }
+            else:
+                raise Exception(f'No eval opponents configured for {objective}')
 
-    scores = []
-    scores_by_opp = defaultdict(list)
-    lengths = []
-    evens = list([2 * i for i in range(num_envs // 2)])
-    odds = list([2 * i + 1 for i in range(num_envs // 2)])
-    policy_envs = evens
+        policy.eval()
+        env = envs.CodeCraftVecEnv(num_envs,
+                                   num_envs // 2,
+                                   objective,
+                                   action_delay=0,
+                                   stagger=False,
+                                   fair=not symmetric,
+                                   use_action_masks=True,
+                                   obs_config=policy.obs_config,
+                                   randomize=randomize,
+                                   hardness=hardness,
+                                   symmetric=symmetric)
 
-    partitions = [(policy_envs, policy.obs_config)]
-    i = 0
-    for name, opp in opponents.items():
-        opp_policy, _, _ = load_policy(opp['model_file'], device)
-        opp_policy.eval()
-        opp['policy'] = opp_policy
-        opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
-        opp['obs_config'] = opp_policy.obs_config
-        opp['i'] = i
-        i += 1
-        partitions.append((opp['envs'], opp_policy.obs_config))
+        scores = []
+        scores_by_opp = defaultdict(list)
+        lengths = []
+        evens = list([2 * i for i in range(num_envs // 2)])
+        odds = list([2 * i + 1 for i in range(num_envs // 2)])
+        policy_envs = evens
 
-    initial_obs = env.reset(partitions)
+        partitions = [(policy_envs, policy.obs_config)]
+        i = 0
+        hidden_state_opps = []
+        for name, opp in opponents.items():
+            opp_policy, _, _ = load_policy(opp['model_file'], device)
+            opp_policy.eval()
+            opp['policy'] = opp_policy
+            opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
+            opp['obs_config'] = opp_policy.obs_config
+            opp['i'] = i
+            i += 1
+            partitions.append((opp['envs'], opp_policy.obs_config))
+            hidden_state_opps.append(opp_policy.initial_hidden_state(len(opp['envs']), device))
 
-    obs, action_masks, privileged_obs = initial_obs[0]
-    obs_opps, action_masks_opps, privileged_obs_opps = ([], [], [])
-    for o, a, p in initial_obs[1:]:
-        obs_opps.append(o)
-        action_masks_opps.append(a)
-        privileged_obs_opps.append(p)
+        initial_obs = env.reset(partitions)
 
-    for step in range(eval_steps):
-        obs_tensor = torch.tensor(obs).to(device)
-        privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-        action_masks_tensor = torch.tensor(action_masks).to(device)
-        actionsp, _, _, _, _ = policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
-        env.step_async(actionsp.cpu(), policy_envs)
+        obs, action_masks = initial_obs[0]
+        hidden_state = policy.initial_hidden_state(len(evens), device)
+        obs_opps, action_masks_opps = ([], [])
+        for o, a in initial_obs[1:]:
+            obs_opps.append(o)
+            action_masks_opps.append(a)
 
-        for _, opp in opponents.items():
-            i = opp['i']
-            obs_opp_tensor = torch.tensor(obs_opps[i]).to(device)
-            privileged_obs_opp_tensor = torch.tensor(privileged_obs_opps[i]).to(device)
-            action_masks_opp_tensor = torch.tensor(action_masks_opps[i]).to(device)
-            actions_opp, _, _, _, _ = opp['policy'].evaluate(obs_opp_tensor,
-                                                             action_masks_opp_tensor,
-                                                             privileged_obs_opp_tensor)
-            env.step_async(actions_opp.cpu(), opp['envs'])
 
-        obs, _, _, infos, action_masks, privileged_obs = env.observe(policy_envs)
-        for _, opp in opponents.items():
-            i = opp['i']
-            obs_opps[i], _, _, _, action_masks_opps[i], privileged_obs_opps[i] = \
-                env.observe(opp['envs'], opp['obs_config'])
+        for step in range(eval_steps):
+            actionsp, _, _, _, _, hidden_state = policy.evaluate(
+                torch.tensor(obs).to(device),
+                torch.tensor(action_masks).to(device),
+                hidden_state)
+            env.step_async(actionsp.cpu(), policy_envs)
 
-        for info in infos:
-            index = info['episode']['index']
-            score = info['episode']['score']
-            length = info['episode']['l']
-            scores.append(score)
-            lengths.append(length)
-            for name, opp in opponents.items():
-                if index + 1 in opp['envs']:
-                    scores_by_opp[name].append(score)
-                    break
+            for _, opp in opponents.items():
+                i = opp['i']
+                actions_opp, _, _, _, _, hidden_state_opps[i] = opp['policy'].evaluate(
+                    torch.tensor(obs_opps[i]).to(device),
+                    torch.tensor(action_masks_opps[i]).to(device),
+                    hidden_state_opps[i])
+                env.step_async(actions_opp.cpu(), opp['envs'])
 
-        if (step + 1) % printerval == 0:
-            print(f'Eval: {np.array(scores).mean()}')
+            obs, _, _, infos, action_masks = env.observe(policy_envs)
+            for _, opp in opponents.items():
+                i = opp['i']
+                obs_opps[i], _, _, _, action_masks_opps[i] = \
+                    env.observe(opp['envs'], opp['obs_config'])
 
-    scores = np.array(scores)
+            for info in infos:
+                index = info['episode']['index']
+                score = info['episode']['score']
+                length = info['episode']['l']
+                scores.append(score)
+                lengths.append(length)
+                for name, opp in opponents.items():
+                    if index + 1 in opp['envs']:
+                        scores_by_opp[name].append(score)
+                        break
 
-    if curr_step is not None:
-        wandb.log({
-            'eval_mean_score': scores.mean(),
-            'eval_max_score': scores.max(),
-            'eval_min_score': scores.min(),
-        }, step=curr_step)
-        for opp_name, scores in scores_by_opp.items():
-            scores = np.array(scores)
-            wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=curr_step)
+            if (step + 1) % printerval == 0:
+                print(f'Eval: {np.array(scores).mean()}')
 
-    env.close()
+        scores = np.array(scores)
+
+        if curr_step is not None:
+            wandb.log({
+                'eval_mean_score': scores.mean(),
+                'eval_max_score': scores.max(),
+                'eval_min_score': scores.min(),
+            }, step=curr_step)
+            for opp_name, scores in scores_by_opp.items():
+                scores = np.array(scores)
+                wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=curr_step)
+
+        env.close()
 
 
 def save_policy(policy, out_dir, total_steps, optimizer=None):
@@ -576,6 +577,9 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             policy = TransformerPolicy(**kwargs)
     elif version == 'transformer_v2':
         policy = TransformerPolicy2(**kwargs)
+    elif version == 'transformer_lstm':
+        policy = PolicyTMem(**kwargs)
+        # policy = TransformerPolicy2(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 

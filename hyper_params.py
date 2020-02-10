@@ -53,6 +53,7 @@ class HyperParams:
         self.obs_minerals = 10        # Max number of minerals returned by the env
         self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
         self.use_privileged = True    # Whether value function has access to hidden information
+        self.obs_last_action = False  # Whether agents observe the action they took on the previous timestep
 
         # Eval
         self.eval_envs = 256
