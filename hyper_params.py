@@ -20,7 +20,7 @@ class HyperParams:
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
 
         # Policy (transformer)
-        self.d_agent = 512
+        self.d_agent = 256
         self.d_item = 128
         self.dff_ratio = 2
         self.nhead = 8
@@ -122,9 +122,6 @@ class HyperParams:
 
         hps.steps = 25e6
 
-        hps.d_agent = 256
-        hps.d_item = 128
-
         hps.agents = 4
         hps.nenemy = 5
         hps.nally = 5
@@ -154,9 +151,6 @@ class HyperParams:
         hps.objective = envs.Objective.ARENA_TINY_2V2
 
         hps.steps = 25e6
-
-        hps.d_agent = 256
-        hps.d_item = 128
 
         hps.entropy_bonus = 0.001
 
