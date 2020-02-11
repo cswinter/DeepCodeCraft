@@ -32,7 +32,7 @@ def act(game_id: int, action):
     retries = 100
     while retries > 0:
         try:
-            requests.post(f'http://localhost:9000/act?gameID={game_id}&playerID=0', json=action)
+            requests.post(f'http://localhost:9000/act?gameID={game_id}&playerID=0', json=action).raise_for_status()
             return
         except requests.exceptions.ConnectionError:
             # For some reason, a small percentage of requests fails with
@@ -60,7 +60,7 @@ def act_batch(actions, disable_harvest: bool = False):
     retries = 100
     while retries > 0:
         try:
-            requests.post(f'http://localhost:9000/batch-act', json=payload)
+            requests.post(f'http://localhost:9000/batch-act', json=payload).raise_for_status()
             return
         except requests.exceptions.ConnectionError:
             # For some reason, a small percentage of requests fails with
