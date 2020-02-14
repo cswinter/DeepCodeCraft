@@ -430,6 +430,10 @@ def eval(policy,
                 opponents = {
                     'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
                 }
+            elif objective == envs.Objective.CHASE:
+                opponents = {
+                    'alpha': {'model_file': 'chase/valiant-fog-2M.pt'},
+                }
             else:
                 raise Exception(f'No eval opponents configured for {objective}')
 
