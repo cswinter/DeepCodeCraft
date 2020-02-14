@@ -259,16 +259,18 @@ def train(hps: HyperParams, out_dir: str) -> None:
         dtime = hps.tbptt_seq_len
         dbatch = (hps.seq_rosteps * hps.num_envs) // dtime
 
+        def timecat(tensors):
+            return torch.cat(list(map(lambda t: t.unsqueeze(0), tensors)), dim=0)
         def timeslice(tensor):
             return tensor.view(hps.seq_rosteps, hps.num_envs, -1).permute(1, 0, 2)\
                 .reshape(dbatch, dtime, -1).permute(1, 0, 2)
-        all_obs = timeslice(torch.cat(all_obs, dim=0))
+        all_obs = timeslice(timecat(all_obs))
         all_returns = timeslice(torch.tensor(all_returns).to(device))
-        all_actions = timeslice(torch.cat(all_actions, dim=0))
-        all_logprobs = timeslice(torch.cat(all_logprobs, dim=0))
+        all_actions = timeslice(timecat(all_actions))
+        all_logprobs = timeslice(timecat(all_logprobs))
         all_values = timeslice(torch.tensor(all_values).to(device))
         advantages = timeslice(torch.tensor(advantages).to(device))
-        all_action_masks = timeslice(torch.cat(all_action_masks, dim=0)[:, :hps.agents, :]).view(dtime, dbatch, hps.agents, -1)
+        all_action_masks = timeslice(timecat(all_action_masks)[:, :, :hps.agents, :]).view(dtime, dbatch, hps.agents, -1)
         all_probs = timeslice(torch.cat(all_probs, dim=0))
         if hps.tbptt_seq_len > 1:
             all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1).view(dbatch, hps.d_agent)
@@ -285,8 +287,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 advantages = advantages[:, perm, :]
                 all_action_masks = all_action_masks[:, perm, :, :]
                 all_probs = all_probs[:, perm, :]
-                all_hidden_states = all_hidden_states[perm, :]
-                all_cell_states = all_cell_states[perm, :]
+                if hps.tbptt_seq_len > 1:
+                    all_hidden_states = all_hidden_states[perm, :]
+                    all_cell_states = all_cell_states[perm, :]
 
             # Policy Update
             policy_loss_sum = 0
@@ -310,10 +313,14 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         all_hidden_states[start:end, :].unsqueeze(0),
                         all_cell_states[start:end, :].unsqueeze(0),
                     )
+                action_minibatch = all_actions[:, start:end, :].reshape(-1)
+                obs_minibatch = all_obs[:, start:end, :]
+                #print(obs_minibatch[:, 0, 17:25])
+                #print(action_minibatch.view(hps.tbptt_seq_len, -1)[:, 0])
                 policy_loss, value_loss, aproxkl, clipfrac = policy.backprop(
                     hps,
-                    all_obs[:, start:end, :],
-                    all_actions[:, start:end, :].reshape(-1),
+                    obs_minibatch,
+                    action_minibatch,
                     all_logprobs[:, start:end, :].reshape(-1),
                     all_returns[:, start:end, :].reshape(-1),
                     hps.vf_coef,
