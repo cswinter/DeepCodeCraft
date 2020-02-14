@@ -351,9 +351,10 @@ class PolicyTMem(nn.Module):
         # print('INPUT', x[:, :, 0:5])
 
         ASTRIDE = DSTRIDE_V2 + (8 if self.obs_config.obs_last_action else 0)
+        obs_config_enemies = self.obs_config.drones - self.obs_config.allies
         endglobals = GLOBAL_FEATURES_V2
         endallies = GLOBAL_FEATURES_V2 + ASTRIDE * self.obs_config.allies
-        endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.drones
+        endenemies = endallies + DSTRIDE_V2 * obs_config_enemies
         endmins = endenemies + MSTRIDE_V2 * self.obs_config.minerals
         endallenemies = endmins + DSTRIDE_V2 * (self.obs_config.drones - self.obs_config.allies)
 
