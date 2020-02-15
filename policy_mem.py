@@ -458,8 +458,8 @@ class PolicyTMem(nn.Module):
                 # TODO: need stable slot assignment and way to detect when drone is replaced
                 # print(f'HIDDEN{t}', hidden_state[0][0, 0, 0].item(), hidden_state[1][0, 0, 0].item())
                 out, (hidden, cell) = self.lstm(x[t].unsqueeze(0), hidden_state)
-                #hidden = hidden * hidden_state_mask[t].view(1, -1, 1)
-                #cell = cell * hidden_state_mask[t].view(1, -1, 1)
+                hidden = hidden * hidden_state_mask[t].view(1, -1, 1)
+                cell = cell * hidden_state_mask[t].view(1, -1, 1)
                 hidden_state = (hidden, cell)
                 # print(f'HIDDEN{t+1}', hidden_state[0][0, :, 0:3], hidden_state[1][0, :, 0:3])
                 x2.append(hidden)
