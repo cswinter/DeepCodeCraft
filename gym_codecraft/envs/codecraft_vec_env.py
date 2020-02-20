@@ -223,6 +223,96 @@ def map_arena(randomize: bool, hardness: int):
     }
 
 
+def map_standard(randomize: bool, hardness: int):
+    if randomize:
+        hardness = np.random.randint(0, hardness+1)
+    minerals = None
+    if hardness == 0:
+        map_width = 1000
+        map_height = 1000
+        mineral_count = 2
+    elif hardness == 1:
+        map_width = 2000
+        map_height = 1500
+        mineral_count = 3
+    elif hardness == 2:
+        map_width = 3000
+        map_height = 2000
+        mineral_count = 6
+    elif hardness == 3:
+        map_width = 4000
+        map_height = 2500
+        mineral_count = 8
+    elif hardness == 4:
+        map_width = 5000
+        map_height = 3000
+        mineral_count = 10
+    else:
+        map_width = 6000
+        map_height = 4000
+        minerals = [
+            (10, 10),
+            (10, 10),
+            (7, 20),
+            (7, 20),
+            (5, 30),
+            (5, 30),
+            (5, 50),
+            (5, 70),
+            (5, 100),
+        ]
+    if minerals is None:
+        minerals = mineral_count * [(1, 50)]
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2.2) * np.sin(angle)
+    spawn_y = (map_height // 2.2) * np.cos(angle)
+    if randomize:
+        d = np.random.randint(0, 6)
+    else:
+        d = 5
+    if d == 0:
+        drone = drone_dict(
+            -spawn_x, -spawn_y,
+            constructors=1,
+            storage_modules=1)
+    elif d == 1:
+        drone = drone_dict(
+            -spawn_x, -spawn_y,
+            constructors=2,
+            storage_modules=2)
+    elif d == 2:
+        drone = drone_dict(
+            -spawn_x, -spawn_y,
+            constructors=1,
+            storage_modules=2,
+            missile_batteries=1)
+    elif d == 3:
+        drone = drone_dict(
+            -spawn_x, -spawn_y,
+            constructors=2,
+            storage_modules=3,
+            missile_batteries=3,
+            shield_generators=1,
+            engines=1)
+    else:
+        drone = drone_dict(
+            -spawn_x, -spawn_y,
+            constructors=3,
+            storage_modules=3,
+            missile_batteries=3,
+            shield_generators=1)
+
+
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': minerals,
+        'player1Drones': [drone],
+        'player2Drones': [drone],
+    }
+
+
 class CodeCraftVecEnv(object):
     def __init__(self,
                  num_envs,
@@ -278,6 +368,20 @@ class CodeCraftVecEnv(object):
                 [0, 1, 0, 0, 1]
             ]
             self.custom_map = map_arena
+        elif objective == Objective.STANDARD:
+            self.game_length = 5 * 60 * 60
+            self.builds = [
+                [1, 0, 1, 0, 0],
+                [0, 2, 0, 0, 0],
+                [0, 1, 0, 0, 1],
+                [0, 3, 0, 0, 1],
+                [0, 2, 0, 0, 2],
+                [1, 0, 2, 0, 1],
+                [1, 0, 2, 0, 1],
+                [2, 0, 2, 0, 0],
+                [1, 0, 0, 0, 0],
+            ]
+            self.custom_map = map_standard
         self.build_costs = [sum(modules) for modules in self.builds]
         self.naction = 8 + len(self.builds)
 
@@ -514,6 +618,7 @@ class Objective(Enum):
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
     ARENA_MEDIUM = 'ARENA_MEDIUM'
     ARENA = 'ARENA'
+    STANDARD = 'STANDARD'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
@@ -525,14 +630,17 @@ class Objective(Enum):
         elif self == Objective.ARENA_TINY or\
             self == Objective.CHASE or\
             self == Objective.ARENA_TINY_2V2 or\
-            self == Objective.ARENA_MEDIUM or \
-            self == Objective.ARENA:
+            self == Objective.ARENA_MEDIUM or\
+            self == Objective.ARENA or\
+            self == Objective.STANDARD:
             return True
         else:
             raise Exception(f'Objective.vs not implemented for {self}')
 
     def naction(self):
-        if self == Objective.ARENA:
+        if self == Objective.STANDARD:
+            return 17
+        elif self == Objective.ARENA:
             return 11
         else:
             return 8
