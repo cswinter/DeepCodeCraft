@@ -294,6 +294,7 @@ class PolicyTMem(nn.Module):
         ratios = torch.exp(logprobs - old_logprobs)
         if split_reward:
             advantages = advantages / active_agents.view(-1)
+        advantages = advantages.view(-1, 1).repeat(1, self.agents).view(-1)
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:

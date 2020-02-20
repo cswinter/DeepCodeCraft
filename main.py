@@ -147,7 +147,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
-    hidden_state = policy.initial_hidden_state(hps.num_envs, device)
+    hidden_state = policy.initial_hidden_state(hps.num_envs * hps.agents, device)
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -273,8 +273,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_action_masks = timeslice(timecat(all_action_masks)[:, :, :hps.agents, :]).view(dtime, dbatch, hps.agents, -1)
         all_probs = timeslice(torch.cat(all_probs, dim=0))
         if hps.tbptt_seq_len > 1:
-            all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1).view(dbatch, hps.d_agent)
-            all_cell_states = torch.cat(all_cell_states, dim=0).unsqueeze(1).view(dbatch, hps.d_agent)
+            all_hidden_states = torch.cat(all_hidden_states, dim=0).unsqueeze(1).view(dbatch, hps.agents, hps.d_agent)
+            all_cell_states = torch.cat(all_cell_states, dim=0).unsqueeze(1).view(dbatch, hps.agents, hps.d_agent)
 
         for epoch in range(hps.sample_reuse):
             if hps.shuffle:
@@ -288,8 +288,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 all_action_masks = all_action_masks[:, perm, :, :]
                 all_probs = all_probs[:, perm, :]
                 if hps.tbptt_seq_len > 1:
-                    all_hidden_states = all_hidden_states[perm, :]
-                    all_cell_states = all_cell_states[perm, :]
+                    all_hidden_states = all_hidden_states[perm, :, :]
+                    all_cell_states = all_cell_states[perm, :, :]
 
             # Policy Update
             policy_loss_sum = 0
@@ -310,8 +310,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 hidden = None
                 if hps.tbptt_seq_len > 1:
                     hidden = (
-                        all_hidden_states[start:end, :].unsqueeze(0),
-                        all_cell_states[start:end, :].unsqueeze(0),
+                        all_hidden_states[start:end, :, :].unsqueeze(0).view(1, (end - start) * hps.agents, hps.d_agent),
+                        all_cell_states[start:end, :, :].unsqueeze(0).view(1, (end - start) * hps.agents, hps.d_agent),
                     )
                 action_minibatch = all_actions[:, start:end, :].reshape(-1)
                 obs_minibatch = all_obs[:, start:end, :]
