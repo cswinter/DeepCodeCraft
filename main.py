@@ -147,7 +147,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
-    hidden_state = policy.initial_hidden_state(hps.num_envs * hps.agents, device)
+    hidden_state = policy.initial_hidden_state(hps.num_envs, device)
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()

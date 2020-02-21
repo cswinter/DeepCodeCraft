@@ -484,8 +484,8 @@ class PolicyTMem(nn.Module):
             return None
         else:
             return (
-                torch.zeros((1, dbatch, self.d_agent)).to(device),
-                torch.zeros((1, dbatch, self.d_agent)).to(device),
+                torch.zeros((1, dbatch * self.agents, self.d_agent)).to(device),
+                torch.zeros((1, dbatch * self.agents, self.d_agent)).to(device),
             )
 
 
