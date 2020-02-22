@@ -8,16 +8,18 @@ import numpy as np
 RETRIES = 100
 
 
-def create_game(game_length: int = None, action_delay: int = 0, self_play: bool = False, custom_map=None) -> int:
+def create_game(game_length: int = None, action_delay: int = 0, self_play: bool = False, custom_map=None, strong_scripted_opponent=False) -> int:
     if custom_map is None:
         custom_map = ''
     try:
         scripted_opponent = 'false' if self_play else 'true'
+        idle_opponent = 'false' if strong_scripted_opponent else 'true'
         if game_length:
             response = requests.post(f'http://localhost:9000/start-game'
                                      f'?maxTicks={game_length}'
                                      f'&actionDelay={action_delay}'
-                                     f'&scriptedOpponent={scripted_opponent}',
+                                     f'&scriptedOpponent={scripted_opponent}'
+                                     f'&idleOpponent={idle_opponent}',
                                      json=custom_map).json()
         else:
             response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()

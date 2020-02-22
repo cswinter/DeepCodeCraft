@@ -376,7 +376,7 @@ def eval(policy,
     if printerval is None:
         printerval = eval_steps
 
-    if not opponents:
+    if opponents is None:
         if objective == envs.Objective.ARENA_TINY:
             opponents = {
                 'easy': {'model_file': 'arena_tiny/t2_random.pt'},
@@ -399,7 +399,7 @@ def eval(policy,
 
     policy.eval()
     env = envs.CodeCraftVecEnv(num_envs,
-                               num_envs // 2,
+                               num_envs // 2 if len(opponents) > 0 else 0,
                                objective,
                                action_delay=0,
                                stagger=False,
@@ -408,7 +408,8 @@ def eval(policy,
                                obs_config=policy.obs_config,
                                randomize=randomize,
                                hardness=hardness,
-                               symmetric=symmetric)
+                               symmetric=symmetric,
+                               strong_scripted_opponent=True)
 
     scores = []
     scores_by_opp = defaultdict(list)
