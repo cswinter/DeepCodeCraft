@@ -235,36 +235,55 @@ def map_standard(randomize: bool, hardness: int):
     spawn_x = (map_width // 2.2) * np.sin(angle)
     spawn_y = (map_height // 2.2) * np.cos(angle)
     if randomize:
-        d = np.random.randint(0, 6)
+        d = np.random.randint(0, 7)
+        res = 3 * np.random.randint(0, 3)
     else:
-        d = 5
+        d = 6
+        res = 7
     if d == 0:
         drone = dict(
             constructors=1,
-            storage_modules=1)
+            storage_modules=1,
+            resources=res)
     elif d == 1:
         drone = dict(
             constructors=2,
-            storage_modules=2)
+            storage_modules=2,
+            resources=2*res)
     elif d == 2:
         drone = dict(
             constructors=1,
             storage_modules=2,
-            missile_batteries=1)
+            missile_batteries=1,
+            resources=2*res)
     elif d == 3:
+        drone = dict(
+            constructors=2,
+            storage_modules=3,
+            missile_batteries=1,
+            engines=1,
+            resources=2*res)
+    elif d == 4:
+        drone = dict(
+            constructors=2,
+            storage_modules=3,
+            engines=2,
+            resources=2*res)
+    elif d == 5:
         drone = dict(
             constructors=2,
             storage_modules=3,
             missile_batteries=3,
             shield_generators=1,
-            engines=1)
+            engines=1,
+            resources=2*res)
     else:
         drone = dict(
             constructors=3,
             storage_modules=3,
             missile_batteries=3,
-            shield_generators=1)
-
+            shield_generators=1,
+            resources=2*res)
 
     return {
         'mapWidth': map_width,
@@ -287,7 +306,8 @@ class CodeCraftVecEnv(object):
                  use_action_masks=True,
                  obs_config=DEFAULT_OBS_CONFIG,
                  hardness=0,
-                 symmetric=False):
+                 symmetric=False,
+                 strong_scripted_opponent=False):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -304,6 +324,7 @@ class CodeCraftVecEnv(object):
         self.hardness = hardness
         self.symmetric = symmetric
         self.builds = []
+        self.strong_scripted_opponent = strong_scripted_opponent
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -315,6 +336,7 @@ class CodeCraftVecEnv(object):
             self.custom_map = map_arena_medium
         elif objective == Objective.ARENA:
             self.game_length = 3 * 60 * 60
+            # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
             self.builds = [
                 [1, 0, 1, 0, 0],
                 [0, 2, 0, 0, 0],
@@ -329,9 +351,10 @@ class CodeCraftVecEnv(object):
                 [0, 1, 0, 0, 1],
                 [0, 3, 0, 0, 1],
                 [0, 2, 0, 0, 2],
-                [1, 0, 2, 0, 1],
-                [1, 0, 2, 0, 1],
+                [2, 1, 1, 0, 0],
                 [2, 0, 2, 0, 0],
+                [2, 0, 1, 1, 0],
+                [0, 2, 0, 1, 1],
                 [1, 0, 0, 0, 0],
             ]
             self.custom_map = map_standard
@@ -361,7 +384,8 @@ class CodeCraftVecEnv(object):
                 game_length,
                 self.action_delay,
                 self_play,
-                self.next_map())
+                self.next_map(),
+                self.strong_scripted_opponent)
             # print("Starting game:", game_id)
             self.games.append((game_id, 0))
             self.eplen.append(1)
@@ -485,7 +509,8 @@ class CodeCraftVecEnv(object):
                     game_id = codecraft.create_game(self.game_length,
                                                     self.action_delay,
                                                     self_play,
-                                                    self.next_map())
+                                                    self.next_map(),
+                                                    self.strong_scripted_opponent)
                 else:
                     game_id = self.games[game - 1][0]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
@@ -578,7 +603,8 @@ class CodeCraftVecEnv(object):
                     game_id = codecraft.create_game(self.game_length,
                                                     self.action_delay,
                                                     self_play,
-                                                    self.next_map())
+                                                    self.next_map(),
+                                                    self.strong_scripted_opponent)
                 else:
                     game_id = self.games[game - 1][0]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
@@ -687,7 +713,7 @@ class Objective(Enum):
 
     def naction(self):
         if self == Objective.STANDARD:
-            return 17
+            return 18
         elif self == Objective.ARENA:
             return 11
         else:
