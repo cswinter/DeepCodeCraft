@@ -14,9 +14,8 @@ import wandb
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
-from policy_t import TransformerPolicy
 from policy_t2 import TransformerPolicy2, InputNorm
-import policy_t_old
+from policy_t3 import TransformerPolicy3, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -86,32 +85,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy2(
-            hps.d_agent,
-            hps.d_item,
-            hps.dff_ratio,
-            hps.nhead,
-            hps.dropout,
-            hps.small_init_pi,
-            hps.zero_init_vf,
-            hps.fp16,
-            agents=hps.agents,
-            nally=hps.nally,
-            nenemy=hps.nenemy,
-            nmineral=hps.nmineral,
-            obs_config=obs_config,
-            norm=hps.norm,
-            use_privileged=hps.use_privileged,
-            nearby_map=hps.nearby_map,
-            ring_width=hps.nm_ring_width,
-            nrays=hps.nm_nrays,
-            nrings=hps.nm_nrings,
-            map_conv=hps.map_conv,
-            map_embed_offset=hps.map_embed_offset,
-            keep_abspos=hps.obs_keep_abspos,
-            ally_enemy_same=hps.ally_enemy_same,
-            naction=hps.objective.naction(),
-        ).to(device)
+        policy = TransformerPolicy3(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
@@ -518,35 +492,9 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             relative_positions=False,
             v2=True,
         )
-    if version == 'transformer_v1':
-        # This model didn't have the params on it's Normalize layer saved - need to backfill manually :(
-        if name.endswith("jumping-totem-100M.pt"):
-            policy = policy_t_old.TransformerPolicy(**kwargs)
-            policy.self_embedding.normalize.count = 382405392.0
-            policy.self_embedding.normalize.mean = torch.tensor(
-                [0.1220, -0.0122, -0.0332, -0.0351, -0.0493,  0.0661, -0.3715, -0.5018, 0.4990,  0.4910,
-                 0.2545,  0.4910,  0.0000,  0.0000, -0.8230,  1.0000],
-            ).to(device)
-            policy.self_embedding.normalize.stddev = lambda: torch.tensor(
-                [0.0890, 0.3567, 0.3637, 0.7138, 0.6977, 0.0892, 0.9284, 0.8650, 0.2667,
-                 0.4999, 0.2500, 0.4999, 0.0000, 0.0000, 0.5680, 0.0000]
-            ).to(device)
-            policy.mineral_embedding.normalize.count = 1465606824.0
-            policy.mineral_embedding.normalize.mean = torch.tensor([0.0146, 0.0236, 0.5068, 0.2037]).to(device)
-            policy.mineral_embedding.normalize.stddev = lambda: torch.tensor([0.4094, 0.4130, 0.2866, 0.1520]).to(device)
-            policy.drone_embedding.normalize.count = 889158346.0
-            policy.drone_embedding.normalize.mean = torch.tensor(
-                [-2.7168e-04, -1.1618e-02, -4.6683e-02, -2.0150e-02,  4.4679e-02,
-                 -5.9865e-01, -7.7697e-01,  3.7921e-01,  2.8120e-01,  3.5940e-01,
-                 2.8120e-01,  0.0000e+00,  0.0000e+00, -7.5037e-01,  1.2427e-01]
-            ).to(device)
-            policy.drone_embedding.normalize.stddev = lambda: torch.tensor(
-                [0.3811, 0.3875, 0.7165, 0.6957, 0.0831, 0.8010, 0.6295, 0.2315, 0.4496,
-                 0.2248, 0.4496, 0.0000, 0.0000, 0.6610, 0.9922]
-            ).to(device)
-        else:
-            policy = TransformerPolicy(**kwargs)
-    elif version == 'transformer_v2':
+    if version == 'transformer_v2':
+        policy = TransformerPolicy2(**kwargs)
+    elif version == 'transformer_v3':
         policy = TransformerPolicy2(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
@@ -630,27 +578,6 @@ def main():
         out_dir = args.out_dir
 
     train(hps, out_dir)
-
-"""
-    if args.out_dir:
-        out_dir = args.out_dir
-    else:
-        commit = subprocess.check_output(["git", "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")
-        t = time.strftime("%Y-%m-%d~%H:%M:%S")
-        out_dir = os.path.join(TEST_LOG_ROOT_DIR, f"{t}-{commit}")
-
-    hps = {}
-    for hp in HYPER_PARAMS:
-        if args_dict[hp.shortname] is not None:
-            hps[hp.shortname] = args_dict[hp.shortname]
-            if args.out_dir is None:
-                out_dir += f"-{hp.shortname}{hps[hp.shortname]}"
-        else:
-            hps[hp.shortname] = hp.default
-
-    logger.configure(dir=out_dir, format_strs=['stdout', 'log', 'csv', 'tensorboard'])
-    train(hps)
-"""
 
 
 if __name__ == "__main__":
