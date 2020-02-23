@@ -63,6 +63,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         minerals=hps.obs_minerals,
         global_drones=hps.obs_enemies if hps.use_privileged else 0,
         relative_positions=False,
+        feat_last_seen=True,
+        feat_map_size=True,
         v2=True,
     )
     if torch.cuda.is_available():

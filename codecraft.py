@@ -93,7 +93,16 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
-def observe_batch_raw(game_ids, allies, drones, minerals, global_drones, relative_positions, v2, extra_build_costs = []):
+def observe_batch_raw(game_ids,
+                      allies,
+                      drones,
+                      minerals,
+                      global_drones,
+                      relative_positions,
+                      v2,
+                      extra_build_costs = [],
+                      map_size=False,
+                      last_seen=False):
     retries = RETRIES
     ebcstr = ''
     if len(extra_build_costs) > 0:
@@ -105,6 +114,8 @@ def observe_batch_raw(game_ids, allies, drones, minerals, global_drones, relativ
         f'minerals={minerals}&' \
         f'globalDrones={global_drones}&' \
         f'relativePositions={"true" if relative_positions else "false"}&' \
+        f'lastSeen={"true" if last_seen else "false"}&' \
+        f'mapSize={"true" if map_size else "false"}&' \
         f'v2={"true" if v2 else "false"}' + ebcstr
     while retries > 0:
         try:

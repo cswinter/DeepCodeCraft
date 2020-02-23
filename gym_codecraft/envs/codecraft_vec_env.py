@@ -14,13 +14,53 @@ class ObsConfig:
     minerals: int
     global_drones: int = 0
     relative_positions: bool = True
+    feat_last_seen: bool = False
+    feat_map_size: bool = False
     v2: bool = False
 
+    def global_features(self):
+        if self.feat_map_size:
+            return 4
+        else:
+            return 2
 
-GLOBAL_FEATURES = 1
-DSTRIDE = 15
-MSTRIDE = 4
-NONOBS_FEATURES = 3
+    def dstride(self):
+        if self.feat_last_seen:
+            return 17
+        else:
+            return 15
+
+    def mstride(self):
+        return 3
+
+    def nonobs_features(self):
+        return 3
+
+    def enemies(self):
+        return self.drones - self.allies
+
+    def total_drones(self):
+        return 2 * self.drones - self.allies
+
+    def stride(self):
+        return self.global_features() + self.total_drones() * self.dstride() + self.minerals * self.mstride()
+
+    def endglobals(self):
+        return self.global_features()
+
+    def endallies(self):
+        return self.global_features() + self.dstride() * self.allies
+
+    def endenemies(self):
+        return self.global_features() + self.dstride() * self.drones
+
+    def endmins(self):
+        return self.endenemies() + self.mstride() * self.minerals
+
+    def endallenemies(self):
+        return self.endmins() + self.dstride() * self.enemies()
+
+
 GLOBAL_FEATURES_V2 = 2
 DSTRIDE_V2 = 15
 MSTRIDE_V2 = 3
@@ -446,120 +486,6 @@ class CodeCraftVecEnv(object):
 
     def observe(self, env_subset=None, obs_config=None):
         obs_config = obs_config or self.obs_config
-        if obs_config.v2:
-            return self.observe_v2(obs_config, env_subset)
-        else:
-            return self.observe_v1(obs_config, env_subset)
-
-    def observe_v1(self, obs_config, env_subset=None):
-        games = [self.games[env] for env in env_subset] if env_subset else self.games
-        num_envs = len(games)
-
-        rews = []
-        dones = []
-        infos = []
-        obs = codecraft.observe_batch_raw(games,
-                                          allies=obs_config.allies,
-                                          drones=obs_config.drones,
-                                          minerals=obs_config.minerals,
-                                          global_drones=obs_config.global_drones,
-                                          relative_positions=obs_config.relative_positions,
-                                          v2=False)
-        stride = obs_config.allies * (GLOBAL_FEATURES +
-                                      DSTRIDE +
-                                      obs_config.minerals * MSTRIDE +
-                                      obs_config.drones * DSTRIDE)
-        for i in range(num_envs):
-            game = env_subset[i] if env_subset else i
-            x = obs[stride * i + GLOBAL_FEATURES + 0]
-            y = obs[stride * i + GLOBAL_FEATURES + 1]
-            if self.objective.vs():
-                allied_score = obs[stride * num_envs + i * NONOBS_FEATURES + 1]
-                enemy_score = obs[stride * num_envs + i * NONOBS_FEATURES + 2]
-                score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
-            elif self.objective == Objective.ALLIED_WEALTH:
-                score = obs[stride * num_envs + i * NONOBS_FEATURES + 1] * 0.1
-            elif self.objective == Objective.DISTANCE_TO_ORIGIN:
-                score = -dist(x, y, 0.0, 0.0)
-            elif self.objective == Objective.DISTANCE_TO_1000_500:
-                score = -dist(x, y, 1.0, 0.5)
-            elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
-                score = 0
-                for j in range(10):
-                    offset = stride * i + GLOBAL_FEATURES + DSTRIDE + MSTRIDE * j
-                    distance = obs[offset + 2]
-                    size = obs[offset + 3]
-                    if size == 0:
-                        break
-                    nearness = 0.5 - distance
-                    score = max(score, 20 * nearness * size)
-            else:
-                raise Exception(f"Unknown objective {self.objective}")
-
-            if self.score[game] is None:
-                self.score[game] = score
-            reward = score - self.score[game]
-            self.score[game] = score
-            self.eprew[game] += reward
-
-            if obs[stride * num_envs + i * NONOBS_FEATURES] > 0:
-                (game_id, pid) = games[i]
-                if pid == 0:
-                    self_play = game // 2 < self.num_self_play
-                    game_id = codecraft.create_game(self.game_length,
-                                                    self.action_delay,
-                                                    self_play,
-                                                    self.next_map(),
-                                                    self.strong_scripted_opponent)
-                else:
-                    game_id = self.games[game - 1][0]
-                # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
-                self.games[game] = (game_id, pid)
-                observation = codecraft.observe(game_id, pid)
-                # TODO: use actual observation
-                if not obs.flags['WRITEABLE']:
-                    obs = obs.copy()
-                obs[stride * i:stride * (i + 1)] = 0.0 # codecraft.observation_to_np(observation)
-
-                dones.append(1.0)
-                infos.append({'episode': {
-                    'r': self.eprew[game],
-                    'l': self.eplen[game],
-                    'index': game,
-                    'score': self.score[game],
-                }})
-                self.eplen[game] = 1
-                self.eprew[game] = 0
-                self.score[game] = None
-            else:
-                self.eplen[game] += 1
-                dones.append(0.0)
-
-            rews.append(reward)
-
-        privileged_obs_elems = obs_config.global_drones * num_envs * DSTRIDE
-
-        action_mask_elems = self.naction * obs_config.allies * num_envs
-        if privileged_obs_elems > 0:
-            action_masks = obs[-privileged_obs_elems-action_mask_elems:-privileged_obs_elems] \
-                .reshape(-1, obs_config.allies, self.naction)
-        else:
-            action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, self.naction)
-
-        if obs_config.global_drones > 0:
-            privileged_obs = obs[-privileged_obs_elems:].reshape(num_envs, obs_config.global_drones, DSTRIDE)
-        else:
-            privileged_obs = np.zeros([num_envs, 1])
-
-        return obs[:stride * num_envs].reshape(num_envs, -1), \
-               np.array(rews), \
-               np.array(dones), \
-               infos, \
-               action_masks if self.use_action_masks \
-                   else np.ones([num_envs, obs_config.allies, self.naction], dtype=np.float32), \
-               privileged_obs
-
-    def observe_v2(self, obs_config, env_subset=None):
         games = [self.games[env] for env in env_subset] if env_subset else self.games
         num_envs = len(games)
 
@@ -573,17 +499,18 @@ class CodeCraftVecEnv(object):
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
                                           v2=True,
-                                          extra_build_costs=self.build_costs)
-        total_drones = 2 * obs_config.drones - obs_config.allies
-        stride = GLOBAL_FEATURES_V2 + total_drones * DSTRIDE_V2 + obs_config.minerals * MSTRIDE_V2
+                                          extra_build_costs=self.build_costs,
+                                          map_size=obs_config.feat_map_size,
+                                          last_seen=obs_config.feat_last_seen)
+        stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
             if self.objective.vs():
-                allied_score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 1]
-                enemy_score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 2]
+                allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
+                enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
             elif self.objective == Objective.ALLIED_WEALTH:
-                score = obs[stride * num_envs + i * NONOBS_FEATURES_V2 + 1] * 0.1
+                score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1] * 0.1
             elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500, Objective.DISTANCE_TO_ORIGIN]:
                 raise Exception(f"Deprecated objective {self.objective}")
             else:
@@ -595,7 +522,7 @@ class CodeCraftVecEnv(object):
             self.score[game] = score
             self.eprew[game] += reward
 
-            winner = obs[stride * num_envs + i * NONOBS_FEATURES_V2]
+            winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
             if winner > 0:
                 (game_id, pid) = games[i]
                 if pid == 0:
@@ -613,7 +540,7 @@ class CodeCraftVecEnv(object):
                 # TODO: use actual observation
                 if not obs.flags['WRITEABLE']:
                     obs = obs.copy()
-                obs[stride * i:stride * (i + 1)] = 0.0 # codecraft.observation_to_np(observation)
+                obs[stride * i:stride * (i + 1)] = 0.0  # codecraft.observation_to_np(observation)
 
                 dones.append(1.0)
                 infos.append({'episode': {

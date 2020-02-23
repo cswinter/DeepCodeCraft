@@ -6,7 +6,6 @@ import torch.distributions as distributions
 from gather import topk_by
 from multihead_attention import MultiheadAttention
 import spatial
-from gym_codecraft.envs.codecraft_vec_env import DEFAULT_OBS_CONFIG, GLOBAL_FEATURES_V2, MSTRIDE_V2, DSTRIDE_V2
 
 
 class TransformerPolicy3(nn.Module):
@@ -51,33 +50,35 @@ class TransformerPolicy3(nn.Module):
             raise Exception(f'Unexpected normalization layer {hps.norm}')
 
         self.agent_embedding = ItemBlock(
-            DSTRIDE_V2 + GLOBAL_FEATURES_V2, hps.d_agent, hps.d_agent * hps.dff_ratio, norm_fn, True,
+            obs_config.dstride() + obs_config.global_features(),
+            hps.d_agent, hps.d_agent * hps.dff_ratio, norm_fn, True,
             keep_abspos=True,
             mask_feature=7,  # Feature 7 is hitpoints
             relpos=False,
         )
         if hps.ally_enemy_same:
             self.drone_net = ItemBlock(
-                DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
-                keep_abspos=hps.keep_abspos,
+                obs_config.dstride(),
+                hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                keep_abspos=hps.obs_keep_abspos,
                 mask_feature=7,  # Feature 7 is hitpoints
                 topk=hps.nally+hps.nenemy,
             )
         else:
             self.ally_net = ItemBlock(
-                DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                obs_config.dstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                 keep_abspos=hps.obs_keep_abspos,
                 mask_feature=7,  # Feature 7 is hitpoints
                 topk=hps.nally,
             )
             self.enemy_net = ItemBlock(
-                DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                obs_config.dstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                 keep_abspos=hps.obs_keep_abspos,
                 mask_feature=7,  # Feature 7 is hitpoints
                 topk=hps.nenemy,
             )
         self.mineral_net = ItemBlock(
-            MSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+            obs_config.mstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
             keep_abspos=hps.obs_keep_abspos,
             mask_feature=2,  # Feature 2 is size
             topk=hps.nmineral,
@@ -85,21 +86,21 @@ class TransformerPolicy3(nn.Module):
 
         if hps.use_privileged:
             self.pmineral_net = ItemBlock(
-                MSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                obs_config.mstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                 keep_abspos=True, relpos=False, mask_feature=2,
             )
             if hps.ally_enemy_same:
                 self.pdrone_net = ItemBlock(
-                    DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                    obs_config.dstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                     keep_abspos=True, relpos=False, mask_feature=7,
                 )
             else:
                 self.pally_net = ItemBlock(
-                    DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                    obs_config.dstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                     keep_abspos=True, relpos=False, mask_feature=7,
                 )
                 self.penemy_net = ItemBlock(
-                    DSTRIDE_V2, hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
+                    obs_config.dstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                     keep_abspos=True, relpos=False, mask_feature=7,
                 )
 
@@ -184,8 +185,8 @@ class TransformerPolicy3(nn.Module):
         x, (pitems, pmask) = self.latents(obs, privileged_obs)
         batch_size = x.size()[0]
 
-        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.dff_ratio)
-        if self.use_privileged:
+        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.hps.dff_ratio)
+        if self.hps.use_privileged:
             pitems_max = pitems.max(dim=1).values
             pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
             vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
@@ -263,18 +264,19 @@ class TransformerPolicy3(nn.Module):
 
         batch_size = x.size()[0]
 
-        endglobals = GLOBAL_FEATURES_V2
-        endallies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.allies
-        endenemies = GLOBAL_FEATURES_V2 + DSTRIDE_V2 * self.obs_config.drones
-        endmins = endenemies + MSTRIDE_V2 * self.obs_config.minerals
-        endallenemies = endmins + DSTRIDE_V2 * (self.obs_config.drones - self.obs_config.allies)
+        endglobals = self.obs_config.endglobals()
+        endallies = self.obs_config.endallies()
+        endenemies = self.obs_config.endenemies()
+        endmins = self.obs_config.endmins()
+        endallenemies = self.obs_config.endallenemies()
 
         globals = x[:, :endglobals]
 
         # properties of the drone controlled by this network
-        xagent = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)[:, :self.agents, :]
-        globals = globals.view(batch_size, 1, GLOBAL_FEATURES_V2) \
-            .expand(batch_size, self.agents, GLOBAL_FEATURES_V2)
+        xagent = x[:, endglobals:endallies]\
+            .view(batch_size, self.obs_config.allies, self.obs_config.dstride())[:, :self.agents, :]
+        globals = globals.view(batch_size, 1, self.obs_config.global_features()) \
+            .expand(batch_size, self.agents, self.obs_config.global_features())
         xagent = torch.cat([xagent, globals], dim=2)
         agents, _, mask_agent = self.agent_embedding(xagent)
 
@@ -282,17 +284,17 @@ class TransformerPolicy3(nn.Module):
         direction = xagent[:, :, 2:4].clone()
 
         if self.hps.ally_enemy_same:
-            xdrone = x[:, endglobals:endenemies].view(batch_size, self.obs_config.drones, DSTRIDE_V2)
+            xdrone = x[:, endglobals:endenemies].view(batch_size, self.obs_config.drones, self.obs_config.dstride())
             items, relpos, mask = self.drone_net(xdrone, origin, direction)
         else:
-            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
+            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, self.obs_config.dstride())
             items, relpos, mask = self.ally_net(xally, origin, direction)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
         mask[:, :, 0] = 0
 
         if self.nenemy > 0 and not self.hps.ally_enemy_same:
             eobs = self.obs_config.drones - self.obs_config.allies
-            xe = x[:, endallies:endenemies].view(batch_size, eobs, DSTRIDE_V2)
+            xe = x[:, endallies:endenemies].view(batch_size, eobs, self.obs_config.dstride())
 
             items_e, relpos_e, mask_e = self.enemy_net(xe, origin, direction)
             items = torch.cat([items, items_e], dim=2)
@@ -300,7 +302,7 @@ class TransformerPolicy3(nn.Module):
             relpos = torch.cat([relpos, relpos_e], dim=2)
 
         if self.nmineral > 0:
-            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, MSTRIDE_V2)
+            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, self.obs_config.mstride())
 
             items_m, relpos_m, mask_m = self.mineral_net(xm, origin, direction)
             items = torch.cat([items, items_m], dim=2)
@@ -309,9 +311,9 @@ class TransformerPolicy3(nn.Module):
 
         if self.hps.use_privileged:
             # TODO: use hidden enemies
-            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, DSTRIDE_V2)
+            xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, self.obs_config.dstride())
             eobs = self.obs_config.drones - self.obs_config.allies
-            xenemy = x[:, endmins:endallenemies].view(batch_size, eobs, DSTRIDE_V2)
+            xenemy = x[:, endmins:endallenemies].view(batch_size, eobs, self.obs_config.dstride())
             if self.hps.ally_enemy_same:
                 xdrone = torch.cat([xally, xenemy], dim=1)
                 pitems, _, pmask = self.pdrone_net(xdrone)
@@ -320,7 +322,7 @@ class TransformerPolicy3(nn.Module):
                 pitems_e, _, pmask_e = self.penemy_net(xenemy)
                 pitems = torch.cat([pitems, pitems_e], dim=1)
                 pmask = torch.cat([pmask, pmask_e], dim=1)
-            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, MSTRIDE_V2)
+            xm = x[:, endenemies:endmins].view(batch_size, self.obs_config.minerals, self.obs_config.mstride())
             pitems_m, _, pmask_m = self.pmineral_net(xm)
             pitems = torch.cat([pitems, pitems_m], dim=1)
             pmask = torch.cat([pmask, pmask_m], dim=1)
