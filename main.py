@@ -63,8 +63,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         minerals=hps.obs_minerals,
         global_drones=hps.obs_enemies if hps.use_privileged else 0,
         relative_positions=False,
-        feat_last_seen=True,
-        feat_map_size=True,
+        feat_last_seen=hps.feat_last_seen,
+        feat_map_size=hps.feat_map_size,
         v2=True,
     )
     if torch.cuda.is_available():
@@ -492,6 +492,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             minerals=hps.obs_minerals,
             global_drones=hps.obs_enemies if hps.use_privileged else 0,
             relative_positions=False,
+            feat_last_seen=hps.feat_last_seen,
+            feat_map_size=hps.feat_map_size,
             v2=True,
         )
     if version == 'transformer_v2':

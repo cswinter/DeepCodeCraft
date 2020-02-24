@@ -52,6 +52,8 @@ class HyperParams:
         self.obs_minerals = 10        # Max number of minerals returned by the env
         self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
         self.use_privileged = True    # Whether value function has access to hidden information
+        self.feat_map_size = True     # Global features for width/height of map
+        self.feat_last_seen = True    # Remember last position/time each enemy was seen + missile cooldown feat
 
         # Eval
         self.eval_envs = 256
@@ -129,13 +131,13 @@ class HyperParams:
 
         hps.batches_per_update = 2
         hps.bs = 1024
-        hps.seq_rosteps = 256
-        hps.num_envs = 64
-        hps.num_self_play = 32
+        hps.seq_rosteps = 128
+        hps.num_envs = 128
+        hps.num_self_play = 64
 
-        hps.eval_envs = 256
-        hps.eval_frequency = 5e5
-        hps.eval_timesteps = 1100
+        hps.eval_envs = 512
+        hps.eval_frequency = 5e6
+        hps.eval_timesteps = 2000
 
         hps.gamma = 0.997
         hps.entropy_bonus = 0.001
