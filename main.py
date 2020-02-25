@@ -499,7 +499,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     if version == 'transformer_v2':
         policy = TransformerPolicy2(**kwargs)
     elif version == 'transformer_v3':
-        policy = TransformerPolicy2(**kwargs)
+        policy = TransformerPolicy3(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 
