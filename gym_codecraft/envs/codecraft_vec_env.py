@@ -155,6 +155,8 @@ def map_arena_tiny_2v2(randomize: bool, hardness: int):
 
 
 def map_arena_medium(randomize: bool, hardness: int):
+    if randomize:
+        hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
         map_width = 1500
         map_height = 1500
@@ -188,7 +190,7 @@ def map_arena_medium(randomize: bool, hardness: int):
 
 def map_arena(randomize: bool, hardness: int):
     if randomize:
-        hardness = np.random.randint(0, hardness)
+        hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
         map_width = 1500
         map_height = 1500

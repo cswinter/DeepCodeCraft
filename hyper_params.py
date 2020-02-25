@@ -24,7 +24,7 @@ class HyperParams:
         self.d_item = 128
         self.dff_ratio = 2
         self.nhead = 8
-        self.transformer_layers = 2
+        self.item_item_attn_layers = 0
         self.dropout = 0.0             # Try 0.1?
         self.nearby_map = True         # Construct map of nearby objects populated with scatter connections
         self.nm_ring_width = 30        # Width of circles on nearby map

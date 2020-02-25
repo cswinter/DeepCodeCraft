@@ -104,6 +104,12 @@ class TransformerPolicy3(nn.Module):
                     keep_abspos=True, relpos=False, mask_feature=7,
                 )
 
+        if hps.item_item_attn_layers > 0:
+            encoder_layer = nn.TransformerEncoderLayer(d_model=hps.d_item, nhead=8)
+            self.item_item_attn = nn.TransformerEncoder(encoder_layer, num_layers=hps.item_item_attn_layers)
+        else:
+            self.item_item_attn = None
+
         self.multihead_attention = MultiheadAttention(
             embed_dim=hps.d_agent,
             kdim=hps.d_item,
@@ -310,7 +316,6 @@ class TransformerPolicy3(nn.Module):
             relpos = torch.cat([relpos, relpos_m], dim=2)
 
         if self.hps.use_privileged:
-            # TODO: use hidden enemies
             xally = x[:, endglobals:endallies].view(batch_size, self.obs_config.allies, self.obs_config.dstride())
             eobs = self.obs_config.drones - self.obs_config.allies
             xenemy = x[:, endmins:endallenemies].view(batch_size, eobs, self.obs_config.dstride())
@@ -326,6 +331,17 @@ class TransformerPolicy3(nn.Module):
             pitems_m, _, pmask_m = self.pmineral_net(xm)
             pitems = torch.cat([pitems, pitems_m], dim=1)
             pmask = torch.cat([pmask, pmask_m], dim=1)
+            if self.item_item_attn:
+                pmask_nonzero = pmask.clone()
+                pmask_nonzero[:, 0] = False
+                pitems = self.item_item_attn(
+                    pitems.permute(1, 0, 2),
+                    src_key_padding_mask=pmask_nonzero,
+                ).permute(1, 0, 2)
+                if (pitems != pitems).sum() > 0:
+                    print(pmask)
+                    print(pitems)
+                    raise Exception("NaN!")
         else:
             pitems = None
             pmask = None
