@@ -185,6 +185,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
                 obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions)
 
+                rews -= hps.liveness_penalty
                 all_rewards.extend(rews)
                 all_dones.extend(dones)
 

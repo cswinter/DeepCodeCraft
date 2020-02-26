@@ -76,6 +76,7 @@ class HyperParams:
         self.cliprange = 0.2        # PPO cliprange
         self.clip_vf = True         # Use clipped value function objective
         self.split_reward = False   # Split reward evenly amongst all active agents
+        self.liveness_penalty = 0.0 # Negative reward applied at each timestep
 
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2
