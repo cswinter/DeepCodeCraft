@@ -375,6 +375,8 @@ def eval(policy,
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
             }
+            randomize = True
+            hardness = 4
         else:
             raise Exception(f'No eval opponents configured for {objective}')
 

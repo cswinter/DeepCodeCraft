@@ -113,7 +113,7 @@ class HyperParams:
         hps.entropy_bonus = 0.001
 
         hps.symmetric_map = True
-        hps.task_hardness = 5
+        hps.task_hardness = 4
 
         return hps
 
