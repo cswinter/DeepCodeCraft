@@ -371,6 +371,10 @@ def eval(policy,
             opponents = {
                 'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
             }
+        elif objective == envs.Objective.STANDARD:
+            opponents = {
+                'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
+            }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
 
@@ -557,6 +561,8 @@ def main():
         hps = HyperParams.arena_medium()
     elif args.hpset == 'arena':
         hps = HyperParams.arena()
+    elif args.hpset == 'standard':
+        hps = HyperParams.standard()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():

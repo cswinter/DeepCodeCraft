@@ -88,6 +88,37 @@ class HyperParams:
 
 
     @staticmethod
+    def standard():
+        hps = HyperParams()
+        hps.objective = envs.Objective.STANDARD
+
+        hps.steps = 40e6
+
+        hps.agents = 9
+        hps.nenemy = 5
+        hps.nally = 5
+        hps.nmineral = 5
+
+        hps.batches_per_update = 2
+        hps.bs = 1024
+        hps.seq_rosteps = 256
+        hps.num_envs = 128
+        hps.num_self_play = 64
+
+        hps.eval_envs = 256
+        hps.eval_frequency = 5e6
+        hps.eval_timesteps = 3000
+
+        hps.gamma = 0.997
+        hps.entropy_bonus = 0.001
+
+        hps.symmetric_map = True
+        hps.task_hardness = 5
+
+        return hps
+
+
+    @staticmethod
     def arena():
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA
