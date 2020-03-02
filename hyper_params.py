@@ -38,6 +38,7 @@ class HyperParams:
         self.nally = 1                 # Max number of allies observed by each drone
         self.nenemy = 0                # Max number of enemies observed by each drone
         self.nmineral = 10             # Max number of minerals observed by each drone
+        self.nconstant = 0             # Number learnable constant valued items observed by each drone
         self.ally_enemy_same = False   # Use same weights for processing ally and enemy drones
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
         self.fp16 = False           # Whether to use half-precision floating point

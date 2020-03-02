@@ -16,6 +16,7 @@ from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
 from policy_t2 import TransformerPolicy2, InputNorm
 from policy_t3 import TransformerPolicy3, InputNorm
+from policy_t4 import TransformerPolicy4, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy3(hps, obs_config).to(device)
+        policy = TransformerPolicy4(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
