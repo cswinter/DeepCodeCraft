@@ -89,6 +89,36 @@ class HyperParams:
 
 
     @staticmethod
+    def micro_practice():
+        hps = HyperParams()
+        hps.objective = envs.Objective.MICRO_PRACTICE
+
+        hps.steps = 40e6
+
+        hps.agents = 8
+        hps.nenemy = 7
+        hps.nally = 7
+        hps.nmineral = 5
+
+        hps.batches_per_update = 2
+        hps.bs = 1024
+        hps.seq_rosteps = 256
+        hps.num_envs = 64
+        hps.num_self_play = 32
+
+        hps.eval_envs = 256
+        hps.eval_frequency = 1e6
+        hps.eval_timesteps = 500
+
+        hps.gamma = 0.997
+        hps.entropy_bonus = 0.001
+
+        hps.symmetric_map = True
+
+        return hps
+
+
+    @staticmethod
     def standard():
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
@@ -103,8 +133,8 @@ class HyperParams:
         hps.batches_per_update = 2
         hps.bs = 1024
         hps.seq_rosteps = 256
-        hps.num_envs = 128
-        hps.num_self_play = 64
+        hps.num_envs = 64
+        hps.num_self_play = 32
 
         hps.eval_envs = 256
         hps.eval_frequency = 5e6

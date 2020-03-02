@@ -378,6 +378,10 @@ def eval(policy,
             }
             randomize = True
             hardness = 4
+        elif objective == envs.Objective.MICRO_PRACTICE:
+            opponents = {
+                'alpha': {'model_file': 'arena_tiny/t2_random.pt'},
+            }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
 
@@ -566,6 +570,8 @@ def main():
         hps = HyperParams.arena()
     elif args.hpset == 'standard':
         hps = HyperParams.standard()
+    elif args.hpset == 'micro_practice':
+        hps = HyperParams.micro_practice()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
