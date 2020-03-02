@@ -322,11 +322,7 @@ class TransformerPolicy4(nn.Module):
             items_c = self.constant_items\
                 .view(1, 1, self.nconstant, self.hps.d_item)\
                 .repeat((batch_size, self.agents, 1, 1))
-            print(items.size())
-            print(items_c.size())
             mask_c = torch.zeros(batch_size, self.agents, self.nconstant).bool().to(x.device)
-            print(mask.size())
-            print(mask_c.size())
             items = torch.cat([items, items_c], dim=2)
             mask = torch.cat([mask, mask_c], dim=2)
 

@@ -336,6 +336,87 @@ def map_standard(randomize: bool, hardness: int):
     }
 
 
+def map_mp(randomize: bool, hardness: int):
+    map_width = np.random.randint(2, 7) * 500
+    map_height = np.random.randint(2, 7) * 500
+    player1_drones = []
+    player2_drones = []
+
+    def randpos():
+        return np.random.randint(-map_width//3, map_width//3), np.random.randint(-map_height//3, map_height//3)
+    scenario = np.random.randint(0, 4)
+    if scenario == 0:
+        drone_count = np.random.randint(2, 11)
+        for _ in range(drone_count):
+            x1, y1 = randpos()
+            player1_drones.append(drone_dict(x1, y1, missile_batteries=1))
+            x2, y2 = randpos()
+            player2_drones.append(drone_dict(x2, y2, missile_batteries=1))
+    elif scenario == 1:
+        p1_drone_count = np.random.randint(0, 2)
+        p2_drone_count = np.random.randint(5, 11)
+        xm, ym = randpos()
+        player1_drones.append(drone_dict(xm, ym, constructors=3, missile_batteries=3, storage_modules=3, shield_generators=1))
+        if np.random.randint(0, 3) == 0:
+            engines = np.random.randint(0, 2)
+            x, y = randpos()
+            player2_drones.append(drone_dict(x, y, missile_batteries=2, shield_generators=2-engines, engines=engines))
+            p2_drone_count -= 3
+        nearby_count = np.random.randint(0, p2_drone_count+1)
+        for i in range(p1_drone_count):
+            x, y = randpos()
+            player1_drones.append(drone_dict(x, y, missile_batteries=1))
+        for i in range(p2_drone_count):
+            if i < nearby_count:
+                x, y = randpos()
+            else:
+                x = int(np.clip(xm + np.random.randint(-350, 350), -map_width//2, map_width//2))
+                y = int(np.clip(ym + np.random.randint(-350, 350), -map_height//2, map_height//2))
+            player2_drones.append(drone_dict(x, y, missile_batteries=1))
+    elif scenario == 2:
+        p1_drone_count = np.random.randint(0, 3)
+        p2_drone_count = np.random.randint(3, 7)
+        nearby_count = np.random.randint(0, p2_drone_count+1)
+        xm, ym = randpos()
+        engines = np.random.randint(0, 2)
+        player1_drones.append(drone_dict(xm, ym, missile_batteries=2, shield_generators=2-engines, engines=engines))
+        for i in range(p1_drone_count):
+            x, y = randpos()
+            player1_drones.append(drone_dict(x, y, missile_batteries=1))
+        for i in range(p2_drone_count):
+            if i < nearby_count:
+                x, y = randpos()
+            else:
+                x = int(np.clip(xm + np.random.randint(-350, 350), -map_width//2, map_width//2))
+                y = int(np.clip(ym + np.random.randint(-350, 350), -map_height//2, map_height//2))
+            player2_drones.append(drone_dict(x, y, missile_batteries=1))
+    elif scenario == 3:
+        total = np.random.randint(4, 12)
+        p1_large = np.random.randint(0, total//2)
+        p2_large = np.random.randint(0, total//2)
+        for i in range(total - 2 * p1_large):
+            x, y = randpos()
+            player1_drones.append(drone_dict(x, y, missile_batteries=1))
+        for i in range(total - 2 * p2_large):
+            x, y = randpos()
+            player2_drones.append(drone_dict(x, y, missile_batteries=1))
+        for i in range(p1_large):
+            x, y = randpos()
+            shields = np.random.randint(0, 2)
+            player1_drones.append(drone_dict(x, y, missile_batteries=2-shields, shield_generators=shields))
+        for i in range(p2_large):
+            x, y = randpos()
+            shields = np.random.randint(0, 2)
+            player2_drones.append(drone_dict(x, y, missile_batteries=2-shields, shield_generators=shields))
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': 2 * [(1, 50)],
+        'player1Drones': player1_drones,
+        'player2Drones': player2_drones,
+    }
+
+
 class CodeCraftVecEnv(object):
     def __init__(self,
                  num_envs,
@@ -400,6 +481,9 @@ class CodeCraftVecEnv(object):
                 [1, 0, 0, 0, 0],
             ]
             self.custom_map = map_standard
+        elif objective == Objective.MICRO_PRACTICE:
+            self.game_length = 20 * 60
+            self.custom_map = map_mp
         self.build_costs = [sum(modules) for modules in self.builds]
         self.naction = 8 + len(self.builds)
 
@@ -624,6 +708,7 @@ class Objective(Enum):
     ARENA_MEDIUM = 'ARENA_MEDIUM'
     ARENA = 'ARENA'
     STANDARD = 'STANDARD'
+    MICRO_PRACTICE = 'MICRO_PRACTICE'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
@@ -635,7 +720,8 @@ class Objective(Enum):
             self == Objective.ARENA_TINY_2V2 or\
             self == Objective.ARENA_MEDIUM or\
             self == Objective.ARENA or\
-            self == Objective.STANDARD:
+            self == Objective.STANDARD or\
+            self == Objective.MICRO_PRACTICE:
             return True
         else:
             raise Exception(f'Objective.vs not implemented for {self}')
