@@ -278,7 +278,7 @@ def map_standard(randomize: bool, hardness: int):
     spawn_y = (map_height // 2.2) * np.cos(angle)
     if randomize:
         d = np.random.randint(0, 7)
-        res = 3 * np.random.randint(0, 3)
+        res = np.random.randint(0, 8)
     else:
         d = 6
         res = 7
@@ -327,12 +327,29 @@ def map_standard(randomize: bool, hardness: int):
             shield_generators=1,
             resources=2*res)
 
+    dextra = np.random.randint(0, 10)
+    if dextra == 0:
+        extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+    elif dextra == 1:
+        extra_drone = dict(constructors=1, storage_modules=1)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+    elif dextra == 2:
+        extra_drone = dict(storage_modules=1)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+    else:
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone)]
+
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
         'minerals': minerals,
-        'player1Drones': [drone_dict(spawn_x, spawn_y, **drone)],
-        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **drone)],
+        'player1Drones': player1drones,
+        'player2Drones': player2drones,
     }
 
 
@@ -353,15 +370,15 @@ def map_mp(randomize: bool, hardness: int):
             x2, y2 = randpos()
             player2_drones.append(drone_dict(x2, y2, missile_batteries=1))
     elif scenario == 1:
-        p1_drone_count = np.random.randint(0, 2)
-        p2_drone_count = np.random.randint(5, 11)
+        p1_drone_count = np.random.randint(0, 3)
+        p2_drone_count = np.random.randint(5, 9)
         xm, ym = randpos()
         player1_drones.append(drone_dict(xm, ym, constructors=3, missile_batteries=3, storage_modules=3, shield_generators=1))
         if np.random.randint(0, 3) == 0:
             engines = np.random.randint(0, 2)
             x, y = randpos()
             player2_drones.append(drone_dict(x, y, missile_batteries=2, shield_generators=2-engines, engines=engines))
-            p2_drone_count -= 3
+            p2_drone_count -= 4
         nearby_count = np.random.randint(0, p2_drone_count+1)
         for i in range(p1_drone_count):
             x, y = randpos()
