@@ -331,15 +331,15 @@ def map_standard(randomize: bool, hardness: int):
     if dextra == 0:
         extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
     elif dextra == 1:
         extra_drone = dict(constructors=1, storage_modules=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
     elif dextra == 2:
         extra_drone = dict(storage_modules=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(spawn_x - 50, -spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
     else:
         player1drones = [drone_dict(spawn_x, spawn_y, **drone)]
         player2drones = [drone_dict(-spawn_x, -spawn_y, **drone)]
@@ -447,7 +447,8 @@ class CodeCraftVecEnv(object):
                  obs_config=DEFAULT_OBS_CONFIG,
                  hardness=0,
                  symmetric=False,
-                 strong_scripted_opponent=False):
+                 strong_scripted_opponent=False,
+                 mix_mp=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -504,6 +505,10 @@ class CodeCraftVecEnv(object):
         self.build_costs = [sum(modules) for modules in self.builds]
         self.naction = 8 + len(self.builds)
 
+        self.mix_mp = mix_mp
+        self.game_count = 0
+        self.mp_game_count = 0
+
         self.games = []
         self.eplen = []
         self.eprew = []
@@ -529,7 +534,8 @@ class CodeCraftVecEnv(object):
                 self_play,
                 self.next_map(),
                 self.strong_scripted_opponent)
-            # print("Starting game:", game_id)
+            self.game_count += 1
+
             self.games.append((game_id, 0))
             self.eplen.append(1)
             self.eprew.append(0)
@@ -630,11 +636,22 @@ class CodeCraftVecEnv(object):
                 (game_id, pid) = games[i]
                 if pid == 0:
                     self_play = game // 2 < self.num_self_play
-                    game_id = codecraft.create_game(self.game_length,
-                                                    self.action_delay,
-                                                    self_play,
-                                                    self.next_map(),
-                                                    self.strong_scripted_opponent)
+                    if self.mp_game_count < self.game_count * self.mix_mp:
+                        m = map_mp(self.randomize, self.hardness)
+                        m['symmetric'] = self.symmetric
+                        game_id = codecraft.create_game(20 * 60,
+                                                        self.action_delay,
+                                                        self_play,
+                                                        m,
+                                                        self.strong_scripted_opponent)
+                        self.mp_game_count += 1
+                    else:
+                        game_id = codecraft.create_game(self.game_length,
+                                                        self.action_delay,
+                                                        self_play,
+                                                        self.next_map(),
+                                                        self.strong_scripted_opponent)
+                    self.game_count += 1
                 else:
                     game_id = self.games[game - 1][0]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
