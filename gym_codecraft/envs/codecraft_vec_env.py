@@ -354,8 +354,8 @@ def map_standard(randomize: bool, hardness: int):
 
 
 def map_mp(randomize: bool, hardness: int):
-    map_width = np.random.randint(2, 7) * 500
-    map_height = np.random.randint(2, 7) * 500
+    map_width = np.random.randint(2, 9) * 500
+    map_height = np.random.randint(2, 9) * 500
     player1_drones = []
     player2_drones = []
 
@@ -371,7 +371,7 @@ def map_mp(randomize: bool, hardness: int):
             player2_drones.append(drone_dict(x2, y2, missile_batteries=1))
     elif scenario == 1:
         p1_drone_count = np.random.randint(0, 3)
-        p2_drone_count = np.random.randint(5, 9)
+        p2_drone_count = np.random.randint(5, 11)
         xm, ym = randpos()
         player1_drones.append(drone_dict(xm, ym, constructors=3, missile_batteries=3, storage_modules=3, shield_generators=1))
         if np.random.randint(0, 3) == 0:
@@ -587,7 +587,11 @@ class CodeCraftVecEnv(object):
                 if action == 7:
                     harvest = True
                 if action >= 8:
-                    build = [self.builds[action - 8]]
+                    i = action - 8
+                    if i < len(self.builds):
+                        build = [self.builds[action - 8]]
+                    else:
+                        build = [[0, 1, 0, 0, 0]]
                 player_actions2.append((move, turn, build, harvest))
             game_actions.append((game_id, player_id, player_actions2))
 

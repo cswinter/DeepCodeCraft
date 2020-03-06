@@ -164,6 +164,10 @@ class TransformerPolicy4(nn.Module):
         action_masks = action_masks[:, :self.agents, :]
         probs, v = self.forward(observation, privileged_obs)
         probs = probs.view(-1, self.agents, self.naction)
+        if action_masks.size(2) != self.naction:
+            nbatch, nagent, naction = action_masks.size()
+            zeros = torch.zeros(nbatch, nagent, self.naction - naction).to(observation.device)
+            action_masks = torch.cat([action_masks, zeros], dim=2)
         probs = probs * action_masks + self.epsilon  # Add small value to prevent crash when no action is possible
         # We get device-side assert when using fp16 here (needs more investigation)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
