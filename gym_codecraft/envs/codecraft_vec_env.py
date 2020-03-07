@@ -12,6 +12,7 @@ class ObsConfig:
     allies: int
     drones: int
     minerals: int
+    tiles: int
     global_drones: int = 0
     relative_positions: bool = True
     feat_last_seen: bool = False
@@ -33,6 +34,9 @@ class ObsConfig:
     def mstride(self):
         return 3
 
+    def tstride(self):
+        return 4
+
     def nonobs_features(self):
         return 3
 
@@ -43,7 +47,10 @@ class ObsConfig:
         return 2 * self.drones - self.allies
 
     def stride(self):
-        return self.global_features() + self.total_drones() * self.dstride() + self.minerals * self.mstride()
+        return self.global_features()\
+               + self.total_drones() * self.dstride()\
+               + self.minerals * self.mstride()\
+               + self.tiles * self.tstride()
 
     def endglobals(self):
         return self.global_features()
@@ -57,15 +64,14 @@ class ObsConfig:
     def endmins(self):
         return self.endenemies() + self.mstride() * self.minerals
 
+    def endtiles(self):
+        return self.endmins() + self.tstride() * self.tiles
+
     def endallenemies(self):
-        return self.endmins() + self.dstride() * self.enemies()
+        return self.endtiles() + self.dstride() * self.enemies()
 
 
-GLOBAL_FEATURES_V2 = 2
-DSTRIDE_V2 = 15
-MSTRIDE_V2 = 3
-NONOBS_FEATURES_V2 = 3
-DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, global_drones=4)
+DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
 
 
 def drone_dict(x, y,
@@ -609,6 +615,7 @@ class CodeCraftVecEnv(object):
                                           allies=obs_config.allies,
                                           drones=obs_config.drones,
                                           minerals=obs_config.minerals,
+                                          tiles=obs_config.tiles,
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
                                           v2=True,

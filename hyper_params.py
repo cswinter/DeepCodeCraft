@@ -38,6 +38,7 @@ class HyperParams:
         self.nally = 1                 # Max number of allies observed by each drone
         self.nenemy = 0                # Max number of enemies observed by each drone
         self.nmineral = 10             # Max number of minerals observed by each drone
+        self.ntile = 0                 # Number of map tiles observed by each drone
         self.nconstant = 0             # Number learnable constant valued items observed by each drone
         self.ally_enemy_same = False   # Use same weights for processing ally and enemy drones
         self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
@@ -51,6 +52,7 @@ class HyperParams:
         self.obs_allies = 10          # Max number of allied drones returned by the env
         self.obs_enemies = 10         # Max number of enemy drones returned by the env
         self.obs_minerals = 10        # Max number of minerals returned by the env
+        self.obs_map_tiles = 10       # Max number of map tiles returned by the env
         self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
         self.use_privileged = True    # Whether value function has access to hidden information
         self.feat_map_size = True     # Global features for width/height of map

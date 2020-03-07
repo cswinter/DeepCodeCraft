@@ -17,6 +17,7 @@ from hyper_params import HyperParams
 from policy_t2 import TransformerPolicy2, InputNorm
 from policy_t3 import TransformerPolicy3, InputNorm
 from policy_t4 import TransformerPolicy4, InputNorm
+from policy_t5 import TransformerPolicy5, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         allies=hps.obs_allies,
         drones=hps.obs_allies + hps.obs_enemies,
         minerals=hps.obs_minerals,
+        tiles=hps.obs_map_tiles,
         global_drones=hps.obs_enemies if hps.use_privileged else 0,
         relative_positions=False,
         feat_last_seen=hps.feat_last_seen,
@@ -88,7 +90,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy4(hps, obs_config).to(device)
+        policy = TransformerPolicy5(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
     else:
         policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
@@ -510,11 +512,16 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             v2=True,
         )
     if version == 'transformer_v2':
+        kwargs['obs_config'].tiles = 0
         policy = TransformerPolicy2(**kwargs)
     elif version == 'transformer_v3':
+        kwargs['obs_config'].tiles = 0
         policy = TransformerPolicy3(**kwargs)
     elif version == 'transformer_v4':
+        kwargs['obs_config'].tiles = 0
         policy = TransformerPolicy4(**kwargs)
+    elif version == 'transformer_v5':
+        policy = TransformerPolicy5(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 

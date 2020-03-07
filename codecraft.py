@@ -98,6 +98,7 @@ def observe_batch_raw(game_ids,
                       drones,
                       minerals,
                       global_drones,
+                      tiles,
                       relative_positions,
                       v2,
                       extra_build_costs = [],
@@ -112,6 +113,7 @@ def observe_batch_raw(game_ids,
         f'allies={allies}&' \
         f'drones={drones}&' \
         f'minerals={minerals}&' \
+        f'tiles={tiles}&' \
         f'globalDrones={global_drones}&' \
         f'relativePositions={"true" if relative_positions else "false"}&' \
         f'lastSeen={"true" if last_seen else "false"}&' \
