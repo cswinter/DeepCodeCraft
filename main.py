@@ -383,7 +383,7 @@ def eval(policy,
             hardness = 4
         elif objective == envs.Objective.MICRO_PRACTICE:
             opponents = {
-                'alpha': {'model_file': 'arena_tiny/t2_random.pt'},
+                'beta': {'model_file': 'mp/ethereal-bee-40M.pt'},
             }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
