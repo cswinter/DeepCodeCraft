@@ -116,7 +116,8 @@ class HyperParams:
         hps.gamma = 0.997
         hps.entropy_bonus = 0.001
 
-        hps.symmetric_map = True
+        hps.symmetric_map = False
+        hps.eval_symmetric = False
 
         return hps
 
