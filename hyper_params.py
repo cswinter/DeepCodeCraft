@@ -267,6 +267,35 @@ class HyperParams:
 
         return hps
 
+
+    @staticmethod
+    def scout():
+        hps = HyperParams()
+        hps.objective = envs.Objective.SCOUT
+
+        hps.steps = 1e6
+
+        hps.agents = 5
+        hps.nenemy = 5
+        hps.nally = 5
+        hps.nmineral = 0
+        hps.ntile = 5
+        hps.obs_map_tiles = 10
+        hps.use_privileged = False
+
+        hps.batches_per_update = 1
+        hps.bs = 256
+        hps.seq_rosteps = 64
+        hps.num_envs = 64
+        hps.num_self_play = 0
+
+        hps.eval_envs = 0
+
+        hps.gamma = 0.99
+
+        return hps
+
+
     @staticmethod
     def allied_wealth():
         hps = HyperParams()

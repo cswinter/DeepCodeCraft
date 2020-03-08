@@ -360,8 +360,8 @@ def map_standard(randomize: bool, hardness: int):
 
 
 def map_mp(randomize: bool, hardness: int):
-    map_width = np.random.randint(2, 9) * 500
-    map_height = np.random.randint(2, 9) * 500
+    map_width = np.random.randint(2, 3) * 500
+    map_height = np.random.randint(2, 3) * 500
     player1_drones = []
     player2_drones = []
 
@@ -440,6 +440,22 @@ def map_mp(randomize: bool, hardness: int):
     }
 
 
+def map_scout(randomize: bool, hardness: int):
+    return {
+        'mapWidth': 5000,
+        'mapHeight': 5000,
+        'minerals': [],
+        'player1Drones': [
+            drone_dict(np.random.randint(-2500, 2500), np.random.randint(-2500, 2500), missile_batteries=1)
+            for _ in range(5)
+        ],
+        'player2Drones': [
+            drone_dict(np.random.randint(-2500, 2500), np.random.randint(-2500, 2500), storage_modules=1)
+            for _ in range(20)
+        ],
+    }
+
+
 class CodeCraftVecEnv(object):
     def __init__(self,
                  num_envs,
@@ -508,6 +524,9 @@ class CodeCraftVecEnv(object):
         elif objective == Objective.MICRO_PRACTICE:
             self.game_length = 20 * 60
             self.custom_map = map_mp
+        elif objective == Objective.SCOUT:
+            self.game_length = 2 * 60 * 60
+            self.custom_map = map_scout
         self.build_costs = [sum(modules) for modules in self.builds]
         self.naction = 8 + len(self.builds)
 
@@ -629,6 +648,9 @@ class CodeCraftVecEnv(object):
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
+            elif self.objective == Objective.SCOUT:
+                enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
+                score = -enemy_score
             elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1] * 0.1
             elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500, Objective.DISTANCE_TO_ORIGIN]:
@@ -754,12 +776,14 @@ class Objective(Enum):
     ARENA = 'ARENA'
     STANDARD = 'STANDARD'
     MICRO_PRACTICE = 'MICRO_PRACTICE'
+    SCOUT = 'SCOUT'
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
            self == Objective.DISTANCE_TO_CRYSTAL or\
            self == Objective.DISTANCE_TO_ORIGIN or\
-           self == Objective.DISTANCE_TO_1000_500:
+           self == Objective.DISTANCE_TO_1000_500 or\
+           self == Objective.SCOUT:
            return False
         elif self == Objective.ARENA_TINY or\
             self == Objective.ARENA_TINY_2V2 or\

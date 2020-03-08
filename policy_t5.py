@@ -90,7 +90,7 @@ class TransformerPolicy5(nn.Module):
                 obs_config.tstride(), hps.d_item, hps.d_item * hps.dff_ratio, norm_fn, hps.item_ff,
                 keep_abspos=hps.obs_keep_abspos,
                 mask_feature=2,  # Feature is elapsed since last visited time
-                topk=hps.nmineral,
+                topk=hps.ntile,
             )
         if hps.nconstant > 0:
             self.constant_items = nn.Parameter(torch.normal(0, 1, (hps.nconstant, hps.d_item)))

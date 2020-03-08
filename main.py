@@ -582,6 +582,8 @@ def main():
         hps = HyperParams.standard()
     elif args.hpset == 'micro_practice':
         hps = HyperParams.micro_practice()
+    elif args.hpset == 'scout':
+        hps = HyperParams.scout()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
