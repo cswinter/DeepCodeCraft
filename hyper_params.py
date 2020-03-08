@@ -57,6 +57,8 @@ class HyperParams:
         self.use_privileged = True    # Whether value function has access to hidden information
         self.feat_map_size = True     # Global features for width/height of map
         self.feat_last_seen = True    # Remember last position/time each enemy was seen + missile cooldown feat
+        self.feat_is_visible = True   # Feature for whether drone is currently visible
+        self.feat_abstime = True      # Global features for absolute remaining/elapsed number of timesteps
 
         # Eval
         self.eval_envs = 256

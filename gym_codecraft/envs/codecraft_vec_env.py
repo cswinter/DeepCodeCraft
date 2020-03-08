@@ -17,19 +17,25 @@ class ObsConfig:
     relative_positions: bool = True
     feat_last_seen: bool = False
     feat_map_size: bool = False
+    feat_is_visible: bool = False
+    feat_abstime: bool = False
     v2: bool = False
 
     def global_features(self):
+        gf = 2
         if self.feat_map_size:
-            return 4
-        else:
-            return 2
+            gf += 2
+        if self.feat_abstime:
+            gf += 2
+        return gf
 
     def dstride(self):
+        ds = 15
         if self.feat_last_seen:
-            return 17
-        else:
-            return 15
+            ds += 2
+        if self.feat_is_visible:
+            ds += 1
+        return ds
 
     def mstride(self):
         return 3
@@ -640,7 +646,9 @@ class CodeCraftVecEnv(object):
                                           v2=True,
                                           extra_build_costs=self.build_costs,
                                           map_size=obs_config.feat_map_size,
-                                          last_seen=obs_config.feat_last_seen)
+                                          last_seen=obs_config.feat_last_seen,
+                                          is_visible=obs_config.feat_is_visible,
+                                          abstime=obs_config.feat_abstime)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
