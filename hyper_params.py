@@ -131,12 +131,16 @@ class HyperParams:
 
         hps.steps = 40e6
 
-        hps.agents = 9
-        hps.nenemy = 5
-        hps.nally = 5
+        hps.agents = 10
+        hps.nenemy = 10
+        hps.nally = 10
         hps.nmineral = 5
+        hps.ntile = 5
 
-        hps.batches_per_update = 2
+        hps.obs_allies = 15
+        hps.obs_enemies = 15
+
+        hps.batches_per_update = 1
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64

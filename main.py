@@ -507,10 +507,13 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             allies=hps.obs_allies,
             drones=hps.obs_allies + hps.obs_enemies,
             minerals=hps.obs_minerals,
+            tiles=hps.obs_map_tiles,
             global_drones=hps.obs_enemies if hps.use_privileged else 0,
             relative_positions=False,
             feat_last_seen=hps.feat_last_seen,
+            feat_is_visible=hps.feat_is_visible,
             feat_map_size=hps.feat_map_size,
+            feat_abstime=hps.feat_abstime,
             v2=True,
         )
     if version == 'transformer_v2':
