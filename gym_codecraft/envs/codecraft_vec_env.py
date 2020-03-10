@@ -366,8 +366,8 @@ def map_standard(randomize: bool, hardness: int):
 
 
 def map_mp(randomize: bool, hardness: int):
-    map_width = np.random.randint(2, 3) * 500
-    map_height = np.random.randint(2, 3) * 500
+    map_width = np.random.randint(2, 9) * 500
+    map_height = np.random.randint(2, 9) * 500
     player1_drones = []
     player2_drones = []
 
