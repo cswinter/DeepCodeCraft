@@ -149,6 +149,7 @@ class HyperParams:
         hps.eval_envs = 256
         hps.eval_frequency = 5e6
         hps.eval_timesteps = 3000
+        hps.model_save_frequency = 1
 
         hps.gamma = 0.997
         hps.entropy_bonus = 0.001
