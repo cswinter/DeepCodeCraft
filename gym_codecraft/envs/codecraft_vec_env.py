@@ -296,59 +296,76 @@ def map_standard(randomize: bool, hardness: int):
         res = 7
     if d == 0:
         drone = dict(
-            constructors=1,
-            storage_modules=1,
-            resources=res)
+            constructors=2,
+            storage_modules=3,
+            missile_batteries=3,
+            engines=2,
+            resources=3*res)
     elif d == 1:
         drone = dict(
             constructors=2,
-            storage_modules=2,
-            resources=2*res)
+            storage_modules=3,
+            missile_batteries=3,
+            engines=2,
+            resources=3*res)
     elif d == 2:
         drone = dict(
-            constructors=1,
-            storage_modules=2,
+            constructors=2,
+            storage_modules=3,
             missile_batteries=1,
-            resources=2*res)
+            engines=3,
+            shield_generators=1,
+            resources=3*res)
     elif d == 3:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            missile_batteries=1,
-            engines=1,
-            resources=2*res)
-    elif d == 4:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            engines=2,
-            resources=2*res)
-    elif d == 5:
         drone = dict(
             constructors=2,
             storage_modules=3,
             missile_batteries=3,
             shield_generators=1,
             engines=1,
-            resources=2*res)
+            resources=3*res)
+    elif d == 4:
+        drone = dict(
+            constructors=3,
+            storage_modules=4,
+            shield_generators=1,
+            engines=2,
+            resources=4*res)
+    elif d == 5:
+        drone = dict(
+            constructors=3,
+            storage_modules=4,
+            missile_batteries=1,
+            engines=2,
+            resources=4*res)
+    elif d == 6:
+        drone = dict(
+            constructors=3,
+            storage_modules=4,
+            engines=3,
+            resources=4*res)
     else:
         drone = dict(
             constructors=3,
             storage_modules=3,
             missile_batteries=3,
             shield_generators=1,
-            resources=2*res)
+            resources=3*res)
 
-    dextra = np.random.randint(0, 10)
+    dextra = np.random.randint(0, 7)
     if dextra == 0:
+        extra_drone = dict(constructors=2, storage_modules=2)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
+    if dextra == 1:
         extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
         player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
-    elif dextra == 1:
+    elif dextra == 2:
         extra_drone = dict(constructors=1, storage_modules=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
         player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
-    elif dextra == 2:
+    elif dextra == 3:
         extra_drone = dict(storage_modules=1)
         player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
         player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
