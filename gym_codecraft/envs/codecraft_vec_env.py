@@ -493,7 +493,8 @@ class CodeCraftVecEnv(object):
                  hardness=0,
                  symmetric=False,
                  strong_scripted_opponent=False,
-                 mix_mp=0.0):
+                 mix_mp=0.0,
+                 build_variety_bonus=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -511,6 +512,7 @@ class CodeCraftVecEnv(object):
         self.symmetric = symmetric
         self.builds = []
         self.strong_scripted_opponent = strong_scripted_opponent
+        self.build_variety_bonus = build_variety_bonus
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -561,6 +563,7 @@ class CodeCraftVecEnv(object):
         self.eplen = []
         self.eprew = []
         self.score = []
+        self.performed_builds = []
 
     def reset(self, partitioned_obs_config=None):
         if partitioned_obs_config:
@@ -572,6 +575,7 @@ class CodeCraftVecEnv(object):
         self.games = []
         self.eplen = []
         self.score = []
+        self.performed_builds = []
         for i in range(self.num_envs - self.num_self_play):
             # spread out initial game lengths to stagger start times
             self_play = i < self.num_self_play
@@ -588,11 +592,13 @@ class CodeCraftVecEnv(object):
             self.eplen.append(1)
             self.eprew.append(0)
             self.score.append(None)
+            self.performed_builds.append(defaultdict(lambda: 0))
             if self_play:
                 self.games.append((game_id, 1))
                 self.eplen.append(1)
                 self.eprew.append(0)
                 self.score.append(None)
+                self.performed_builds.append(defaultdict(lambda: 0))
 
         if partitioned_obs_config:
             for envs, obs_config in partitioned_obs_config:
@@ -614,7 +620,7 @@ class CodeCraftVecEnv(object):
     def step_async(self, actions, env_subset=None):
         game_actions = []
         games = [self.games[env] for env in env_subset] if env_subset else self.games
-        for ((game_id, player_id), player_actions) in zip(games, actions):
+        for (i, ((game_id, player_id), player_actions)) in enumerate(zip(games, actions)):
             player_actions2 = []
             for action in player_actions:
                 # 0-5: turn/movement (4 is no turn, no movement)
@@ -640,6 +646,8 @@ class CodeCraftVecEnv(object):
                         build = [self.builds[action - 8]]
                     else:
                         build = [[0, 1, 0, 0, 0]]
+                if len(build) > 0:
+                    self.performed_builds[i][action] += 1
                 player_actions2.append((move, turn, build, harvest))
             game_actions.append((game_id, player_id, player_actions2))
 
@@ -682,6 +690,7 @@ class CodeCraftVecEnv(object):
                 raise Exception(f"Deprecated objective {self.objective}")
             else:
                 raise Exception(f"Unknown objective {self.objective}")
+            score += len(self.performed_builds[i]) * self.build_variety_bonus
 
             if self.score[game] is None:
                 self.score[game] = score
@@ -730,6 +739,7 @@ class CodeCraftVecEnv(object):
                 self.eplen[game] = 1
                 self.eprew[game] = 0
                 self.score[game] = None
+                self.performed_builds[game] = defaultdict(lambda: 0)
             else:
                 self.eplen[game] += 1
                 dones.append(0.0)

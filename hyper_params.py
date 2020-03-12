@@ -82,6 +82,7 @@ class HyperParams:
         self.clip_vf = True         # Use clipped value function objective
         self.split_reward = False   # Split reward evenly amongst all active agents
         self.liveness_penalty = 0.0 # Negative reward applied at each timestep
+        self.build_variety_bonus = 0.0  # Extra reward for building a drone type at least once during episode
 
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2
