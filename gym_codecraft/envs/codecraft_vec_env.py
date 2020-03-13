@@ -355,21 +355,21 @@ def map_standard(randomize: bool, hardness: int):
 
     dextra = np.random.randint(0, 7)
     if dextra == 0:
-        extra_drone = dict(constructors=2, storage_modules=2)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
-    if dextra == 1:
-        extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
+        extra_drone = dict(constructors=2, storage_modules=2, resources=14)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
+    elif dextra == 1:
+        extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1, resources=14)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
     elif dextra == 2:
-        extra_drone = dict(constructors=1, storage_modules=1)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
+        extra_drone = dict(constructors=1, storage_modules=1, resources=7)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
     elif dextra == 3:
-        extra_drone = dict(storage_modules=1)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 50, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 50, -spawn_y, **extra_drone)]
+        extra_drone = dict(storage_modules=1, resources=7)
+        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
+        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
     else:
         player1drones = [drone_dict(spawn_x, spawn_y, **drone)]
         player2drones = [drone_dict(-spawn_x, -spawn_y, **drone)]
