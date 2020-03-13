@@ -1,4 +1,5 @@
 from collections import defaultdict
+import math
 
 from enum import Enum
 from dataclasses import dataclass
@@ -690,7 +691,16 @@ class CodeCraftVecEnv(object):
                 raise Exception(f"Deprecated objective {self.objective}")
             else:
                 raise Exception(f"Unknown objective {self.objective}")
-            score += len(self.performed_builds[i]) * self.build_variety_bonus
+
+            if len(self.builds) > 1:
+                max_entropy = math.log(len(self.builds) + 1)
+                build_entropy = 0
+                s = sum(self.performed_builds[i].values())
+                for count in self.performed_builds[i].values():
+                    if count > 0:
+                        p = count / s
+                        build_entropy += p * math.log(p)
+                score += self.build_variety_bonus * build_entropy / max_entropy
 
             if self.score[game] is None:
                 self.score[game] = score
