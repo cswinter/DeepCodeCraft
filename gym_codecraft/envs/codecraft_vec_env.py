@@ -699,7 +699,7 @@ class CodeCraftVecEnv(object):
                 for count in self.performed_builds[i].values():
                     if count > 0:
                         p = count / s
-                        build_entropy += p * math.log(p)
+                        build_entropy -= p * math.log(p)
                 score += self.build_variety_bonus * build_entropy / max_entropy
 
             if self.score[game] is None:
