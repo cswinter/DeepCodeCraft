@@ -147,9 +147,9 @@ class HyperParams:
         hps.num_envs = 64
         hps.num_self_play = 32
 
-        hps.eval_envs = 256
+        hps.eval_envs = 128
         hps.eval_frequency = 5e6
-        hps.eval_timesteps = 3000
+        hps.eval_timesteps = 2000
         hps.model_save_frequency = 1
 
         hps.gamma = 0.997
