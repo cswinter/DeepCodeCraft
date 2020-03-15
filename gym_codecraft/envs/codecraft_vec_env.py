@@ -692,7 +692,7 @@ class CodeCraftVecEnv(object):
             else:
                 raise Exception(f"Unknown objective {self.objective}")
 
-            if len(self.builds) > 1:
+            if len(self.builds) > 0:
                 max_entropy = math.log(len(self.builds) + 1)
                 build_entropy = 0
                 s = sum(self.performed_builds[i].values())
