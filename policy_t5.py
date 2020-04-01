@@ -397,7 +397,7 @@ class TransformerPolicy5(nn.Module):
             items = items * (1 - mask.float().unsqueeze(-1))
             nearby_map = spatial.spatial_scatter(
                 items=items[:, :, :(self.nitem - self.nconstant - self.ntile), :],
-                positions=relpos[:, :, :-self.ntile],
+                positions=relpos[:, :, :self.nitem - self.nconstant - self.ntile],
                 nray=self.hps.nm_nrays,
                 nring=self.hps.nm_nrings,
                 inner_radius=self.hps.nm_ring_width,
