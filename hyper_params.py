@@ -11,9 +11,11 @@ class HyperParams:
         self.weight_decay = 0.0001
         self.bs = 2048              # Batch size during optimization
         self.batches_per_update = 1 # Accumulate gradients over this many batches before applying gradients
+        self.batches_per_update_schedule = ''
         self.shuffle = True         # Shuffle samples collected during rollout before optimization
         self.vf_coef = 1.0          # Weighting of value function loss in optimization objective
         self.entropy_bonus = 0.0    # Weighting of  entropy bonus in loss function
+        self.entropy_bonus_schedule = ''
         self.max_grad_norm = 20.0   # Maximum gradient norm for gradient clipping
         self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
@@ -56,7 +58,7 @@ class HyperParams:
         self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
         self.use_privileged = True    # Whether value function has access to hidden information
         self.feat_map_size = True     # Global features for width/height of map
-        self.feat_last_seen = True    # Remember last position/time each enemy was seen + missile cooldown feat
+        self.feat_last_seen = False   # Remember last position/time each enemy was seen + missile cooldown feat
         self.feat_is_visible = True   # Feature for whether drone is currently visible
         self.feat_abstime = True      # Global features for absolute remaining/elapsed number of timesteps
 
@@ -197,7 +199,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_MEDIUM
 
-        hps.steps = 25e6
+        hps.steps = 60e6
 
         hps.agents = 4
         hps.nenemy = 5
@@ -205,17 +207,19 @@ class HyperParams:
         hps.nmineral = 5
 
         hps.batches_per_update = 2
+        hps.batches_per_update_schedule = '2e7:4,4e7:8'
         hps.bs = 1024
-        hps.seq_rosteps = 128
-        hps.num_envs = 128
-        hps.num_self_play = 64
+        hps.seq_rosteps = 256
+        hps.num_envs = 64
+        hps.num_self_play = 32
 
         hps.eval_envs = 512
         hps.eval_frequency = 5e6
         hps.eval_timesteps = 2000
 
         hps.gamma = 0.997
-        hps.entropy_bonus = 0.001
+        hps.entropy_bonus = 0.0015
+        hps.entropy_bonus_schedule = '2e7:0.00075,4e7:0.0'
 
         hps.symmetric_map = True
         hps.task_hardness = 0
@@ -340,14 +344,13 @@ class HyperParams:
         return self.num_envs * self.seq_rosteps
 
     def get_num_self_play_schedule(self):
-        if self.num_self_play_schedule == '':
-            return []
-        else:
-            items = []
-            for kv in self.num_self_play_schedule.split(","):
-                [k, v] = kv.split(":")
-                items.append((float(k), int(v)))
-            return list(reversed(items))
+        return parse_int_schedule(self.num_self_play_schedule)
+
+    def get_entropy_bonus_schedule(self):
+        return parse_float_schedule(self.entropy_bonus_schedule)
+
+    def get_batches_per_update_schedule(self):
+        return parse_int_schedule(self.batches_per_update_schedule)
 
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
@@ -360,3 +363,23 @@ class HyperParams:
         return parser
 
 
+def parse_int_schedule(schedule):
+    if schedule == '':
+        return []
+    else:
+        items = []
+        for kv in schedule.split(","):
+            [k, v] = kv.split(":")
+            items.append((float(k), int(v)))
+        return list(reversed(items))
+
+
+def parse_float_schedule(schedule):
+    if schedule == '':
+        return []
+    else:
+        items = []
+        for kv in schedule.split(","):
+            [k, v] = kv.split(":")
+            items.append((float(k), float(v)))
+        return list(reversed(items))

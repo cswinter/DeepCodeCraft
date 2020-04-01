@@ -122,6 +122,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
+    batches_per_update_schedule = hps.get_batches_per_update_schedule()
+    entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -129,6 +131,16 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if env is not None:
                 env.close()
                 env = None
+
+        if len(batches_per_update_schedule) > 0 and batches_per_update_schedule[-1][0] <= total_steps:
+            _, batches_per_update = batches_per_update_schedule.pop()
+            hps.batches_per_update = batches_per_update
+            assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
+
+        if len(entropy_bonus_schedule) > 0 and entropy_bonus_schedule[-1][0] <= total_steps:
+            _, entropy_bonus = entropy_bonus_schedule.pop()
+            hps.entropy_bonus = entropy_bonus
+
         if env is None:
             env = envs.CodeCraftVecEnv(hps.num_envs,
                                        hps.num_self_play,
