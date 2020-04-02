@@ -199,7 +199,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_MEDIUM
 
-        hps.steps = 60e6
+        hps.steps = 50e6
 
         hps.agents = 4
         hps.nenemy = 5
@@ -207,7 +207,7 @@ class HyperParams:
         hps.nmineral = 5
 
         hps.batches_per_update = 2
-        hps.batches_per_update_schedule = '2e7:4,4e7:8'
+        hps.batches_per_update_schedule = '15e6:4,30e6:8'
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
@@ -218,8 +218,8 @@ class HyperParams:
         hps.eval_timesteps = 2000
 
         hps.gamma = 0.997
-        hps.entropy_bonus = 0.0015
-        hps.entropy_bonus_schedule = '2e7:0.00075,4e7:0.0'
+        hps.entropy_bonus = 0.002
+        hps.entropy_bonus_schedule = '15e6:0.0005,30e6:0.0'
 
         hps.symmetric_map = True
         hps.task_hardness = 0
