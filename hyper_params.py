@@ -206,8 +206,8 @@ class HyperParams:
         hps.nally = 5
         hps.nmineral = 5
 
-        hps.batches_per_update = 2
-        hps.batches_per_update_schedule = '15e6:4,30e6:8'
+        hps.batches_per_update = 1
+        hps.batches_per_update_schedule = '15e6:2,30e6:4'
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
