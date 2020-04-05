@@ -22,6 +22,7 @@ from policy_t3 import TransformerPolicy3, InputNorm
 from policy_t4 import TransformerPolicy4, InputNorm
 from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
+from policy_t7 import TransformerPolicy7, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy6(hps, obs_config).to(device)
+        policy = TransformerPolicy7(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
@@ -708,6 +709,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = TransformerPolicy5(**kwargs)
     elif version == 'transformer_v6':
         policy = TransformerPolicy6(**kwargs)
+    elif version == 'transformer_v7':
+        policy = TransformerPolicy7(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 
