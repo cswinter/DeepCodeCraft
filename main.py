@@ -153,7 +153,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        symmetric=hps.symmetric_map,
                                        hardness=hps.task_hardness,
                                        mix_mp=hps.mix_mp,
-                                       build_variety_bonus=hps.build_variety_bonus)
+                                       build_variety_bonus=hps.build_variety_bonus,
+                                       win_bonus=hps.win_bonus)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0:

@@ -495,7 +495,8 @@ class CodeCraftVecEnv(object):
                  symmetric=False,
                  strong_scripted_opponent=False,
                  mix_mp=0.0,
-                 build_variety_bonus=0.0):
+                 build_variety_bonus=0.0,
+                 win_bonus=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -514,6 +515,7 @@ class CodeCraftVecEnv(object):
         self.builds = []
         self.strong_scripted_opponent = strong_scripted_opponent
         self.build_variety_bonus = build_variety_bonus
+        self.win_bonus = win_bonus
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -678,10 +680,13 @@ class CodeCraftVecEnv(object):
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
+            winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
+                if winner > 0 and enemy_score == 0:
+                    score += self.win_bonus
             elif self.objective == Objective.SCOUT:
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
                 score = -enemy_score
@@ -708,7 +713,6 @@ class CodeCraftVecEnv(object):
             self.score[game] = score
             self.eprew[game] += reward
 
-            winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
             if winner > 0:
                 (game_id, pid) = games[i]
                 if pid == 0:
