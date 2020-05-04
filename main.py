@@ -383,7 +383,7 @@ def eval(policy,
             opponents = {
                 'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
             }
-        elif objective == envs.Objective.ARENA_MEDIUM:
+        elif objective == envs.Objective.ARENA_MEDIUM or objective == envs.Objective.ARENA_MEDIUM_LARGE_MS:
             opponents = {
                 # Scores -0.32 vs previous best, jumping-totem-100M
                 'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
@@ -598,6 +598,8 @@ def main():
         hps = HyperParams.arena_tiny_2v2()
     elif args.hpset == 'arena_medium':
         hps = HyperParams.arena_medium()
+    elif args.hpset == 'arena_medium_large_ms':
+        hps = HyperParams.arena_medium_large_ms()
     elif args.hpset == 'arena':
         hps = HyperParams.arena()
     elif args.hpset == 'standard':

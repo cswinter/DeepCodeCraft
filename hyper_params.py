@@ -232,6 +232,13 @@ class HyperParams:
         return hps
 
     @staticmethod
+    def arena_medium_large_ms():
+        hps = HyperParams.arena_medium()
+        hps.objective = envs.Objective.ARENA_MEDIUM_LARGE_MS
+        hps.task_hardness = 1
+        return hps
+
+    @staticmethod
     def arena_tiny_2v2():
         hps = HyperParams()
         hps.objective = envs.Objective.ARENA_TINY_2V2

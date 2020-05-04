@@ -201,6 +201,35 @@ def map_arena_medium(randomize: bool, hardness: int):
     }
 
 
+def map_arena_medium_large_ms(randomize: bool, hardness: int):
+    ms = dict(constructors=3,
+              storage_modules=3,
+              missile_batteries=3,
+              shield_generators=1,
+              resources=10)
+    if randomize:
+        hardness = np.random.randint(0, hardness+1)
+    if hardness == 0:
+        map_width = 1500
+        map_height = 1500
+        mineral_count = 5
+    else:
+        map_width = 2000
+        map_height = 2000
+        mineral_count = 8
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': mineral_count * [(3, 25)],
+        'player1Drones': [drone_dict(spawn_x, spawn_y, **ms)],
+        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **ms)],
+    }
+
+
 def map_arena(randomize: bool, hardness: int):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
@@ -293,7 +322,7 @@ def map_standard(randomize: bool, hardness: int):
         d = np.random.randint(0, 7)
         res = np.random.randint(0, 8)
     else:
-        d = 6
+        d = 7
         res = 7
     if d == 0:
         drone = dict(
@@ -525,6 +554,9 @@ class CodeCraftVecEnv(object):
         elif objective == Objective.ARENA_MEDIUM:
             self.game_length = 3 * 60 * 60
             self.custom_map = map_arena_medium
+        elif objective == Objective.ARENA_MEDIUM_LARGE_MS:
+            self.game_length = 3 * 60 * 60
+            self.custom_map = map_arena_medium_large_ms
         elif objective == Objective.ARENA:
             self.game_length = 3 * 60 * 60
             # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
@@ -822,6 +854,7 @@ class Objective(Enum):
     ARENA_TINY = 'ARENA_TINY'
     ARENA_TINY_2V2 = 'ARENA_TINY_2V2'
     ARENA_MEDIUM = 'ARENA_MEDIUM'
+    ARENA_MEDIUM_LARGE_MS = 'ARENA_MEDIUM_LARGE_MS'
     ARENA = 'ARENA'
     STANDARD = 'STANDARD'
     MICRO_PRACTICE = 'MICRO_PRACTICE'
@@ -829,17 +862,18 @@ class Objective(Enum):
 
     def vs(self):
         if self == Objective.ALLIED_WEALTH or\
-           self == Objective.DISTANCE_TO_CRYSTAL or\
-           self == Objective.DISTANCE_TO_ORIGIN or\
-           self == Objective.DISTANCE_TO_1000_500 or\
-           self == Objective.SCOUT:
+               self == Objective.DISTANCE_TO_CRYSTAL or\
+               self == Objective.DISTANCE_TO_ORIGIN or\
+               self == Objective.DISTANCE_TO_1000_500 or\
+               self == Objective.SCOUT:
            return False
         elif self == Objective.ARENA_TINY or\
-            self == Objective.ARENA_TINY_2V2 or\
-            self == Objective.ARENA_MEDIUM or\
-            self == Objective.ARENA or\
-            self == Objective.STANDARD or\
-            self == Objective.MICRO_PRACTICE:
+                self == Objective.ARENA_TINY_2V2 or\
+                self == Objective.ARENA_MEDIUM or\
+                self == Objective.ARENA or\
+                self == Objective.STANDARD or\
+                self == Objective.MICRO_PRACTICE or\
+                self == Objective.ARENA_MEDIUM_LARGE_MS:
             return True
         else:
             raise Exception(f'Objective.vs not implemented for {self}')
