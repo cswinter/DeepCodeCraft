@@ -45,7 +45,7 @@ class ObsConfig:
         return 4
 
     def nonobs_features(self):
-        return 3
+        return 5
 
     def enemies(self):
         return self.drones - self.allies
@@ -525,7 +525,9 @@ class CodeCraftVecEnv(object):
                  strong_scripted_opponent=False,
                  mix_mp=0.0,
                  build_variety_bonus=0.0,
-                 win_bonus=0.0):
+                 win_bonus=0.0,
+                 attac=0.0,
+                 protec=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -545,6 +547,8 @@ class CodeCraftVecEnv(object):
         self.strong_scripted_opponent = strong_scripted_opponent
         self.build_variety_bonus = build_variety_bonus
         self.win_bonus = win_bonus
+        self.attac = attac
+        self.protec = protec
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -716,9 +720,15 @@ class CodeCraftVecEnv(object):
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
+                min_allied_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 3]
+                min_enemy_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 4]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
                 if winner > 0 and enemy_score == 0:
                     score += self.win_bonus
+                if self.attac > 0:
+                    score -= self.attac * min_enemy_ms_health
+                if self.protec > 0:
+                    score += self.protec * min_allied_ms_health
             elif self.objective == Objective.SCOUT:
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
                 score = -enemy_score
