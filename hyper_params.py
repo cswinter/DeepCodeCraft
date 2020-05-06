@@ -88,7 +88,10 @@ class HyperParams:
         self.win_bonus = 0.0        # Reward received when winning game by eliminating opponent
         self.attac = 0.0            # Fraction of shaped reward awarded for minimum health of enemy mothership during episode
         self.protec = 0.0           # Fraction of shaped reward awarded for maximum health of allied mothership during episode
-
+        self.rewnorm = False        # Rescale reward values by ema of mean and variance
+        self.rewnorm_emaw = 0.97
+        self.max_army_size_score = 9999999
+        self.max_enemy_army_size_score = 9999999
 
         # Task
         self.objective = envs.Objective.ARENA_TINY_2V2

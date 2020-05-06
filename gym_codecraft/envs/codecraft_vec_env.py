@@ -527,7 +527,9 @@ class CodeCraftVecEnv(object):
                  build_variety_bonus=0.0,
                  win_bonus=0.0,
                  attac=0.0,
-                 protec=0.0):
+                 protec=0.0,
+                 max_army_size_score=999999,
+                 max_enemy_army_size_score=999999):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -549,6 +551,8 @@ class CodeCraftVecEnv(object):
         self.win_bonus = win_bonus
         self.attac = attac
         self.protec = protec
+        self.max_army_size_score = max_army_size_score
+        self.max_enemy_army_size_score = max_enemy_army_size_score
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -719,7 +723,9 @@ class CodeCraftVecEnv(object):
             winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
+                allied_score = min(allied_score, self.max_army_size_score)
                 enemy_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 2]
+                enemy_score = min(enemy_score, self.max_enemy_army_size_score)
                 min_allied_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 3]
                 min_enemy_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 4]
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1

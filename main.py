@@ -125,6 +125,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
+
+    rewmean = 0.0
+    rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -154,7 +157,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        hardness=hps.task_hardness,
                                        mix_mp=hps.mix_mp,
                                        build_variety_bonus=hps.build_variety_bonus,
-                                       win_bonus=hps.win_bonus)
+                                       win_bonus=hps.win_bonus,
+                                       attac=hps.attac,
+                                       protec=hps.protec,
+                                       max_army_size_score=hps.max_army_size_score,
+                                       max_enemy_army_size_score=hps.max_enemy_army_size_score)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0:
@@ -223,6 +230,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
             policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
 
         all_rewards = np.array(all_rewards) * hps.rewscale
+        if hps.rewnorm:
+            w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
+            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+            rewstd = all_rewards.std() * (1 - w) + rewstd * w
+            all_rewards = all_rewards / rewstd - rewmean
+
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)
         all_values = np.array(all_values)
         last_gae = np.zeros(hps.num_envs)
@@ -333,6 +346,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'obs_min': all_obs.min(),
             'rewards': wandb.Histogram(np.array(all_rewards)),
             'masked_actions': 1 - all_action_masks.mean(),
+            'rewmean': rewmean,
+            'rewstd': rewstd,
         }
         total_norm = 0.0
         count = 0
