@@ -4,11 +4,18 @@ import time
 
 import numpy as np
 
+from gym_codecraft.envs.codecraft_vec_env import Rules
+
 
 RETRIES = 100
 
 
-def create_game(game_length: int = None, action_delay: int = 0, self_play: bool = False, custom_map=None, strong_scripted_opponent=False) -> int:
+def create_game(game_length: int = None,
+                action_delay: int = 0,
+                self_play: bool = False,
+                custom_map=None,
+                strong_scripted_opponent=False,
+                rules=Rules()) -> int:
     if custom_map is None:
         custom_map = ''
     try:
@@ -19,7 +26,8 @@ def create_game(game_length: int = None, action_delay: int = 0, self_play: bool 
                                      f'?maxTicks={game_length}'
                                      f'&actionDelay={action_delay}'
                                      f'&scriptedOpponent={scripted_opponent}'
-                                     f'&idleOpponent={idle_opponent}',
+                                     f'&idleOpponent={idle_opponent}'
+                                     f'&mothershipDamageMultiplier={rules.mothership_damage_multiplier}',
                                      json=custom_map).json()
         else:
             response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()
@@ -93,6 +101,10 @@ def observe_batch(game_ids):
             time.sleep(10)
 
 
+def scalabool(b: bool) -> str:
+    return 'true' if b else 'false'
+
+
 def observe_batch_raw(game_ids,
                       allies,
                       drones,
@@ -105,7 +117,8 @@ def observe_batch_raw(game_ids,
                       map_size=False,
                       last_seen=False,
                       is_visible=False,
-                      abstime=False):
+                      abstime=False,
+                      rule_msdm=False):
     retries = RETRIES
     ebcstr = ''
     if len(extra_build_costs) > 0:
@@ -122,12 +135,14 @@ def observe_batch_raw(game_ids,
         f'isVisible={"true" if is_visible else "false"}&' \
         f'abstime={"true" if abstime else "false"}&' \
         f'mapSize={"true" if map_size else "false"}&' \
-        f'v2={"true" if v2 else "false"}' + ebcstr
+        f'v2={"true" if v2 else "false"}&' \
+        f'ruleMsdm={scalabool(rule_msdm)}' + ebcstr
     while retries > 0:
         try:
             response = requests.get(url,
                                     json=game_ids,
                                     stream=True)
+            response.raise_for_status()
             response_bytes = response.content
             return np.frombuffer(response_bytes, dtype=np.float32)
         except requests.exceptions.ConnectionError as e:

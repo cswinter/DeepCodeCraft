@@ -101,6 +101,8 @@ class HyperParams:
         self.task_randomize = True
         self.symmetric_map = False
         self.mix_mp = 0.0       # Fraction of maps that use MICRO_PRACTICE instead of the main objective
+        self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
+        self.rule_rng_amount = 1.0     # Amount of rule randomization
 
 
     @staticmethod

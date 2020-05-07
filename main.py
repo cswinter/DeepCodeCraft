@@ -72,6 +72,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         feat_map_size=hps.feat_map_size,
         feat_abstime=hps.feat_abstime,
         v2=True,
+        feat_rule_msdm=hps.rule_rng_fraction > 0,
     )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -120,6 +121,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     epoch = 0
     eprewmean = 0
     eplenmean = 0
+    eliminationmean = 0
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
@@ -161,7 +163,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        attac=hps.attac,
                                        protec=hps.protec,
                                        max_army_size_score=hps.max_army_size_score,
-                                       max_enemy_army_size_score=hps.max_enemy_army_size_score)
+                                       max_enemy_army_size_score=hps.max_enemy_army_size_score,
+                                       rule_rng_fraction=hps.rule_rng_fraction,
+                                       rule_rng_amount=hps.rule_rng_amount)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0:
@@ -221,6 +225,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     ema = min(95, completed_episodes * 10) / 100.0
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
+                    eliminationmean = eliminationmean * ema + (1 - ema) * info['episode']['elimination']
                     completed_episodes += 1
 
         obs_tensor = torch.tensor(obs).to(device)
@@ -332,6 +337,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
+            'eliminationmean': eliminationmean,
             'entropy': sum(entropies) / len(entropies) / np.log(2),
             'explained variance': explained_var,
             'gradnorm': gradnorm * hps.bs / hps.rosteps,
@@ -435,6 +441,7 @@ def eval(policy,
                                strong_scripted_opponent=True)
 
     scores = []
+    eliminations = []
     scores_by_opp = defaultdict(list)
     lengths = []
     evens = list([2 * i for i in range(num_envs // 2)])
@@ -489,6 +496,7 @@ def eval(policy,
             index = info['episode']['index']
             score = info['episode']['score']
             length = info['episode']['l']
+            elimination = info['episode']['elimination']
             scores.append(score)
             lengths.append(length)
             for name, opp in opponents.items():
@@ -500,12 +508,15 @@ def eval(policy,
             print(f'Eval: {np.array(scores).mean()}')
 
     scores = np.array(scores)
+    eliminations = np.array(eliminations)
 
     if curr_step is not None:
         wandb.log({
             'eval_mean_score': scores.mean(),
             'eval_max_score': scores.max(),
             'eval_min_score': scores.min(),
+            'eval_games': len(scores),
+            'eval_elimination_rate': eliminations.mean(),
         }, step=curr_step)
         for opp_name, scores in scores_by_opp.items():
             scores = np.array(scores)

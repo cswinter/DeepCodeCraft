@@ -21,6 +21,7 @@ class ObsConfig:
     feat_is_visible: bool = False
     feat_abstime: bool = False
     v2: bool = False
+    feat_rule_msdm: bool = False
 
     def global_features(self):
         gf = 2
@@ -28,6 +29,8 @@ class ObsConfig:
             gf += 2
         if self.feat_abstime:
             gf += 2
+        if self.feat_rule_msdm:
+            gf += 1
         return gf
 
     def dstride(self):
@@ -81,6 +84,11 @@ class ObsConfig:
 DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
 
 
+@dataclass(frozen=True)
+class Rules:
+    mothership_damage_multiplier: float = 1.0
+
+
 def drone_dict(x, y,
                storage_modules=0,
                missile_batteries=0,
@@ -107,6 +115,12 @@ def random_drone():
         module = modules[np.random.randint(0, len(modules))]
         drone[module] += 1
     return drone
+
+
+def random_rules(randomness: float):
+    return Rules(
+        mothership_damage_multiplier=np.random.uniform(1.0, randomness * 10.0),
+    )
 
 
 def map_arena_tiny(randomize: bool, hardness: int):
@@ -529,7 +543,9 @@ class CodeCraftVecEnv(object):
                  attac=0.0,
                  protec=0.0,
                  max_army_size_score=999999,
-                 max_enemy_army_size_score=999999):
+                 max_enemy_army_size_score=999999,
+                 rule_rng_fraction=0.0,
+                 rule_rng_amount=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -553,6 +569,8 @@ class CodeCraftVecEnv(object):
         self.protec = protec
         self.max_army_size_score = max_army_size_score
         self.max_enemy_army_size_score = max_enemy_army_size_score
+        self.rule_rng_fraction = rule_rng_fraction
+        self.rule_rng_amount = rule_rng_amount
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -608,6 +626,12 @@ class CodeCraftVecEnv(object):
         self.score = []
         self.performed_builds = []
 
+    def rules(self) -> Rules:
+        if np.random.uniform(0, 1) < self.rule_rng_fraction:
+            return random_rules(self.rule_rng_amount)
+        else:
+            return Rules()
+
     def reset(self, partitioned_obs_config=None):
         if partitioned_obs_config:
             return list(self._reset(partitioned_obs_config))
@@ -628,7 +652,8 @@ class CodeCraftVecEnv(object):
                 self.action_delay,
                 self_play,
                 self.next_map(),
-                self.strong_scripted_opponent)
+                self.strong_scripted_opponent,
+                self.rules())
             self.game_count += 1
 
             self.games.append((game_id, 0))
@@ -716,11 +741,13 @@ class CodeCraftVecEnv(object):
                                           map_size=obs_config.feat_map_size,
                                           last_seen=obs_config.feat_last_seen,
                                           is_visible=obs_config.feat_is_visible,
-                                          abstime=obs_config.feat_abstime)
+                                          abstime=obs_config.feat_abstime,
+                                          rule_msdm=obs_config.feat_rule_msdm)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
             winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
+            elimination_win = 0
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
                 allied_score = min(allied_score, self.max_army_size_score)
@@ -731,6 +758,7 @@ class CodeCraftVecEnv(object):
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
                 if winner > 0 and enemy_score == 0:
                     score += self.win_bonus
+                    elimination_win = 1
                 if self.attac > 0:
                     score -= self.attac * min_enemy_ms_health
                 if self.protec > 0:
@@ -772,14 +800,16 @@ class CodeCraftVecEnv(object):
                                                         self.action_delay,
                                                         self_play,
                                                         m,
-                                                        self.strong_scripted_opponent)
+                                                        self.strong_scripted_opponent,
+                                                        self.rules())
                         self.mp_game_count += 1
                     else:
                         game_id = codecraft.create_game(self.game_length,
                                                         self.action_delay,
                                                         self_play,
                                                         self.next_map(),
-                                                        self.strong_scripted_opponent)
+                                                        self.strong_scripted_opponent,
+                                                        self.rules())
                     self.game_count += 1
                 else:
                     game_id = self.games[game - 1][0]
@@ -797,6 +827,7 @@ class CodeCraftVecEnv(object):
                     'l': self.eplen[game],
                     'index': game,
                     'score': self.score[game],
+                    'elimination': elimination_win,
                 }})
                 self.eplen[game] = 1
                 self.eprew[game] = 0
