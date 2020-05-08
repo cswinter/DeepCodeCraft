@@ -119,7 +119,7 @@ def random_drone():
 
 def random_rules(randomness: float):
     return Rules(
-        mothership_damage_multiplier=np.random.uniform(1.0, randomness * 10.0),
+        mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * randomness),
     )
 
 
@@ -221,6 +221,11 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
               missile_batteries=3,
               shield_generators=1,
               resources=10)
+    ms2 = ms.copy()
+    if randomize:
+        imbalance = np.random.randint(0, 11)
+        ms['resources'] += imbalance
+        ms2['resources'] -= imbalance
     if randomize:
         hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
@@ -240,7 +245,7 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
         'mapHeight': map_height,
         'minerals': mineral_count * [(3, 25)],
         'player1Drones': [drone_dict(spawn_x, spawn_y, **ms)],
-        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **ms)],
+        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **ms2)],
     }
 
 
@@ -581,7 +586,7 @@ class CodeCraftVecEnv(object):
             self.game_length = 3 * 60 * 60
             self.custom_map = map_arena_medium
         elif objective == Objective.ARENA_MEDIUM_LARGE_MS:
-            self.game_length = 3 * 60 * 60
+            self.game_length = 2 * 60 * 60
             self.custom_map = map_arena_medium_large_ms
         elif objective == Objective.ARENA:
             self.game_length = 3 * 60 * 60

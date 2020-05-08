@@ -404,10 +404,14 @@ def eval(policy,
             opponents = {
                 'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
             }
-        elif objective == envs.Objective.ARENA_MEDIUM or objective == envs.Objective.ARENA_MEDIUM_LARGE_MS:
+        elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
                 # Scores -0.32 vs previous best, jumping-totem-100M
                 'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
+            }
+        elif objective == envs.Objective.ARENA_MEDIUM_LARGE_MS:
+            opponents = {
+                'easy': {'model_file': 'arena_medium_large_ms/honest-violet-50M.pt'},
             }
         elif objective == envs.Objective.ARENA:
             opponents = {
@@ -498,6 +502,7 @@ def eval(policy,
             length = info['episode']['l']
             elimination = info['episode']['elimination']
             scores.append(score)
+            eliminations.append(elimination)
             lengths.append(length)
             for name, opp in opponents.items():
                 if index + 1 in opp['envs']:

@@ -241,6 +241,17 @@ class HyperParams:
         hps = HyperParams.arena_medium()
         hps.objective = envs.Objective.ARENA_MEDIUM_LARGE_MS
         hps.task_hardness = 1
+        hps.win_bonus = 2
+        hps.vf_coef = 0.5
+        hps.rule_rng_fraction = 1.0
+        hps.rule_rng_amount = 1.0
+        hps.agents = 7
+        hps.gamma = 0.999
+        hps.eval_envs = 256
+        hps.nenemy = 7
+        hps.nally = 7
+        hps.obs_allies = 15
+        hps.obs_enemies = 15
         return hps
 
     @staticmethod
