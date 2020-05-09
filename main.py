@@ -391,7 +391,8 @@ def eval(policy,
          printerval=None,
          randomize=False,
          hardness=10,
-         symmetric=True):
+         symmetric=True,
+         random_rules=0.0):
     if printerval is None:
         printerval = eval_steps
 
@@ -442,7 +443,9 @@ def eval(policy,
                                randomize=randomize,
                                hardness=hardness,
                                symmetric=symmetric,
-                               strong_scripted_opponent=True)
+                               strong_scripted_opponent=True,
+                               rule_rng_amount=random_rules,
+                               rule_rng_fraction=1.0 if random_rules > 0 else 0.0)
 
     scores = []
     eliminations = []

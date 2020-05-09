@@ -223,7 +223,7 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
               resources=10)
     ms2 = ms.copy()
     if randomize:
-        imbalance = np.random.randint(0, 11)
+        imbalance = np.random.randint(-10, 11)
         ms['resources'] += imbalance
         ms2['resources'] -= imbalance
     if randomize:
