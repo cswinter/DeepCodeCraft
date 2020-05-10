@@ -252,8 +252,9 @@ class HyperParams:
         hps.nally = 7
         hps.obs_allies = 15
         hps.obs_enemies = 15
-        hps.batches_per_update_schedule = '20e6:2,40e6:4'
-        hps.entropy_bonus_schedule = '20e6:0.001,40e6:0.0005'
+        hps.batches_per_update_schedule = '15e6:2,35e6:4,45e6:8'
+        hps.entropy_bonus = 0.015
+        hps.entropy_bonus_schedule = '15e6:0.0005,45e6:0.0001'
         return hps
 
     @staticmethod
