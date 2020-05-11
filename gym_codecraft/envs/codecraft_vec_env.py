@@ -3,6 +3,7 @@ import math
 
 from enum import Enum
 from dataclasses import dataclass
+from typing import Tuple
 import numpy as np
 
 import codecraft
@@ -87,6 +88,12 @@ DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_d
 @dataclass(frozen=True)
 class Rules:
     mothership_damage_multiplier: float = 1.0
+    cost_modifier_size: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    cost_modifier_missiles: float = 1.0
+    cost_modifier_shields: float = 1.0
+    cost_modifier_storage: float = 1.0
+    cost_modifier_constructor: float = 1.0
+    cost_modifier_engines: float = 1.0
 
 
 def drone_dict(x, y,
@@ -120,6 +127,17 @@ def random_drone():
 def random_rules(randomness: float):
     return Rules(
         mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * randomness),
+        cost_modifier_size=(
+            1.0,
+            1.0 - np.random.uniform(0.0, 0.15 * randomness),
+            1.0 - np.random.uniform(0.0, 0.15 * randomness),
+            1.0 - np.random.uniform(0.0, 0.4 * randomness),
+        ),
+        cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * randomness),
+        cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * randomness),
+        cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * randomness),
+        cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * randomness),
+        cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * randomness),
     )
 
 
@@ -236,6 +254,40 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
         map_width = 2000
         map_height = 2000
         mineral_count = 8
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': mineral_count * [(3, 25)],
+        'player1Drones': [drone_dict(spawn_x, spawn_y, **ms)],
+        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **ms2)],
+    }
+
+
+def map_smol_standard(randomize: bool, hardness: int):
+    ms = dict(constructors=3,
+              storage_modules=3,
+              missile_batteries=3,
+              shield_generators=1,
+              resources=10)
+    ms2 = ms.copy()
+    if randomize:
+        imbalance = np.random.randint(-10, 11)
+        ms['resources'] += imbalance
+        ms2['resources'] -= imbalance
+    if randomize:
+        hardness = np.random.randint(0, hardness+1)
+    if hardness == 0:
+        map_width = 2000
+        map_height = 2000
+        mineral_count = 8
+    else:
+        map_width = 2500
+        map_height = 2500
+        mineral_count = 13
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
@@ -597,6 +649,21 @@ class CodeCraftVecEnv(object):
                 [0, 1, 0, 0, 1]
             ]
             self.custom_map = map_arena
+        elif objective == Objective.SMOL_STANDARD:
+            self.game_length = 5 * 60 * 60
+            self.builds = [
+                [1, 0, 1, 0, 0],
+                [0, 2, 0, 0, 0],
+                [0, 1, 0, 0, 1],
+                [0, 3, 0, 0, 1],
+                [0, 2, 0, 0, 2],
+                [2, 1, 1, 0, 0],
+                [2, 0, 2, 0, 0],
+                [2, 0, 1, 1, 0],
+                [0, 2, 0, 1, 1],
+                [1, 0, 0, 0, 0],
+            ]
+            self.custom_map = map_smol_standard
         elif objective == Objective.STANDARD:
             self.game_length = 5 * 60 * 60
             self.builds = [
@@ -909,6 +976,7 @@ class Objective(Enum):
     ARENA_MEDIUM_LARGE_MS = 'ARENA_MEDIUM_LARGE_MS'
     ARENA = 'ARENA'
     STANDARD = 'STANDARD'
+    SMOL_STANDARD = 'SMOL_STANDARD'
     MICRO_PRACTICE = 'MICRO_PRACTICE'
     SCOUT = 'SCOUT'
 
@@ -923,7 +991,8 @@ class Objective(Enum):
                 self == Objective.ARENA_TINY_2V2 or\
                 self == Objective.ARENA_MEDIUM or\
                 self == Objective.ARENA or\
-                self == Objective.STANDARD or\
+                self == Objective.STANDARD or \
+                self == Objective.SMOL_STANDARD or\
                 self == Objective.MICRO_PRACTICE or\
                 self == Objective.ARENA_MEDIUM_LARGE_MS:
             return True
@@ -931,7 +1000,7 @@ class Objective(Enum):
             raise Exception(f'Objective.vs not implemented for {self}')
 
     def naction(self):
-        if self == Objective.STANDARD:
+        if self == Objective.STANDARD or self == Objective.SMOL_STANDARD:
             return 18
         elif self == Objective.ARENA:
             return 11

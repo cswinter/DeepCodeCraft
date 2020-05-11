@@ -424,6 +424,12 @@ def eval(policy,
             }
             randomize = True
             hardness = 4
+        elif objective == envs.Objective.SMOL_STANDARD:
+            opponents = {
+                'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
+            }
+            randomize = True
+            hardness = 1
         elif objective == envs.Objective.MICRO_PRACTICE:
             opponents = {
                 'beta': {'model_file': 'mp/ethereal-bee-40M.pt'},
