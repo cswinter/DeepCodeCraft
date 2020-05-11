@@ -127,7 +127,8 @@ def observe_batch_raw(game_ids,
                       last_seen=False,
                       is_visible=False,
                       abstime=False,
-                      rule_msdm=False):
+                      rule_msdm=False,
+                      rule_costs=False):
     retries = RETRIES
     ebcstr = ''
     if len(extra_build_costs) > 0:
@@ -145,7 +146,8 @@ def observe_batch_raw(game_ids,
         f'abstime={"true" if abstime else "false"}&' \
         f'mapSize={"true" if map_size else "false"}&' \
         f'v2={"true" if v2 else "false"}&' \
-        f'ruleMsdm={scalabool(rule_msdm)}' + ebcstr
+        f'ruleMsdm={scalabool(rule_msdm)}&' \
+        f'ruleCosts={scalabool(rule_costs)}' + ebcstr
     while retries > 0:
         try:
             response = requests.get(url,

@@ -73,6 +73,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         feat_abstime=hps.feat_abstime,
         v2=True,
         feat_rule_msdm=hps.rule_rng_fraction > 0,
+        feat_rule_costs=hps.rule_cost_rng > 0,
     )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -165,7 +166,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        max_army_size_score=hps.max_army_size_score,
                                        max_enemy_army_size_score=hps.max_enemy_army_size_score,
                                        rule_rng_fraction=hps.rule_rng_fraction,
-                                       rule_rng_amount=hps.rule_rng_amount)
+                                       rule_rng_amount=hps.rule_rng_amount,
+                                       rule_cost_rng=hps.rule_cost_rng)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0:

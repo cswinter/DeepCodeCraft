@@ -23,6 +23,7 @@ class ObsConfig:
     feat_abstime: bool = False
     v2: bool = False
     feat_rule_msdm: bool = False
+    feat_rule_costs: bool = False
 
     def global_features(self):
         gf = 2
@@ -32,6 +33,8 @@ class ObsConfig:
             gf += 2
         if self.feat_rule_msdm:
             gf += 1
+        if self.feat_rule_costs:
+            gf += 9
         return gf
 
     def dstride(self):
@@ -124,20 +127,20 @@ def random_drone():
     return drone
 
 
-def random_rules(randomness: float):
+def random_rules(rnd_msdm: float, rnd_cost: float) -> Rules:
     return Rules(
-        mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * randomness),
+        mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
         cost_modifier_size=(
             1.0,
-            1.0 - np.random.uniform(0.0, 0.15 * randomness),
-            1.0 - np.random.uniform(0.0, 0.15 * randomness),
-            1.0 - np.random.uniform(0.0, 0.4 * randomness),
+            1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
+            1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
+            1.0 - np.random.uniform(0.0, 0.4 * rnd_cost),
         ),
-        cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * randomness),
-        cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * randomness),
-        cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * randomness),
-        cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * randomness),
-        cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * randomness),
+        cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
+        cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
+        cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
+        cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
+        cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * rnd_cost),
     )
 
 
@@ -602,7 +605,8 @@ class CodeCraftVecEnv(object):
                  max_army_size_score=999999,
                  max_enemy_army_size_score=999999,
                  rule_rng_fraction=0.0,
-                 rule_rng_amount=0.0):
+                 rule_rng_amount=0.0,
+                 rule_cost_rng=0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -628,6 +632,7 @@ class CodeCraftVecEnv(object):
         self.max_enemy_army_size_score = max_enemy_army_size_score
         self.rule_rng_fraction = rule_rng_fraction
         self.rule_rng_amount = rule_rng_amount
+        self.rule_cost_rng = rule_cost_rng
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -700,7 +705,7 @@ class CodeCraftVecEnv(object):
 
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
-            return random_rules(self.rule_rng_amount)
+            return random_rules(self.rule_rng_amount, self.rule_cost_rng)
         else:
             return Rules()
 
@@ -814,7 +819,8 @@ class CodeCraftVecEnv(object):
                                           last_seen=obs_config.feat_last_seen,
                                           is_visible=obs_config.feat_is_visible,
                                           abstime=obs_config.feat_abstime,
-                                          rule_msdm=obs_config.feat_rule_msdm)
+                                          rule_msdm=obs_config.feat_rule_msdm,
+                                          rule_costs=obs_config.feat_rule_costs)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i

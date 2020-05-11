@@ -103,6 +103,7 @@ class HyperParams:
         self.mix_mp = 0.0       # Fraction of maps that use MICRO_PRACTICE instead of the main objective
         self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
         self.rule_rng_amount = 1.0     # Amount of rule randomization
+        self.rule_cost_rng = 0.0
 
 
     @staticmethod
@@ -252,9 +253,9 @@ class HyperParams:
         hps.nally = 7
         hps.obs_allies = 15
         hps.obs_enemies = 15
-        hps.batches_per_update_schedule = '15e6:2,35e6:4,45e6:8'
-        hps.entropy_bonus = 0.015
-        hps.entropy_bonus_schedule = '15e6:0.0005,45e6:0.0001'
+        hps.batches_per_update_schedule = '20e6:2,35e6:4,45e6:8'
+        hps.entropy_bonus = 0.01
+        hps.entropy_bonus_schedule = '15e6:0.003,40e6:0.001'
         return hps
 
     @staticmethod
