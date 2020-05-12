@@ -753,21 +753,21 @@ class CodeCraftVecEnv(object):
             obs, _, _, _, action_masks, privileged_obs = self.observe()
             yield obs, action_masks, privileged_obs
 
-    def step(self, actions, env_subset=None, obs_config=None):
+    def step(self, actions, env_subset=None, obs_config=None, action_masks=None):
         """
         Step the environments synchronously.
 
         This is available for backwards compatibility.
         """
-        self.step_async(actions, env_subset)
+        self.step_async(actions, env_subset, action_masks)
         return self.observe(env_subset, obs_config)
 
-    def step_async(self, actions, env_subset=None):
+    def step_async(self, actions, env_subset=None, action_masks=None):
         game_actions = []
         games = [self.games[env] for env in env_subset] if env_subset else self.games
         for (i, ((game_id, player_id), player_actions)) in enumerate(zip(games, actions)):
             player_actions2 = []
-            for action in player_actions:
+            for (drone_index, action) in enumerate(player_actions):
                 # 0-5: turn/movement (4 is no turn, no movement)
                 # 6: build [0,1,0,0,0] drone (if minerals > 5)
                 # 7: harvest
@@ -786,13 +786,25 @@ class CodeCraftVecEnv(object):
                 if action == 7:
                     harvest = True
                 if action >= 8:
-                    i = action - 8
-                    if i < len(self.builds):
-                        build = [self.builds[action - 8]]
+                    b = action - 8
+                    if b < len(self.builds):
+                        build = [self.builds[b]]
                     else:
                         build = [[0, 1, 0, 0, 0]]
-                if len(build) > 0:
-                    self.performed_builds[i][action] += 1
+                if len(build) > 0 and action_masks is not None and action_masks[i][drone_index][action] == 1.0:
+                    repr = ''
+                    [storage, missile, constructor, engine, shield] = build[0]
+                    if storage > 0:
+                        repr += f'{storage}s'
+                    if missile > 0:
+                        repr += f'{missile}m'
+                    if constructor > 0:
+                        repr += f'{constructor}c'
+                    if engine > 0:
+                        repr += f'{engine}e'
+                    if shield > 0:
+                        repr += f'{shield}p'
+                    self.performed_builds[i][repr] += 1
                 player_actions2.append((move, turn, build, harvest))
             game_actions.append((game_id, player_id, player_actions2))
 
@@ -906,6 +918,7 @@ class CodeCraftVecEnv(object):
                     'index': game,
                     'score': self.score[game],
                     'elimination': elimination_win,
+                    'builds': self.performed_builds[game],
                 }})
                 self.eplen[game] = 1
                 self.eprew[game] = 0

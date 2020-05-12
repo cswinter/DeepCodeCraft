@@ -123,6 +123,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     eprewmean = 0
     eplenmean = 0
     eliminationmean = 0
+    buildmean = defaultdict(lambda: 0)
     completed_episodes = 0
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
@@ -217,17 +218,19 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 all_values.extend(values)
                 all_probs.extend(probs)
 
-                obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions)
+                obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions, action_masks=action_masks)
 
                 rews -= hps.liveness_penalty
                 all_rewards.extend(rews)
                 all_dones.extend(dones)
 
                 for info in infos:
-                    ema = min(95, completed_episodes * 10) / 100.0
+                    ema = 0.95 * (1 - 1 / (completed_episodes + 1))
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                     eliminationmean = eliminationmean * ema + (1 - ema) * info['episode']['elimination']
+                    for action, count in info['episode']['builds'].items():
+                        buildmean[action] = buildmean[action] * ema + (1 - ema) * count
                     completed_episodes += 1
 
         obs_tensor = torch.tensor(obs).to(device)
@@ -357,6 +360,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'rewmean': rewmean,
             'rewstd': rewstd,
         }
+        for action, count in buildmean.items():
+            metrics[f'build_{action}'] = count
         total_norm = 0.0
         count = 0
         for name, param in policy.named_parameters():
