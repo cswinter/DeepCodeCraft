@@ -129,14 +129,19 @@ def random_drone():
 
 def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
     if targets is not None:
+        def rnd(target):
+            if target > 1:
+                return np.random.uniform(1.0, target)
+            else:
+                return np.random.uniform(target, 1.0)
         return Rules(
             mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
-            cost_modifier_size=[np.random.uniform(low, 1.0) for low in targets.cost_modifier_size],
-            cost_modifier_constructor=np.random.uniform(targets.cost_modifier_constructor, 1.0),
-            cost_modifier_missiles=np.random.uniform(targets.cost_modifier_missiles, 1.0),
-            cost_modifier_shields=np.random.uniform(targets.cost_modifier_shields, 1.0),
-            cost_modifier_engines=np.random.uniform(targets.cost_modifier_engines, 1.0),
-            cost_modifier_storage=np.random.uniform(targets.cost_modifier_storage, 1.0),
+            cost_modifier_size=list(map(rnd, targets.cost_modifier_size)),
+            cost_modifier_constructor=rnd(targets.cost_modifier_constructor),
+            cost_modifier_missiles=rnd(targets.cost_modifier_missiles),
+            cost_modifier_shields=rnd(targets.cost_modifier_shields),
+            cost_modifier_engines=rnd(targets.cost_modifier_engines),
+            cost_modifier_storage=rnd(targets.cost_modifier_storage),
         )
     else:
         return Rules(
@@ -838,7 +843,7 @@ class CodeCraftVecEnv(object):
                                           global_drones=obs_config.global_drones,
                                           relative_positions=obs_config.relative_positions,
                                           v2=True,
-                                          extra_build_costs=self.build_costs,
+                                          extra_build_actions=self.builds,
                                           map_size=obs_config.feat_map_size,
                                           last_seen=obs_config.feat_last_seen,
                                           is_visible=obs_config.feat_is_visible,

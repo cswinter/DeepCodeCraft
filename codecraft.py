@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 
+from typing import List
 from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
@@ -122,7 +123,7 @@ def observe_batch_raw(game_ids: object,
                       tiles: object,
                       relative_positions: object,
                       v2: object,
-                      extra_build_costs: object = [],
+                      extra_build_actions: List[List[int]],
                       map_size: object = False,
                       last_seen: object = False,
                       is_visible: object = False,
@@ -131,8 +132,6 @@ def observe_batch_raw(game_ids: object,
                       rule_costs: object = False) -> object:
     retries = RETRIES
     ebcstr = ''
-    if len(extra_build_costs) > 0:
-        ebcstr = ''.join([f'&actions={c}' for c in extra_build_costs])
     url = f'http://localhost:9000/batch-observation?' \
         f'json=false&' \
         f'allies={allies}&' \
@@ -149,16 +148,17 @@ def observe_batch_raw(game_ids: object,
         f'ruleMsdm={scalabool(rule_msdm)}&' \
         f'ruleCosts={scalabool(rule_costs)}' + ebcstr
     while retries > 0:
+        json = [game_ids, extra_build_actions]
         try:
             response = requests.get(url,
-                                    json=game_ids,
+                                    json=json,
                                     stream=True)
             response.raise_for_status()
             response_bytes = response.content
             return np.frombuffer(response_bytes, dtype=np.float32)
         except requests.exceptions.ConnectionError as e:
             retries -= 1
-            logging.info(f"Connection error on {url} with json={game_ids}, retrying: {e}")
+            logging.info(f"Connection error on {url} with json={json}, retrying: {e}")
             time.sleep(10)
 
 

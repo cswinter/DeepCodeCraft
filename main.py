@@ -133,6 +133,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     adr = ADR()
     rewmean = 0.0
     rewstd = 1.0
+    average_cost_modifier = 1.0
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
@@ -199,6 +200,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_privileged_obs = []
 
         policy.eval()
+        buildtotal = defaultdict(lambda: 0)
         if hps.adr:
             env.rng_ruleset = adr.ruleset
         with torch.no_grad():
@@ -236,9 +238,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     for build in set().union(builds.keys(), buildmean.keys()):
                         count = builds[build]
                         buildmean[build] = buildmean[build] * ema + (1 - ema) * count
+                        buildtotal[build] += count
                     completed_episodes += 1
 
-            adr.step(buildmean)
+        average_cost_modifier = adr.step(buildtotal)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -366,6 +369,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'masked_actions': 1 - all_action_masks.mean(),
             'rewmean': rewmean,
             'rewstd': rewstd,
+            'average_cost_modifier': average_cost_modifier,
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count
