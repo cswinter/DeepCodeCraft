@@ -104,7 +104,7 @@ def observe_batch(game_ids):
     retries = RETRIES
     while retries > 0:
         try:
-            return requests.get(f'http://localhost:9000/batch-observation', json=game_ids).json()
+            return requests.get(f'http://localhost:9000/batch-observation', json=[game_ids, []]).json()
         except requests.exceptions.ConnectionError:
             retries -= 1
             logging.info(f"Connection error on observe_batch(), retrying")
