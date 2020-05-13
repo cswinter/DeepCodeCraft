@@ -114,21 +114,21 @@ def scalabool(b: bool) -> str:
     return 'true' if b else 'false'
 
 
-def observe_batch_raw(game_ids,
-                      allies,
-                      drones,
-                      minerals,
-                      global_drones,
-                      tiles,
-                      relative_positions,
-                      v2,
-                      extra_build_costs = [],
-                      map_size=False,
-                      last_seen=False,
-                      is_visible=False,
-                      abstime=False,
-                      rule_msdm=False,
-                      rule_costs=False):
+def observe_batch_raw(game_ids: object,
+                      allies: object,
+                      drones: object,
+                      minerals: object,
+                      global_drones: object,
+                      tiles: object,
+                      relative_positions: object,
+                      v2: object,
+                      extra_build_costs: object = [],
+                      map_size: object = False,
+                      last_seen: object = False,
+                      is_visible: object = False,
+                      abstime: object = False,
+                      rule_msdm: object = False,
+                      rule_costs: object = False) -> object:
     retries = RETRIES
     ebcstr = ''
     if len(extra_build_costs) > 0:

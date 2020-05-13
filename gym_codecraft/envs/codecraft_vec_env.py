@@ -2,8 +2,8 @@ from collections import defaultdict
 import math
 
 from enum import Enum
-from dataclasses import dataclass
-from typing import Tuple
+from dataclasses import dataclass, field
+from typing import List
 import numpy as np
 
 import codecraft
@@ -88,10 +88,10 @@ class ObsConfig:
 DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
 
 
-@dataclass(frozen=True)
+@dataclass
 class Rules:
     mothership_damage_multiplier: float = 1.0
-    cost_modifier_size: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    cost_modifier_size: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
     cost_modifier_missiles: float = 1.0
     cost_modifier_shields: float = 1.0
     cost_modifier_storage: float = 1.0
@@ -127,21 +127,32 @@ def random_drone():
     return drone
 
 
-def random_rules(rnd_msdm: float, rnd_cost: float) -> Rules:
-    return Rules(
-        mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
-        cost_modifier_size=(
-            1.0,
-            1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-            1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-            1.0 - np.random.uniform(0.0, 0.4 * rnd_cost),
-        ),
-        cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-        cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-        cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-        cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-        cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * rnd_cost),
-    )
+def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
+    if targets is not None:
+        return Rules(
+            mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
+            cost_modifier_size=[np.random.uniform(low, 1.0) for low in targets.cost_modifier_size],
+            cost_modifier_constructor=np.random.uniform(targets.cost_modifier_constructor, 1.0),
+            cost_modifier_missiles=np.random.uniform(targets.cost_modifier_missiles, 1.0),
+            cost_modifier_shields=np.random.uniform(targets.cost_modifier_shields, 1.0),
+            cost_modifier_engines=np.random.uniform(targets.cost_modifier_engines, 1.0),
+            cost_modifier_storage=np.random.uniform(targets.cost_modifier_storage, 1.0),
+        )
+    else:
+        return Rules(
+            mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
+            cost_modifier_size=[
+                1.0,
+                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
+                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
+                1.0 - np.random.uniform(0.0, 0.4 * rnd_cost),
+                ],
+            cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
+            cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
+            cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
+            cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
+            cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * rnd_cost),
+        )
 
 
 def map_arena_tiny(randomize: bool, hardness: int):
@@ -633,6 +644,7 @@ class CodeCraftVecEnv(object):
         self.rule_rng_fraction = rule_rng_fraction
         self.rule_rng_amount = rule_rng_amount
         self.rule_cost_rng = rule_cost_rng
+        self.rng_ruleset = None
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -705,7 +717,7 @@ class CodeCraftVecEnv(object):
 
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
-            return random_rules(self.rule_rng_amount, self.rule_cost_rng)
+            return random_rules(self.rule_rng_amount, self.rule_cost_rng, self.rng_ruleset)
         else:
             return Rules()
 

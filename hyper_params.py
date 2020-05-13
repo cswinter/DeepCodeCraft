@@ -104,6 +104,7 @@ class HyperParams:
         self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
+        self.adr = False      # Automatically adjust environment rules
 
 
     @staticmethod

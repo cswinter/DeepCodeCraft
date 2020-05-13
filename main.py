@@ -11,6 +11,7 @@ import numpy as np
 
 import wandb
 
+from adr import ADR
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig
 from hyper_params import HyperParams
@@ -72,8 +73,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         feat_map_size=hps.feat_map_size,
         feat_abstime=hps.feat_abstime,
         v2=True,
-        feat_rule_msdm=hps.rule_rng_fraction > 0,
-        feat_rule_costs=hps.rule_cost_rng > 0,
+        feat_rule_msdm=hps.rule_rng_fraction > 0 or hps.adr,
+        feat_rule_costs=hps.rule_cost_rng > 0 or hps.adr,
     )
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -129,7 +130,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
-
+    adr = ADR()
     rewmean = 0.0
     rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
@@ -198,6 +199,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_privileged_obs = []
 
         policy.eval()
+        if hps.adr:
+            env.rng_ruleset = adr.ruleset
         with torch.no_grad():
             # Rollout
             for step in range(hps.seq_rosteps):
@@ -229,9 +232,13 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                     eliminationmean = eliminationmean * ema + (1 - ema) * info['episode']['elimination']
-                    for action, count in info['episode']['builds'].items():
-                        buildmean[action] = buildmean[action] * ema + (1 - ema) * count
+                    builds = info['episode']['builds']
+                    for build in set().union(builds.keys(), buildmean.keys()):
+                        count = builds[build]
+                        buildmean[build] = buildmean[build] * ema + (1 - ema) * count
                     completed_episodes += 1
+
+            adr.step(buildmean)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -362,6 +369,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count
+        metrics.update(adr.metrics())
         total_norm = 0.0
         count = 0
         for name, param in policy.named_parameters():
