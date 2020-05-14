@@ -3,12 +3,10 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, stepsize=0.05, warmup=40):
+    def __init__(self, stepsize=0.05, warmup=100):
         self.ruleset = Rules(
             cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
-            cost_modifier_storage=0.8,
-            cost_modifier_engines=0.8,
-            cost_modifier_shields=0.7,
+            cost_modifier_engines=0.7,
             cost_modifier_constructor=0.5,
         )
         self.target_fractions = normalize({
@@ -29,7 +27,11 @@ class ADR:
         self.warmup = warmup
         self.step = 0
 
-    def adjust(self, counts) -> float:
+        self.hardness = 0.0
+        self.stepsize_hardness = 0.5
+        self.target_elimination_rate = 0.45
+
+    def adjust(self, counts, elimination_rate) -> float:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
@@ -79,6 +81,9 @@ class ADR:
                 self.ruleset.cost_modifier_size[2] *= multiplier
             if key == 'size4':
                 self.ruleset.cost_modifier_size[3] *= multiplier
+
+        if elimination_rate is not None:
+            self.hardness = max(0.0, self.hardness - self.stepsize_hardness * (self.target_elimination_rate - elimination_rate))
 
         return average_modifier
 

@@ -201,8 +201,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         policy.eval()
         buildtotal = defaultdict(lambda: 0)
+        eliminations = []
         if hps.adr:
             env.rng_ruleset = adr.ruleset
+            env.hardness = adr.hardness
         with torch.no_grad():
             # Rollout
             for step in range(hps.seq_rosteps):
@@ -231,6 +233,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
                 for info in infos:
                     ema = 0.95 * (1 - 1 / (completed_episodes + 1))
+                    eliminations.append(info['episode']['elimination'])
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
                     eliminationmean = eliminationmean * ema + (1 - ema) * info['episode']['elimination']
@@ -241,7 +244,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         buildtotal[build] += count
                     completed_episodes += 1
 
-        average_cost_modifier = adr.adjust(buildtotal)
+        average_cost_modifier = adr.adjust(buildtotal, np.array(eliminations).mean() if len(eliminations) > 0 else None)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -370,6 +373,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'rewmean': rewmean,
             'rewstd': rewstd,
             'average_cost_modifier': average_cost_modifier,
+            'hardness': adr.hardness,
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count

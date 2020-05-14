@@ -3,7 +3,7 @@ import math
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Union
 import numpy as np
 
 import codecraft
@@ -286,72 +286,6 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
     }
 
 
-def map_smol_standard(randomize: bool, hardness: int):
-    drones = []
-    starting_resources = np.random.randint(0, 8) if randomize else 7
-    if randomize and np.random.uniform(0, 1) < 0.25:
-        for _ in range(2):
-            mstype = np.random.randint(0, 4)
-            if mstype == 0:
-                drones.append(dict(
-                    constructors=2,
-                    storage_modules=2,
-                    resources=2 * starting_resources
-                ))
-            elif mstype == 1:
-                drones.append(dict(
-                    constructors=1,
-                    storage_modules=2,
-                    engines=1,
-                    resources=2 * starting_resources
-                ))
-            elif mstype == 2:
-                drones.append(dict(
-                    constructors=1,
-                    storage_modules=2,
-                    missile_batteries=1,
-                    resources=2 * starting_resources
-                ))
-            elif mstype == 3:
-                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-    else:
-        drones.append(
-            dict(constructors=3,
-                 storage_modules=3,
-                 missile_batteries=3,
-                 shield_generators=1,
-                 resources=10)
-        )
-
-    if randomize:
-        hardness = np.random.randint(0, hardness+1)
-    if hardness == 0:
-        map_width = 2000
-        map_height = 2000
-        mineral_count = 8
-    else:
-        map_width = 2500
-        map_height = 2500
-        mineral_count = 13
-
-    angle = 2 * np.pi * np.random.rand()
-    spawn_x = (map_width // 2 - 100) * np.sin(angle)
-    spawn_y = (map_height // 2 - 100) * np.cos(angle)
-    dcount = len(drones)
-    spawn_offsets = [(
-        40 * np.sin(2 * math.pi * i / dcount),
-        40 * np.cos(2 * math.pi * i / dcount),
-    ) for i in range(dcount)]
-    return {
-        'mapWidth': map_width,
-        'mapHeight': map_height,
-        'minerals': mineral_count * [(3, 25)],
-        'player1Drones': [drone_dict(spawn_x + x, spawn_y + y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)],
-        'player2Drones': [drone_dict(-spawn_x - x, -spawn_y - y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)],
-    }
-
-
 def map_arena(randomize: bool, hardness: int):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
@@ -396,141 +330,148 @@ def map_arena(randomize: bool, hardness: int):
     }
 
 
-def map_standard(randomize: bool, hardness: int):
+def standard_starting_drones(map_height, map_width, randomize):
+    drones = []
+    starting_resources = np.random.randint(0, 8) if randomize else 7
+    if randomize and np.random.uniform(0, 1) < 0.25:
+        for _ in range(2):
+            mstype = np.random.randint(0, 4)
+            if mstype == 0:
+                drones.append(dict(
+                    constructors=2,
+                    storage_modules=2,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 1:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    engines=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 2:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    missile_batteries=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 3:
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+    else:
+        drones.append(
+            dict(constructors=3,
+                 storage_modules=3,
+                 missile_batteries=3,
+                 shield_generators=1,
+                 resources=10)
+        )
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    dcount = len(drones)
+    spawn_offsets = [(
+        40 * np.sin(2 * math.pi * i / dcount),
+        40 * np.cos(2 * math.pi * i / dcount),
+    ) for i in range(dcount)]
+    player1 = [drone_dict(spawn_x + x, spawn_y + y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    player2 = [drone_dict(-spawn_x - x, -spawn_y - y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    return player1, player2
+
+
+def map_smol_standard(randomize: bool, hardness: int):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
-    minerals = None
     if hardness == 0:
-        map_width = 1000
-        map_height = 1000
-        mineral_count = 2
-    elif hardness == 1:
         map_width = 2000
-        map_height = 1500
-        mineral_count = 3
-    elif hardness == 2:
-        map_width = 3000
         map_height = 2000
-        mineral_count = 6
-    elif hardness == 3:
-        map_width = 4000
-        map_height = 2500
         mineral_count = 8
-    elif hardness == 4:
-        map_width = 5000
-        map_height = 3000
-        mineral_count = 10
     else:
-        map_width = 6000
-        map_height = 4000
-        minerals = [
-            (10, 10),
-            (10, 10),
-            (7, 20),
-            (7, 20),
-            (5, 30),
-            (5, 30),
-            (5, 50),
-            (5, 70),
-            (5, 100),
-        ]
+        map_width = 2500
+        map_height = 2500
+        mineral_count = 13
+
+    player1, player2 = standard_starting_drones(map_height, map_width, randomize)
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': mineral_count * [(3, 25)],
+        'player1Drones': player1,
+        'player2Drones': player2,
+    }
+
+
+def map_standard(randomize: bool, hardness: Union[int, float]):
+    if randomize:
+        area = math.sqrt(np.random.uniform(1, (2 + hardness) * (2 + hardness)))
+    minerals = None
+
+    if randomize:
+        eligible = [(x, y)
+                    for y in range(1, 20)
+                    for x in range(y, y * 2 + 1)
+                    if x * y <= area <= x * y * 2]
+        x, y = eligible[np.random.randint(0, len(eligible))]
+        map_width = 500 * x
+        map_height = 500 * y
+        mineral_count = int(2 * math.sqrt(area))
+    else:
+        assert(type(hardness) is int)
+        if hardness == 0:
+            # AREA: 4. density: 1/2
+            map_width = 1000
+            map_height = 1000
+            mineral_count = 2
+        elif hardness == 1:
+            # AREA: 12, density: 1/4
+            map_width = 2000
+            map_height = 1500
+            mineral_count = 3
+        elif hardness == 2:
+            # AREA: 24, density: 1/4
+            map_width = 3000
+            map_height = 2000
+            mineral_count = 6
+        elif hardness == 3:
+            # AREA: 40, density: 1/5
+            map_width = 4000
+            map_height = 2500
+            mineral_count = 8
+        elif hardness == 4:
+            # AREA: 60, density: 1/6
+            map_width = 5000
+            map_height = 3000
+            mineral_count = 10
+        else:
+            # AREA: 96
+            # Resources: 2 + 2 + ~3 + ~3 + 3 + 3 + 5 + 7 + 10 = 50
+            # Density: ~1/2 (but much sparser?)
+            # Actually resource generation code is complicated and nonlinear, smaller minerals are overweighted no idea what actual densities are.
+            map_width = 6000
+            map_height = 4000
+            minerals = [
+                (10, 10),
+                (10, 10),
+                (7, 20),
+                (7, 20),
+                (5, 30),
+                (5, 30),
+                (5, 50),
+                (5, 70),
+                (5, 100),
+            ]
     if minerals is None:
         minerals = mineral_count * [(1, 50)]
 
-    angle = 2 * np.pi * np.random.rand()
-    spawn_x = (map_width // 2.2) * np.sin(angle)
-    spawn_y = (map_height // 2.2) * np.cos(angle)
-    if randomize:
-        d = np.random.randint(0, 7)
-        res = np.random.randint(0, 8)
-    else:
-        d = 7
-        res = 7
-    if d == 0:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            missile_batteries=3,
-            engines=2,
-            resources=3*res)
-    elif d == 1:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            missile_batteries=3,
-            engines=2,
-            resources=3*res)
-    elif d == 2:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            missile_batteries=1,
-            engines=3,
-            shield_generators=1,
-            resources=3*res)
-    elif d == 3:
-        drone = dict(
-            constructors=2,
-            storage_modules=3,
-            missile_batteries=3,
-            shield_generators=1,
-            engines=1,
-            resources=3*res)
-    elif d == 4:
-        drone = dict(
-            constructors=3,
-            storage_modules=4,
-            shield_generators=1,
-            engines=2,
-            resources=4*res)
-    elif d == 5:
-        drone = dict(
-            constructors=3,
-            storage_modules=4,
-            missile_batteries=1,
-            engines=2,
-            resources=4*res)
-    elif d == 6:
-        drone = dict(
-            constructors=3,
-            storage_modules=4,
-            engines=3,
-            resources=4*res)
-    else:
-        drone = dict(
-            constructors=3,
-            storage_modules=3,
-            missile_batteries=3,
-            shield_generators=1,
-            resources=3*res)
-
-    dextra = np.random.randint(0, 7)
-    if dextra == 0:
-        extra_drone = dict(constructors=2, storage_modules=2, resources=14)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
-    elif dextra == 1:
-        extra_drone = dict(constructors=1, storage_modules=2, missile_batteries=1, resources=14)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
-    elif dextra == 2:
-        extra_drone = dict(constructors=1, storage_modules=1, resources=7)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
-    elif dextra == 3:
-        extra_drone = dict(storage_modules=1, resources=7)
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone), drone_dict(spawn_x + 90, spawn_y, **extra_drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone), drone_dict(-spawn_x - 90, -spawn_y, **extra_drone)]
-    else:
-        player1drones = [drone_dict(spawn_x, spawn_y, **drone)]
-        player2drones = [drone_dict(-spawn_x, -spawn_y, **drone)]
-
+    player1, player2 = standard_starting_drones(map_height, map_width, randomize)
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
         'minerals': minerals,
-        'player1Drones': player1drones,
-        'player2Drones': player2drones,
+        'player1Drones': player1,
+        'player2Drones': player2,
     }
 
 
