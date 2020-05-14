@@ -3,38 +3,42 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, stepsize=0.05):
+    def __init__(self, stepsize=0.05, warmup=40):
         self.ruleset = Rules(
-            cost_modifier_size=[1.2, 1.0, 0.8, 0.6],
+            cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
             cost_modifier_storage=0.8,
             cost_modifier_engines=0.8,
             cost_modifier_shields=0.7,
             cost_modifier_constructor=0.5,
         )
         self.target_fractions = normalize({
-            '1m': 12.0,
+            '1m': 20.0,
             '1s': 2.0,
-            '1m1p': 4.0,
-            '2m': 2.0,
-            '1s1c': 2.0,
-            '2m1e1p': 2.0,
-            '3m1p': 2.0,
-            '2m2p': 2.0,
-            '2s2c': 2.0,
-            '2s1c1e': 2.0,
-            '2s1m1c': 2.0,
+            '1m1p': 6.0,
+            '2m': 1.0,
+            '1s1c': 1.0,
+            '2m1e1p': 1.0,
+            '3m1p': 1.0,
+            '2m2p': 1.0,
+            '2s2c': 1.0,
+            '2s1c1e': 1.0,
+            '2s1m1c': 1.0,
         })
         self.target_modifier = 0.8
         self.stepsize = stepsize
+        self.warmup = warmup
+        self.step = 0
 
-    def step(self, counts) -> float:
+    def adjust(self, counts) -> float:
+        self.step += 1
+        stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
         for build, bfraction in normalize(counts).items():
             loss = self.target_fractions[build] - bfraction
             for module, mfraction in module_norm(build).items():
-                gradient[module] += mfraction * loss * self.stepsize
+                gradient[module] += mfraction * loss * stepsize
             # Size is less important predictor of utility than modules, adjust by 0.3
-            gradient[f'size{size(build)}'] += 0.3 * loss * self.stepsize
+            gradient[f'size{size(build)}'] += 0.3 * loss * stepsize
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in counts.items()})
         average_modifier = 0.0
@@ -54,7 +58,7 @@ class ADR:
             size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
             average_modifier += modifier * size_modifier * bfraction
 
-        average_cost_grad = (self.target_modifier - average_modifier) * self.stepsize
+        average_cost_grad = (self.target_modifier - average_modifier) * stepsize
         for key, grad in gradient.items():
             multiplier = (1.0 - grad) * (1.0 + average_cost_grad)
             if key == 'm':

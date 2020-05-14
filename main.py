@@ -241,7 +241,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         buildtotal[build] += count
                     completed_episodes += 1
 
-        average_cost_modifier = adr.step(buildtotal)
+        average_cost_modifier = adr.adjust(buildtotal)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)

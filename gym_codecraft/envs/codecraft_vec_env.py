@@ -287,16 +287,43 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
 
 
 def map_smol_standard(randomize: bool, hardness: int):
-    ms = dict(constructors=3,
-              storage_modules=3,
-              missile_batteries=3,
-              shield_generators=1,
-              resources=10)
-    ms2 = ms.copy()
-    if randomize:
-        imbalance = np.random.randint(-10, 11)
-        ms['resources'] += imbalance
-        ms2['resources'] -= imbalance
+    drones = []
+    starting_resources = np.random.randint(0, 8) if randomize else 7
+    if randomize and np.random.uniform(0, 1) < 0.25:
+        for _ in range(2):
+            mstype = np.random.randint(0, 4)
+            if mstype == 0:
+                drones.append(dict(
+                    constructors=2,
+                    storage_modules=2,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 1:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    engines=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 2:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    missile_batteries=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 3:
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+    else:
+        drones.append(
+            dict(constructors=3,
+                 storage_modules=3,
+                 missile_batteries=3,
+                 shield_generators=1,
+                 resources=10)
+        )
+
     if randomize:
         hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
@@ -311,12 +338,17 @@ def map_smol_standard(randomize: bool, hardness: int):
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
     spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    dcount = len(drones)
+    spawn_offsets = [(
+        40 * np.sin(2 * math.pi * i / dcount),
+        40 * np.cos(2 * math.pi * i / dcount),
+    ) for i in range(dcount)]
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
         'minerals': mineral_count * [(3, 25)],
-        'player1Drones': [drone_dict(spawn_x, spawn_y, **ms)],
-        'player2Drones': [drone_dict(-spawn_x, -spawn_y, **ms2)],
+        'player1Drones': [drone_dict(spawn_x + x, spawn_y + y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)],
+        'player2Drones': [drone_dict(-spawn_x - x, -spawn_y - y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)],
     }
 
 
