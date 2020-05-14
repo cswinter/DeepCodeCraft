@@ -143,33 +143,37 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 40e6
+        hps.steps = 50e6
 
-        hps.agents = 10
+        hps.agents = 8
         hps.nenemy = 10
         hps.nally = 10
         hps.nmineral = 5
-        hps.ntile = 5
+        hps.ntile = 0
 
         hps.obs_allies = 15
         hps.obs_enemies = 15
 
+        hps.win_bonus = 2
+        hps.vf_coef = 0.5
+        hps.rule_rng_fraction = 1.0
+        hps.rule_rng_amount = 1.0
+        hps.adr = True
+        hps.gamma = 0.999
+        hps.entropy_bonus = 0.01
+        hps.entropy_bonus_schedule = '15e6:0.003,40e6:0.001'
+
         hps.batches_per_update = 1
+        hps.batches_per_update_schedule = '20e6:2,35e6:4,45e6:8'
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
-        hps.num_self_play = 32
+        hps.num_self_play = 30
 
-        hps.eval_envs = 128
-        hps.eval_frequency = 5e6
-        hps.eval_timesteps = 2000
         hps.model_save_frequency = 1
-
-        hps.gamma = 0.997
-        hps.entropy_bonus = 0.001
-
-        hps.symmetric_map = True
-        hps.task_hardness = 4
+        hps.eval_envs = 256
+        hps.eval_frequency = 2.5e6
+        hps.eval_timesteps = 2000
 
         return hps
 
