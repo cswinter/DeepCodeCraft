@@ -131,11 +131,11 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
     if targets is not None:
         def rnd(target):
             if target > 1:
-                return np.random.uniform(1.0, target)
+                return 2 ** np.random.uniform(0.0, np.log2(target))
             else:
-                return np.random.uniform(target, 1.0)
+                return 2 ** np.random.uniform(np.log2(target), 0.0)
         return Rules(
-            mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
+            mothership_damage_multiplier=rnd(8 * rnd_msdm),
             cost_modifier_size=list(map(rnd, targets.cost_modifier_size)),
             cost_modifier_constructor=rnd(targets.cost_modifier_constructor),
             cost_modifier_missiles=rnd(targets.cost_modifier_missiles),
@@ -410,7 +410,7 @@ def map_standard(randomize: bool, hardness: Union[int, float]):
         if is_eval:
             hardness = np.random.randint(0, hardness+1)
         else:
-            area = math.sqrt(np.random.uniform(1, (2 + hardness) ** 2))
+            area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
     minerals = None
 
     if randomize and not is_eval:
