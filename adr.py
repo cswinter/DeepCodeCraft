@@ -28,8 +28,8 @@ class ADR:
         self.step = 0
 
         self.hardness = 0.0
-        self.stepsize_hardness = 0.5
-        self.target_elimination_rate = 0.45
+        self.stepsize_hardness = 10
+        self.target_elimination_rate = 0.95
 
     def adjust(self, counts, elimination_rate) -> float:
         self.step += 1

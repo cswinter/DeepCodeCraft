@@ -233,10 +233,14 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
                 for info in infos:
                     ema = 0.95 * (1 - 1 / (completed_episodes + 1))
-                    eliminations.append(info['episode']['elimination'])
+
+                    win_by_elimination = 1 if info['episode']['outcome'] in [-1, 1] else 0
+                    eliminations.append(win_by_elimination)
+                    eliminationmean = eliminationmean * ema + (1 - ema) * win_by_elimination
+
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
-                    eliminationmean = eliminationmean * ema + (1 - ema) * info['episode']['elimination']
+
                     builds = info['episode']['builds']
                     for build in set().union(builds.keys(), buildmean.keys()):
                         count = builds[build]
@@ -253,10 +257,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
             policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
 
         all_rewards = np.array(all_rewards) * hps.rewscale
+        w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
+        rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+        rewstd = all_rewards.std() * (1 - w) + rewstd * w
         if hps.rewnorm:
-            w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
-            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
-            rewstd = all_rewards.std() * (1 - w) + rewstd * w
             all_rewards = all_rewards / rewstd - rewmean
 
         all_returns = np.zeros(len(all_rewards), dtype=np.float32)

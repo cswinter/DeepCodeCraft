@@ -832,6 +832,7 @@ class CodeCraftVecEnv(object):
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
             winner = obs[stride * num_envs + i * obs_config.nonobs_features()]
+            outcome = 0
             elimination_win = 0
             if self.objective.vs():
                 allied_score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1]
@@ -844,6 +845,11 @@ class CodeCraftVecEnv(object):
                 if winner > 0 and enemy_score == 0:
                     score += self.win_bonus
                     elimination_win = 1
+                if winner > 0:
+                    if enemy_score + allied_score == 0:
+                        outcome = 0
+                    else:
+                        outcome = (allied_score - enemy_score) / (enemy_score + allied_score)
                 if self.attac > 0:
                     score -= self.attac * min_enemy_ms_health
                 if self.protec > 0:
@@ -914,6 +920,7 @@ class CodeCraftVecEnv(object):
                     'score': self.score[game],
                     'elimination': elimination_win,
                     'builds': self.performed_builds[game],
+                    'outcome': outcome,
                 }})
                 self.eplen[game] = 1
                 self.eprew[game] = 0
