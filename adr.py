@@ -10,7 +10,7 @@ class ADR:
             cost_modifier_constructor=0.5,
         )
         self.target_fractions = normalize({
-            '1m': 20.0,
+            '1m': 15.0,
             '1s': 2.0,
             '1m1p': 6.0,
             '2m': 1.0,

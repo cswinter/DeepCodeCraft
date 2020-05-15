@@ -404,11 +404,16 @@ def map_smol_standard(randomize: bool, hardness: int):
 
 
 def map_standard(randomize: bool, hardness: Union[int, float]):
+    # special case conditions for eval that was previously used to get comparable results
+    is_eval = isinstance(hardness, int)
     if randomize:
-        area = math.sqrt(np.random.uniform(1, (2 + hardness) * (2 + hardness)))
+        if is_eval:
+            hardness = np.random.randint(0, hardness+1)
+        else:
+            area = math.sqrt(np.random.uniform(1, (2 + hardness) ** 2))
     minerals = None
 
-    if randomize:
+    if randomize and not is_eval:
         eligible = [(x, y)
                     for y in range(1, 20)
                     for x in range(y, y * 2 + 1)
@@ -416,9 +421,9 @@ def map_standard(randomize: bool, hardness: Union[int, float]):
         x, y = eligible[np.random.randint(0, len(eligible))]
         map_width = 500 * x
         map_height = 500 * y
-        mineral_count = int(2 * math.sqrt(area))
+        mineral_count = int(3 * math.sqrt(area))
     else:
-        assert(type(hardness) is int)
+        assert(isinstance(hardness, int))
         if hardness == 0:
             # AREA: 4. density: 1/2
             map_width = 1000
