@@ -28,10 +28,20 @@ class ADR:
         self.step = 0
 
         self.hardness = 0.0
-        self.stepsize_hardness = 25
+        self.stepsize_hardness = 0.002
         self.target_elimination_rate = 0.97
 
-    def adjust(self, counts, elimination_rate) -> float:
+    def target_eplenmean(self):
+        if self.hardness < 25:
+            return 225 + 5 * self.hardness
+        elif self.hardness < 50:
+            return 350 + 4 * (self.hardness - 25)
+        elif self.hardness < 125:
+            return 450 + 2 * (self.hardness - 50)
+        else:
+            return 600
+
+    def adjust(self, counts, elimination_rate, eplenmean) -> float:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
@@ -82,8 +92,9 @@ class ADR:
             if key == 'size4':
                 self.ruleset.cost_modifier_size[3] *= multiplier
 
-        if elimination_rate is not None:
-            self.hardness = max(0.0, self.hardness - self.stepsize_hardness * (self.target_elimination_rate - elimination_rate))
+        if eplenmean is not None:
+            self.hardness += self.stepsize_hardness * (self.target_eplenmean() - eplenmean)
+            self.hardness = max(0.0, self.hardness)
 
         return average_modifier
 

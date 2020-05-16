@@ -844,8 +844,9 @@ class CodeCraftVecEnv(object):
                 score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
                 if winner > 0 and enemy_score == 0:
                     score += self.win_bonus
-                    elimination_win = 1
                 if winner > 0:
+                    if enemy_score == 0 or allied_score == 0:
+                        elimination_win = 1
                     if enemy_score + allied_score == 0:
                         outcome = 0
                     else:

@@ -61,21 +61,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     next_model_save = hps.model_save_frequency
 
-    obs_config = ObsConfig(
-        allies=hps.obs_allies,
-        drones=hps.obs_allies + hps.obs_enemies,
-        minerals=hps.obs_minerals,
-        tiles=hps.obs_map_tiles,
-        global_drones=hps.obs_enemies if hps.use_privileged else 0,
-        relative_positions=False,
-        feat_last_seen=hps.feat_last_seen,
-        feat_is_visible=hps.feat_is_visible,
-        feat_map_size=hps.feat_map_size,
-        feat_abstime=hps.feat_abstime,
-        v2=True,
-        feat_rule_msdm=hps.rule_rng_fraction > 0 or hps.adr,
-        feat_rule_costs=hps.rule_cost_rng > 0 or hps.adr,
-    )
+    obs_config = obs_config_from(hps)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
@@ -234,9 +220,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 for info in infos:
                     ema = 0.95 * (1 - 1 / (completed_episodes + 1))
 
-                    win_by_elimination = 1 if info['episode']['outcome'] in [-1, 1] else 0
-                    eliminations.append(win_by_elimination)
-                    eliminationmean = eliminationmean * ema + (1 - ema) * win_by_elimination
+                    decided_by_elimination = info['episode']['elimination']
+                    eliminations.append(decided_by_elimination)
+                    eliminationmean = eliminationmean * ema + (1 - ema) * decided_by_elimination
 
                     eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
                     eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
@@ -248,8 +234,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         buildtotal[build] += count
                     completed_episodes += 1
 
-
-        average_cost_modifier = adr.adjust(buildtotal, np.array(eliminations).mean() if len(eliminations) > 0 else None)
+        elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
+        average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -360,6 +346,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'throughput': throughput,
             'eprewmean': eprewmean,
             'eplenmean': eplenmean,
+            'target_eplenmean': adr.target_eplenmean(),
             'eliminationmean': eliminationmean,
             'entropy': sum(entropies) / len(entropies) / np.log(2),
             'explained variance': explained_var,
@@ -537,9 +524,9 @@ def eval(policy,
             index = info['episode']['index']
             score = info['episode']['score']
             length = info['episode']['l']
-            elimination = info['episode']['elimination']
+            elimination_win = 1 if info['episode']['outcome'] == 1 else 0
             scores.append(score)
-            eliminations.append(elimination)
+            eliminations.append(elimination_win)
             lengths.append(length)
             for name, opp in opponents.items():
                 if index + 1 in opp['envs']:
@@ -581,12 +568,8 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
     torch.save(model, model_path)
 
 
-def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
-    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name), map_location=device)
-    version = checkpoint.get('policy_version')
-    kwargs = checkpoint['model_kwargs']
-    if hps:
-        kwargs['obs_config'] = ObsConfig(
+def obs_config_from(hps: HyperParams) -> ObsConfig:
+    return ObsConfig(
             allies=hps.obs_allies,
             drones=hps.obs_allies + hps.obs_enemies,
             minerals=hps.obs_minerals,
@@ -598,7 +581,17 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             feat_map_size=hps.feat_map_size,
             feat_abstime=hps.feat_abstime,
             v2=True,
+            feat_rule_msdm=hps.rule_rng_fraction > 0 or hps.adr,
+            feat_rule_costs=hps.rule_cost_rng > 0 or hps.adr,
         )
+
+
+def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
+    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name), map_location=device)
+    version = checkpoint.get('policy_version')
+    kwargs = checkpoint['model_kwargs']
+    if hps:
+        kwargs['obs_config'] = obs_config_from(hps)
     if version == 'transformer_v2':
         kwargs['obs_config'].tiles = 0
         policy = TransformerPolicy2(**kwargs)
