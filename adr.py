@@ -3,7 +3,7 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, stepsize=0.05, warmup=100):
+    def __init__(self, hstepsize, stepsize=0.05, warmup=100):
         self.ruleset = Rules(
             cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
             cost_modifier_engines=0.7,
@@ -28,18 +28,20 @@ class ADR:
         self.step = 0
 
         self.hardness = 0.0
-        self.stepsize_hardness = 0.002
+        self.stepsize_hardness = hstepsize
         self.target_elimination_rate = 0.97
 
     def target_eplenmean(self):
+        if self.hardness < 15:
+            return 250 + 10 * self.hardness
         if self.hardness < 25:
-            return 225 + 5 * self.hardness
+            return 400 + 5 * (self.hardness - 15)
         elif self.hardness < 50:
-            return 350 + 4 * (self.hardness - 25)
+            return 450 + 4 * (self.hardness - 25)
         elif self.hardness < 125:
-            return 450 + 2 * (self.hardness - 50)
+            return 550 + 2 * (self.hardness - 50)
         else:
-            return 600
+            return 700
 
     def adjust(self, counts, elimination_rate, eplenmean) -> float:
         self.step += 1

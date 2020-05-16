@@ -116,10 +116,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
-    adr = ADR()
+    adr = ADR(hstepsize=hps.adr_hstepsize)
     rewmean = 0.0
     rewstd = 1.0
-    average_cost_modifier = 1.0
     while total_steps < hps.steps + resume_steps:
         if len(num_self_play_schedule) > 0 and num_self_play_schedule[-1][0] <= total_steps:
             _, num_self_play = num_self_play_schedule.pop()
