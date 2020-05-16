@@ -435,10 +435,10 @@ def eval(policy,
             }
         elif objective == envs.Objective.STANDARD:
             opponents = {
-                'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
+                'beta': {'model_file': 'standard/wandering-eon-50M.pt'},
             }
             randomize = True
-            hardness = 4
+            hardness = 5
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
