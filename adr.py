@@ -32,16 +32,14 @@ class ADR:
         self.target_elimination_rate = 0.97
 
     def target_eplenmean(self):
-        if self.hardness < 15:
-            return 250 + 10 * self.hardness
         if self.hardness < 25:
-            return 400 + 5 * (self.hardness - 15)
+            return 250 + 6 * self.hardness
         elif self.hardness < 50:
-            return 450 + 4 * (self.hardness - 25)
-        elif self.hardness < 125:
-            return 550 + 2 * (self.hardness - 50)
+            return 400 + 4 * (self.hardness - 25)
+        elif self.hardness < 100:
+            return 500 + 2 * (self.hardness - 50)
         else:
-            return 700
+            return 600
 
     def adjust(self, counts, elimination_rate, eplenmean) -> float:
         self.step += 1
