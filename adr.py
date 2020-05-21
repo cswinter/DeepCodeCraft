@@ -3,7 +3,7 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, hstepsize, stepsize=0.05, warmup=100):
+    def __init__(self, hstepsize, stepsize=0.05, warmup=100, initial_hardness=0.0):
         self.ruleset = Rules(
             cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
             cost_modifier_engines=0.7,

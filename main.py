@@ -84,8 +84,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.resume_from == '':
         policy = TransformerPolicy6(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
+        adr = ADR(hstepsize=hps.adr_hstepsize)
     else:
-        policy, optimizer, resume_steps = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
+        policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
+
 
     lr_scheduler = None
     if hps.warmup > 0:
@@ -116,7 +118,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
-    adr = ADR(hstepsize=hps.adr_hstepsize)
     rewmean = 0.0
     rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
@@ -553,7 +554,7 @@ def eval(policy,
     env.close()
 
 
-def save_policy(policy, out_dir, total_steps, optimizer=None):
+def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
     model_path = os.path.join(out_dir, f'model-{total_steps}.pt')
     print(f'Saving policy to {model_path}')
     model = {
@@ -564,6 +565,8 @@ def save_policy(policy, out_dir, total_steps, optimizer=None):
     }
     if optimizer:
         model['optimizer_state_dict'] = optimizer.state_dict()
+    if adr:
+        model['adr_state_dict'] = {'hardness': adr.hardness}
     torch.save(model, model_path)
 
 
@@ -624,7 +627,12 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         else:
             logger.warning(f'Failed to restore optimizer state: No `optimizer_state_dict` in saved model.')
 
-    return policy, optimizer, checkpoint.get('total_steps', 0)
+    hardness = None
+    if 'adr_state_dict' in checkpoint:
+        hardness = checkpoint['adr_state_dict']['hardness']
+    adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness)
+
+    return policy, optimizer, checkpoint.get('total_steps', 0), adr
 
 
 def explained_variance(ypred,y):
