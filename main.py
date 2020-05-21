@@ -479,7 +479,7 @@ def eval(policy,
     partitions = [(policy_envs, policy.obs_config)]
     i = 0
     for name, opp in opponents.items():
-        opp_policy, _, _ = load_policy(opp['model_file'], device)
+        opp_policy, _, _, _ = load_policy(opp['model_file'], device)
         opp_policy.eval()
         opp['policy'] = opp_policy
         opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
@@ -627,10 +627,12 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         else:
             logger.warning(f'Failed to restore optimizer state: No `optimizer_state_dict` in saved model.')
 
-    hardness = None
-    if 'adr_state_dict' in checkpoint:
-        hardness = checkpoint['adr_state_dict']['hardness']
-    adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness)
+    adr = None
+    if hps is not None:
+        hardness = None
+        if 'adr_state_dict' in checkpoint:
+            hardness = checkpoint['adr_state_dict']['hardness']
+        adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness)
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
 
