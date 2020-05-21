@@ -24,6 +24,8 @@ class ObsConfig:
     v2: bool = False
     feat_rule_msdm: bool = False
     feat_rule_costs: bool = False
+    feat_mineral_claims: bool = False
+    harvest_action: bool = False
 
     def global_features(self):
         gf = 2
@@ -46,7 +48,7 @@ class ObsConfig:
         return ds
 
     def mstride(self):
-        return 3
+        return 4 if self.feat_mineral_claims else 3
 
     def tstride(self):
         return 4
@@ -813,7 +815,8 @@ class CodeCraftVecEnv(object):
         rews = []
         dones = []
         infos = []
-        obs = codecraft.observe_batch_raw(games,
+        obs = codecraft.observe_batch_raw(obs_config,
+                                          games,
                                           allies=obs_config.allies,
                                           drones=obs_config.drones,
                                           minerals=obs_config.minerals,

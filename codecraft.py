@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from typing import List
-from gym_codecraft.envs.codecraft_vec_env import Rules
+from gym_codecraft.envs.codecraft_vec_env import Rules, ObsConfig
 
 
 RETRIES = 100
@@ -115,7 +115,8 @@ def scalabool(b: bool) -> str:
     return 'true' if b else 'false'
 
 
-def observe_batch_raw(game_ids: object,
+def observe_batch_raw(obsConfig: ObsConfig,
+                      game_ids: object,
                       allies: object,
                       drones: object,
                       minerals: object,
@@ -145,6 +146,8 @@ def observe_batch_raw(game_ids: object,
         f'abstime={"true" if abstime else "false"}&' \
         f'mapSize={"true" if map_size else "false"}&' \
         f'v2={"true" if v2 else "false"}&' \
+        f'mineralClaims={scalabool(obsConfig.feat_mineral_claims)}&' \
+        f'harvestAction={scalabool(obsConfig.harvest_action)}&' \
         f'ruleMsdm={scalabool(rule_msdm)}&' \
         f'ruleCosts={scalabool(rule_costs)}' + ebcstr
     while retries > 0:

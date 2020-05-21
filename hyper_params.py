@@ -61,6 +61,8 @@ class HyperParams:
         self.feat_last_seen = False   # Remember last position/time each enemy was seen + missile cooldown feat
         self.feat_is_visible = True   # Feature for whether drone is currently visible
         self.feat_abstime = True      # Global features for absolute remaining/elapsed number of timesteps
+        self.feat_mineral_claims = False   # Feature for whether another drone is currently harvesting a mineral
+        self.harvest_action = False   # Harvest action that will freeze drone until one resource has been harvested
 
         # Eval
         self.eval_envs = 256
