@@ -335,7 +335,7 @@ def map_arena(randomize: bool, hardness: int):
 def standard_starting_drones(map_height, map_width, randomize):
     drones = []
     starting_resources = np.random.randint(0, 8) if randomize else 7
-    if randomize and np.random.uniform(0, 1) < 0.25:
+    if randomize and np.random.uniform(0, 1) < 0.70:
         for _ in range(2):
             mstype = np.random.randint(0, 4)
             if mstype == 0:

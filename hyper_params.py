@@ -107,7 +107,7 @@ class HyperParams:
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
         self.adr = False      # Automatically adjust environment rules
-        self.adr_hstepsize = 0.001
+        self.adr_hstepsize = 0.0002
 
 
     @staticmethod
@@ -152,10 +152,13 @@ class HyperParams:
         hps.nenemy = 10
         hps.nally = 10
         hps.nmineral = 5
-        hps.ntile = 0
+        hps.ntile = 3
 
         hps.obs_allies = 15
         hps.obs_enemies = 15
+        hps.feat_last_seen = True
+        hps.feat_mineral_claims = True
+        hps.harvest_action = True
 
         hps.win_bonus = 2
         hps.vf_coef = 0.5
@@ -171,7 +174,7 @@ class HyperParams:
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
-        hps.num_self_play = 30
+        hps.num_self_play = 32
 
         hps.model_save_frequency = 1
         hps.eval_envs = 256
