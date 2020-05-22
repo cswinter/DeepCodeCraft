@@ -63,7 +63,7 @@ def act(game_id: int, action):
             time.sleep(1)
 
 
-def act_batch(actions, disable_harvest: bool = False):
+def act_batch(actions):
     payload = {}
     for game_id, player_id, player_actions in actions:
         player_actions_json = []
@@ -71,7 +71,7 @@ def act_batch(actions, disable_harvest: bool = False):
             player_actions_json.append({
                 "buildDrone": buildSpec,
                 "move": move,
-                "harvest": not disable_harvest,#harvest,
+                "harvest": harvest,
                 "transfer": False,
                 "turn": turn,
             })

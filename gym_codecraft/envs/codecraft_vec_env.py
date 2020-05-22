@@ -805,7 +805,7 @@ class CodeCraftVecEnv(object):
                 player_actions2.append((move, turn, build, harvest))
             game_actions.append((game_id, player_id, player_actions2))
 
-        codecraft.act_batch(game_actions, disable_harvest=self.objective == Objective.DISTANCE_TO_CRYSTAL)
+        codecraft.act_batch(game_actions)
 
     def observe(self, env_subset=None, obs_config=None):
         obs_config = obs_config or self.obs_config
