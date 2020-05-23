@@ -27,7 +27,7 @@ class ADR:
         self.warmup = warmup
         self.step = 0
 
-        self.hardness = 0.0
+        self.hardness = initial_hardness
         self.stepsize_hardness = hstepsize
         self.target_elimination_rate = 0.97
 

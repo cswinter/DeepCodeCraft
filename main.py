@@ -629,7 +629,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
 
     adr = None
     if hps is not None:
-        hardness = None
+        hardness = 0.0
         if 'adr_state_dict' in checkpoint:
             hardness = checkpoint['adr_state_dict']['hardness']
         adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness)
