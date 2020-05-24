@@ -171,7 +171,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             next_model_save -= 1
             if next_model_save == 0:
                 next_model_save = hps.model_save_frequency
-                save_policy(policy, out_dir, total_steps, optimizer)
+                save_policy(policy, out_dir, total_steps, optimizer, adr)
 
         episode_start = time.time()
         entropies = []
@@ -394,7 +394,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
              eval_steps=hps.eval_timesteps,
              curr_step=total_steps,
              symmetric=hps.eval_symmetric)
-    save_policy(policy, out_dir, total_steps, optimizer)
+    save_policy(policy, out_dir, total_steps, optimizer, adr)
 
 
 def eval(policy,
