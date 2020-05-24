@@ -3,6 +3,7 @@ import subprocess
 import time
 import os
 from collections import defaultdict
+import dataclasses
 
 import torch
 import torch.optim as optim
@@ -13,7 +14,7 @@ import wandb
 
 from adr import ADR
 from gym_codecraft import envs
-from gym_codecraft.envs.codecraft_vec_env import ObsConfig
+from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
 from hyper_params import HyperParams
 from policy_t2 import TransformerPolicy2, InputNorm
 from policy_t3 import TransformerPolicy3, InputNorm
@@ -567,7 +568,10 @@ def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
     if optimizer:
         model['optimizer_state_dict'] = optimizer.state_dict()
     if adr:
-        model['adr_state_dict'] = {'hardness': adr.hardness}
+        model['adr_state_dict'] = {
+            'hardness': adr.hardness,
+            'rules': dataclasses.asdict(adr.ruleset),
+        }
     torch.save(model, model_path)
 
 
@@ -631,9 +635,13 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     adr = None
     if hps is not None:
         hardness = 0.0
+        ruleset = None
         if 'adr_state_dict' in checkpoint:
-            hardness = checkpoint['adr_state_dict']['hardness']
-        adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness)
+            adr_state = checkpoint['adr_state_dict']
+            hardness = adr_state['hardness']
+            if 'ruleset' in adr_state:
+                ruleset = Rules(**adr_state['ruleset'])
+        adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness, ruleset=ruleset)
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
 

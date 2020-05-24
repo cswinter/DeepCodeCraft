@@ -3,12 +3,14 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, hstepsize, stepsize=0.05, warmup=100, initial_hardness=0.0):
-        self.ruleset = Rules(
-            cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
-            cost_modifier_engines=0.7,
-            cost_modifier_constructor=0.5,
-        )
+    def __init__(self, hstepsize, stepsize=0.05, warmup=100, initial_hardness=0.0, ruleset: Rules = None):
+        if ruleset is None:
+            ruleset = Rules(
+                cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
+                cost_modifier_engines=0.7,
+                cost_modifier_constructor=0.5,
+            )
+        self.ruleset = ruleset
         self.target_fractions = normalize({
             '1m': 15.0,
             '1s': 3.0,
