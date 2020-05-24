@@ -180,7 +180,7 @@ class TransformerPolicy6(nn.Module):
         # We get device-side assert when using fp16 here (needs more investigation)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
         actions = action_dist.sample()
-        entropy = action_dist.entropy()[action_masks.sum(2) != 0]
+        entropy = action_dist.entropy()[action_masks.sum(2) > 1]
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
 
     def backprop(self,
