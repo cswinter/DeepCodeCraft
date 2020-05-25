@@ -639,8 +639,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         if 'adr_state_dict' in checkpoint:
             adr_state = checkpoint['adr_state_dict']
             hardness = adr_state['hardness']
-            if 'ruleset' in adr_state:
-                ruleset = Rules(**adr_state['ruleset'])
+            if 'rules' in adr_state:
+                ruleset = Rules(**adr_state['rules'])
         adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness, ruleset=ruleset)
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
