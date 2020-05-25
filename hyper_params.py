@@ -107,7 +107,7 @@ class HyperParams:
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
         self.adr = False      # Automatically adjust environment rules
-        self.adr_hstepsize = 0.0002
+        self.adr_hstepsize = 0.0005
 
 
     @staticmethod
