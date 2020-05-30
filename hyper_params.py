@@ -95,7 +95,7 @@ class HyperParams:
         self.max_army_size_score = 9999999
         self.max_enemy_army_size_score = 9999999
 
-        # Task
+        # Task/Curriculum
         self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
         self.use_action_masks = True
@@ -107,7 +107,8 @@ class HyperParams:
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
         self.adr = False      # Automatically adjust environment rules
-        self.adr_hstepsize = 0.0005
+        self.adr_hstepsize = 2.0e-6
+        self.linear_hardness = True
 
 
     @staticmethod

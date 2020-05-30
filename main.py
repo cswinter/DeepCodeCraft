@@ -85,7 +85,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.resume_from == '':
         policy = TransformerPolicy6(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
-        adr = ADR(hstepsize=hps.adr_hstepsize)
+        adr = ADR(hstepsize=hps.adr_hstepsize, linear_hardness=hps.linear_hardness)
     else:
         policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
 
@@ -236,7 +236,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     completed_episodes += 1
 
         elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
-        average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean)
+        average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
 
         obs_tensor = torch.tensor(obs).to(device)
         action_masks_tensor = torch.tensor(action_masks).to(device)
@@ -571,6 +571,8 @@ def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
         model['adr_state_dict'] = {
             'hardness': adr.hardness,
             'rules': dataclasses.asdict(adr.ruleset),
+            'max_hardness': adr.max_hardness,
+            'linear_hardness': adr.linear_hardness,
         }
     torch.save(model, model_path)
 
@@ -636,12 +638,24 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
     if hps is not None:
         hardness = 0.0
         ruleset = None
+        linear_hardness = False
+        max_hardness = 200
         if 'adr_state_dict' in checkpoint:
             adr_state = checkpoint['adr_state_dict']
             hardness = adr_state['hardness']
             if 'rules' in adr_state:
                 ruleset = Rules(**adr_state['rules'])
-        adr = ADR(hstepsize=hps.adr_hstepsize, initial_hardness=hardness, ruleset=ruleset)
+            if 'linear_hardness' in adr_state:
+                linear_hardness = adr_state['linear_hardness']
+            if 'max_hardness' in adr_state:
+                max_hardness = adr_state['max_hardness']
+        adr = ADR(
+            hstepsize=hps.adr_hstepsize,
+            initial_hardness=hardness,
+            ruleset=ruleset,
+            linear_hardness=linear_hardness,
+            max_hardness=max_hardness,
+        )
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
 

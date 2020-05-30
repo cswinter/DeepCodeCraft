@@ -3,7 +3,14 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 
 
 class ADR:
-    def __init__(self, hstepsize, stepsize=0.05, warmup=100, initial_hardness=0.0, ruleset: Rules = None):
+    def __init__(self,
+                 hstepsize,
+                 stepsize=0.05,
+                 warmup=100,
+                 initial_hardness=0.0,
+                 ruleset: Rules = None,
+                 linear_hardness: bool = False,
+                 max_hardness: float = 200):
         if ruleset is None:
             ruleset = Rules(
                 cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
@@ -30,6 +37,8 @@ class ADR:
         self.step = 0
 
         self.hardness = initial_hardness
+        self.max_hardness = max_hardness
+        self.linear_hardness = linear_hardness
         self.stepsize_hardness = hstepsize
         self.target_elimination_rate = 0.97
 
@@ -43,7 +52,7 @@ class ADR:
         else:
             return 600
 
-    def adjust(self, counts, elimination_rate, eplenmean) -> float:
+    def adjust(self, counts, elimination_rate, eplenmean, step) -> float:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
@@ -94,9 +103,12 @@ class ADR:
             if key == 'size4':
                 self.ruleset.cost_modifier_size[3] *= multiplier
 
-        if eplenmean is not None:
-            self.hardness += self.stepsize_hardness * (self.target_eplenmean() - eplenmean)
-            self.hardness = max(0.0, self.hardness)
+        if self.linear_hardness:
+            self.hardness = min(step * self.stepsize_hardness, self.max_hardness)
+        else:
+            if eplenmean is not None:
+                self.hardness += self.stepsize_hardness * (self.target_eplenmean() - eplenmean)
+                self.hardness = max(0.0, self.hardness)
 
         return average_modifier
 
