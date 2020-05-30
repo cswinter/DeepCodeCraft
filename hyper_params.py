@@ -168,10 +168,10 @@ class HyperParams:
         hps.adr = True
         hps.gamma = 0.999
         hps.entropy_bonus = 0.01
-        hps.entropy_bonus_schedule = '15e6:0.003,40e6:0.001'
+        hps.entropy_bonus_schedule = '40e6:0.002,80e6:0.0'
 
-        hps.batches_per_update = 1
-        hps.batches_per_update_schedule = '20e6:2,35e6:4,45e6:8'
+        hps.batches_per_update = 4
+        hps.batches_per_update_schedule = '40e6:8,80e6:16'
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
