@@ -67,13 +67,15 @@ def act_batch(actions):
     payload = {}
     for game_id, player_id, player_actions in actions:
         player_actions_json = []
-        for move, turn, buildSpec, harvest in player_actions:
+        for move, turn, buildSpec, harvest, lockBuildAction, unlockBuildAction in player_actions:
             player_actions_json.append({
                 "buildDrone": buildSpec,
                 "move": move,
                 "harvest": harvest,
                 "transfer": False,
                 "turn": turn,
+                "lockBuildAction": lockBuildAction,
+                "unlockBuildAction": unlockBuildAction
             })
         payload[f'{game_id}.{player_id}'] = player_actions_json
 
@@ -149,7 +151,8 @@ def observe_batch_raw(obsConfig: ObsConfig,
         f'mineralClaims={scalabool(obsConfig.feat_mineral_claims)}&' \
         f'harvestAction={scalabool(obsConfig.harvest_action)}&' \
         f'ruleMsdm={scalabool(rule_msdm)}&' \
-        f'ruleCosts={scalabool(rule_costs)}' + ebcstr
+        f'ruleCosts={scalabool(rule_costs)}&' \
+        f'lockBuildAction={scalabool(obsConfig.lock_build_action)}' + ebcstr
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:
@@ -187,7 +190,7 @@ def one_hot_to_action(action):
     return {
         "buildDrone": build,
         "move": move,
-        "harvest": True,
+        "harvest": harvest,
         "transfer": False,
         "turn": turn,
     }

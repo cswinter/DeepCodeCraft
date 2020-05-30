@@ -26,6 +26,7 @@ class ObsConfig:
     feat_rule_costs: bool = False
     feat_mineral_claims: bool = False
     harvest_action: bool = False
+    lock_build_action: bool = False
 
     def global_features(self):
         gf = 2
@@ -44,6 +45,8 @@ class ObsConfig:
         if self.feat_last_seen:
             ds += 2
         if self.feat_is_visible:
+            ds += 1
+        if self.lock_build_action:
             ds += 1
         return ds
 
@@ -86,6 +89,11 @@ class ObsConfig:
     def endallenemies(self):
         return self.endtiles() + self.dstride() * self.enemies()
 
+    def extra_actions(self):
+        if self.lock_build_action:
+            return 2
+        else:
+            return 0
 
 DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
 
@@ -688,7 +696,7 @@ class CodeCraftVecEnv(object):
             self.game_length = 2 * 60 * 60
             self.custom_map = map_scout
         self.build_costs = [sum(modules) for modules in self.builds]
-        self.naction = 8 + len(self.builds)
+        self.base_naction = 8 + len(self.builds)
 
         self.mix_mp = mix_mp
         self.game_count = 0
@@ -772,6 +780,8 @@ class CodeCraftVecEnv(object):
                 harvest = False
                 turn = 0
                 build = []
+                lockBuildAction = False
+                unlockBuildAction = False
                 if action == 0 or action == 1 or action == 2:
                     move = True
                 if action == 0 or action == 3:
@@ -782,7 +792,12 @@ class CodeCraftVecEnv(object):
                     build = [[0, 1, 0, 0, 0]]
                 if action == 7:
                     harvest = True
-                if action >= 8:
+                if action >= 8 + len(self.builds) and self.obs_config.lock_build_action:
+                    if action == 8 + len(self.builds):
+                        lockBuildAction = True
+                    elif action == 8 + len(self.builds) + 1:
+                        unlockBuildAction = True
+                elif action >= 8:
                     b = action - 8
                     if b < len(self.builds):
                         build = [self.builds[b]]
@@ -802,7 +817,7 @@ class CodeCraftVecEnv(object):
                     if shield > 0:
                         repr += f'{shield}p'
                     self.performed_builds[i][repr] += 1
-                player_actions2.append((move, turn, build, harvest))
+                player_actions2.append((move, turn, build, harvest, lockBuildAction, unlockBuildAction))
             game_actions.append((game_id, player_id, player_actions2))
 
         codecraft.act_batch(game_actions)
@@ -936,8 +951,9 @@ class CodeCraftVecEnv(object):
 
             rews.append(reward)
 
-        action_mask_elems = self.naction * obs_config.allies * num_envs
-        action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, self.naction)
+        naction = self.base_naction + obs_config.extra_actions()
+        action_mask_elems = naction * obs_config.allies * num_envs
+        action_masks = obs[-action_mask_elems:].reshape(-1, obs_config.allies, naction)
 
         # TODO: merged with other obs, remove completely
         privileged_obs = np.zeros([num_envs, 1])
@@ -947,7 +963,7 @@ class CodeCraftVecEnv(object):
                np.array(dones), \
                infos, \
                action_masks if self.use_action_masks \
-                   else np.ones([num_envs, obs_config.allies, self.naction], dtype=np.float32), \
+                   else np.ones([num_envs, obs_config.allies, naction], dtype=np.float32), \
                privileged_obs
 
     def close(self):
@@ -960,7 +976,7 @@ class CodeCraftVecEnv(object):
             for (game_id, player_id) in self.games:
                 if not done[game_id]:
                     active_games.append((game_id, player_id))
-                    game_actions.append((game_id, player_id, [(False, 0, [], False)]))
+                    game_actions.append((game_id, player_id, [(False, 0, [], False, False, False)]))
             codecraft.act_batch(game_actions)
             obs = codecraft.observe_batch(active_games)
             for o, (game_id, _) in zip(obs, active_games):

@@ -63,6 +63,7 @@ class HyperParams:
         self.feat_abstime = True      # Global features for absolute remaining/elapsed number of timesteps
         self.feat_mineral_claims = False   # Feature for whether another drone is currently harvesting a mineral
         self.harvest_action = False   # Harvest action that will freeze drone until one resource has been harvested
+        self.lock_build_action = False # Pair of actions to disable/enable all build actions
 
         # Eval
         self.eval_envs = 256

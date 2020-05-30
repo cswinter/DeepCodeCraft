@@ -35,7 +35,7 @@ class TransformerPolicy6(nn.Module):
         self.fp16 = hps.fp16
         self.d_agent = hps.d_agent
         self.d_item = hps.d_item
-        self.naction = hps.objective.naction()
+        self.naction = hps.objective.naction() + obs_config.extra_actions()
 
         if hasattr(obs_config, 'global_drones'):
             self.global_drones = obs_config.global_drones
