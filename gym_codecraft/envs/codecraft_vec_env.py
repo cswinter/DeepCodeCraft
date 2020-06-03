@@ -771,8 +771,12 @@ class CodeCraftVecEnv(object):
         game_actions = []
         games = [self.games[env] for env in env_subset] if env_subset else self.games
         for (i, ((game_id, player_id), player_actions)) in enumerate(zip(games, actions)):
+            if action_masks is not None:
+                action_masks_i = action_masks[i]
             player_actions2 = []
             for (drone_index, action) in enumerate(player_actions):
+                if action_masks is not None:
+                    action_masks_drone = action_masks_i[drone_index]
                 # 0-5: turn/movement (4 is no turn, no movement)
                 # 6: build [0,1,0,0,0] drone (if minerals > 5)
                 # 7: harvest
@@ -803,7 +807,7 @@ class CodeCraftVecEnv(object):
                         build = [self.builds[b]]
                     else:
                         build = [[0, 1, 0, 0, 0]]
-                if len(build) > 0 and action_masks is not None and action_masks[i][drone_index][action] == 1.0:
+                if len(build) > 0 and action_masks is not None and action_masks_drone[action] == 1.0:
                     repr = ''
                     [storage, missile, constructor, engine, shield] = build[0]
                     if storage > 0:
