@@ -301,14 +301,15 @@ class TransformerPolicy6(nn.Module):
         globals = globals.view(batch_size, 1, self.obs_config.global_features()) \
             .expand(batch_size, self.agents, self.obs_config.global_features())
         xagent = torch.cat([xagent, globals], dim=2)
+
+        nagents = xagent.size(1)
+
         agent_active = action_masks.sum(2) > 1
-        active_agent_groups = []
-        active_agent_indices = []
-        for b in range(0, batch_size):
-            for a in range(0, xagent.size(1)):
-                if agent_active[b, a] == 1:
-                    active_agent_groups.append(b)
-                    active_agent_indices.append(b * xagent.size(1) + a)
+        flat_agent_active = agent_active.flatten()
+        agent_group = torch.arange(0, batch_size).to(x.device).repeat_interleave(nagents)
+        agent_index = torch.arange(0, batch_size * nagents).to(x.device)
+        active_agent_groups = agent_group[flat_agent_active]
+        active_agent_indices = agent_index[flat_agent_active]
         xagent = xagent[agent_active]
         agents, _, mask_agent = self.agent_embedding(xagent)
 
@@ -425,9 +426,11 @@ class TransformerPolicy6(nn.Module):
             x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x).squeeze(0)
-        output = torch.zeros(batch_size * self.agents, self.d_agent * self.hps.dff_ratio).to(x.device)
-        indices = torch.tensor(active_agent_indices).to(x.device)
-        scatter_add(x, index=indices, dim=0, out=output)
+        if x.is_cuda:
+            output = torch.cuda.FloatTensor(batch_size * self.agents, self.d_agent * self.hps.dff_ratio).fill_(0)
+        else:
+            torch.zeros(batch_size * self.agents, self.d_agent * self.hps.dff_ratio)
+        scatter_add(x, index=active_agent_indices, dim=0, out=output)
         x = output.view(batch_size, self.agents, self.d_agent * self.hps.dff_ratio)
         #x = x * (~mask_agent).float().unsqueeze(-1)
 
@@ -449,8 +452,11 @@ class InputNorm(nn.Module):
         self.register_buffer('mean', torch.zeros(num_features))
         self.register_buffer('squares_sum', torch.zeros(num_features))
         self.fp16 = False
+        self._stddev = None
+        self._dirty = True
 
     def update(self, input, mask):
+        self._dirty = True
         if mask is not None:
             if len(input.size()) == 3:
                 batch_size, nitem, features = input.size()
@@ -460,24 +466,31 @@ class InputNorm(nn.Module):
                 assert (batch_size,) == mask.size()
             else:
                 raise Exception(f'Expecting 3 or 4 dimensions, actual: {len(input.size())}')
-            input = input[mask, :]
+            count = mask.float().sum().item()
+            mask = mask.view(-1).unsqueeze(-1).float()
         else:
             features = input.size()[-1]
-            input = input.reshape(-1, features)
+            count = input.numel() / features
 
-        count = input.numel() / features
         if count == 0:
             return
-        mean = input.mean(dim=0)
+        input = input.reshape(-1, features)
+        mean = input.sum(dim=0) / count
         if self.count == 0:
             self.count += count
             self.mean = mean
-            self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
+            if mask is not None:
+                self.squares_sum = ((input - mean) * (input - mean) * mask).sum(dim=0)
+            else:
+                self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
             self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
-            self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
+            if mask is not None:
+                self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean) * mask).sum(dim=0)
+            else:
+                self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
             self.mean = new_mean
 
     def forward(self, input, mask=None):
@@ -487,14 +500,14 @@ class InputNorm(nn.Module):
             if self.count > 1:
                 input = (input - self.mean) / self.stddev()
             input = torch.clamp(input, -self.cliprange, self.cliprange)
-            if (input == float('-inf')).sum() > 0 \
-                    or (input == float('inf')).sum() > 0 \
-                    or (input != input).sum() > 0:
-                print(input)
-                print(self.squares_sum)
-                print(self.stddev())
-                print(input)
-                raise Exception("OVER/UNDERFLOW DETECTED!")
+            #if (input == float('-inf')).sum() > 0 \
+            #        or (input == float('inf')).sum() > 0 \
+            #        or (input != input).sum() > 0:
+            #    print(input)
+            #    print(self.squares_sum)
+            #    print(self.stddev())
+            #    print(input)
+            #    raise Exception("OVER/UNDERFLOW DETECTED!")
 
         return input.half() if self.fp16 else input
 
@@ -504,9 +517,12 @@ class InputNorm(nn.Module):
         self.fp16 = True
 
     def stddev(self):
-        sd = torch.sqrt(self.squares_sum / (self.count - 1))
-        sd[sd == 0] = 1
-        return sd
+        if self._dirty:
+            sd = torch.sqrt(self.squares_sum / (self.count - 1))
+            sd[sd == 0] = 1
+            self._stddev = sd
+            self._dirty = False
+        return self._stddev
 
 
 class InputEmbedding(nn.Module):
