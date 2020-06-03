@@ -2,6 +2,7 @@ import requests
 import logging
 import time
 
+import orjson
 import numpy as np
 
 from typing import List
@@ -82,7 +83,11 @@ def act_batch(actions):
     retries = 100
     while retries > 0:
         try:
-            requests.post(f'http://localhost:9000/batch-act', json=payload).raise_for_status()
+            requests.post(
+                f'http://localhost:9000/batch-act',
+                data=orjson.dumps(payload),
+                headers={'Content-Type': 'application/json'},
+            ).raise_for_status()
             return
         except requests.exceptions.ConnectionError:
             # For some reason, a small percentage of requests fails with
