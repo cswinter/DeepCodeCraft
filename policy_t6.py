@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
-from torch_scatter import scatter_add
+from torch_scatter import scatter_add, scatter_max
 
 from gather import topk_by
 from multihead_attention import MultiheadAttention
@@ -204,18 +204,8 @@ class TransformerPolicy6(nn.Module):
             old_logprobs = old_logprobs.half()
 
         action_masks = action_masks[:, :self.agents, :]
-        x, (pitems, pmask) = self.latents(obs, privileged_obs, action_masks)
-        batch_size = x.size()[0]
 
-        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.hps.dff_ratio)
-        if self.hps.use_privileged:
-            pitems_max = pitems.max(dim=1).values
-            pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
-            vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
-        values = self.value_head(vin).view(-1)
-
-        logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=2)
+        probs, values = self.forward(obs, privileged_obs, action_masks)
         probs = probs.view(-1, self.agents, self.naction)
 
         # add small value to prevent degenerate probability distribution when no action is possible
@@ -260,9 +250,13 @@ class TransformerPolicy6(nn.Module):
 
     def forward(self, x, x_privileged, action_masks):
         batch_size = x.size()[0]
-        x, (pitems, pmask) = self.latents(x, x_privileged, action_masks)
+        x, indices, groups, (pitems, pmask) = self.latents(x, x_privileged, action_masks)
 
-        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.hps.dff_ratio)
+        if x.is_cuda:
+            vin = torch.cuda.FloatTensor(batch_size, self.d_agent * self.hps.dff_ratio).fill_(0)
+        else:
+            vin = torch.zeros(batch_size, self.d_agent * self.hps.dff_ratio)
+        scatter_max(x, index=groups, dim=0, out=vin)
         if self.hps.use_privileged:
             pitems_max = pitems.max(dim=1).values
             pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
@@ -270,14 +264,16 @@ class TransformerPolicy6(nn.Module):
         values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=2)
 
-        # return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
+        if x.is_cuda:
+            padded_logits = torch.cuda.FloatTensor(batch_size * self.agents, self.naction).fill_(0)
+        else:
+            padded_logits = torch.zeros(batch_size * self.agents, self.naction)
+        scatter_add(logits, index=indices, dim=0, out=padded_logits)
+        padded_logits = padded_logits.view(batch_size, self.agents, self.naction)
+        probs = F.softmax(padded_logits, dim=2)
+
         return probs, values
-
-    def logits(self, x, x_privileged, action_masks):
-        x, x_privileged = self.latents(x, x_privileged, action_masks)
-        return self.policy_head(x)
 
     def latents(self, x, x_privileged, action_masks):
         if self.fp16:
@@ -426,15 +422,8 @@ class TransformerPolicy6(nn.Module):
             x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x).squeeze(0)
-        if x.is_cuda:
-            output = torch.cuda.FloatTensor(batch_size * self.agents, self.d_agent * self.hps.dff_ratio).fill_(0)
-        else:
-            torch.zeros(batch_size * self.agents, self.d_agent * self.hps.dff_ratio)
-        scatter_add(x, index=active_agent_indices, dim=0, out=output)
-        x = output.view(batch_size, self.agents, self.d_agent * self.hps.dff_ratio)
-        #x = x * (~mask_agent).float().unsqueeze(-1)
 
-        return x, (pitems, pmask)
+        return x, active_agent_indices, active_agent_groups, (pitems, pmask)
 
     def param_groups(self):
         # TODO?
