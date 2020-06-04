@@ -400,26 +400,26 @@ class TransformerPolicy6(nn.Module):
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
-        # x = x.view(batch_size, self.agents, self.d_agent)
+        x = x.view(-1, self.d_agent)
 
         if self.hps.nearby_map:
             items = self.norm_map(F.relu(self.downscale(items)))
             items = items * (1 - mask.float().unsqueeze(-1))
-            nearby_map = spatial.spatial_scatter(
-                items=items[:, :, :(self.nitem - self.nconstant - self.ntile), :],
-                positions=relpos[:, :, :self.nitem - self.nconstant - self.ntile],
+            nearby_map = spatial.single_batch_dim_spatial_scatter(
+                items=items[:, :(self.nitem - self.nconstant - self.ntile), :],
+                positions=relpos[:, :self.nitem - self.nconstant - self.ntile],
                 nray=self.hps.nm_nrays,
                 nring=self.hps.nm_nrings,
                 inner_radius=self.hps.nm_ring_width,
                 embed_offsets=self.hps.map_embed_offset,
-            ).view(batch_size * self.agents, self.map_channels, self.hps.nm_nrings, self.hps.nm_nrays)
+            ).view(-1, self.map_channels, self.hps.nm_nrings, self.hps.nm_nrays)
             if self.hps.map_conv:
                 nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
                 nearby_map = nearby_map.permute(0, 3, 2, 1)
                 nearby_map = self.norm_conv(nearby_map + nearby_map2)
-            nearby_map = nearby_map.reshape(batch_size, self.agents, self.d_agent)
-            x = torch.cat([x, nearby_map], dim=2)
+            nearby_map = nearby_map.reshape(-1, self.d_agent)
+            x = torch.cat([x, nearby_map], dim=1)
 
         x = self.final_layer(x).squeeze(0)
 
