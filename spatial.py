@@ -156,6 +156,58 @@ def spatial_scatter(
         return scattered_items
 
 
+def single_batch_dim_spatial_scatter(
+        items,      # (N, L, C)
+        positions,  # (N, L, 2)
+        nray,
+        nring,
+        inner_radius,
+        embed_offsets=False,
+):  # (N, C', nring, nray) where C' = C + 2 if embed_offsets else C
+    n, l, c = items.size()
+    assert (n, l, 2) == positions.size(), f'Expect size {(n, l, 2)} for positions, actual: {positions.size()}'
+
+    distance_index, angular_index, distance_offsets, angular_offsets = \
+        single_batch_dim_polar_indices(positions, nray, nring, inner_radius)
+    index = distance_index * nray + angular_index
+    index = index.unsqueeze(-1)
+    scattered_items = scatter_add(items, index, dim=1, dim_size=nray * nring) \
+        .permute(0, 2, 1) \
+        .reshape(n, c, nring, nray)
+
+    if embed_offsets:
+        offsets = torch.cat([distance_offsets.unsqueeze(-1), angular_offsets.unsqueeze(-1)], dim=2)
+        scattered_nonshared = scatter_mean(offsets, index, dim=1, dim_size=nray * nring) \
+            .permute(0, 2, 1) \
+            .reshape(n, 2, nring, nray)
+        return torch.cat([scattered_nonshared, scattered_items], dim=1)
+    else:
+        return scattered_items
+
+
+def single_batch_dim_polar_indices(
+        positions,  # (N, L, 2)
+        nray,
+        nring,
+        inner_radius
+):  # (N, L), (N, L), (N, L), (N, L)
+    distances = torch.sqrt(positions[:, :, 0] ** 2 + positions[:, :, 1] ** 2)
+    distance_indices = torch.clamp(distances / inner_radius, min=0, max=nring-1).floor().long()
+    angles = torch.atan2(positions[:, :, 1], positions[:, :, 0]) + math.pi
+    # There is one angle value that can result in index of exactly nray, clamp it to nray-1
+    angular_indices = torch.clamp_max((angles / (2 * math.pi) * nray).floor().long(), nray-1)
+
+    distance_offsets = torch.clamp_max(distances / inner_radius - distance_indices.float() - 0.5, max=2)
+    angular_offsets = angles / (2 * math.pi) * nray - angular_indices.float() - 0.5
+
+    assert angular_indices.min() >= 0, f'Negative angular index: {angular_indices.min()}'
+    assert angular_indices.max() < nray, f'invalid angular index: {angular_indices.max()} >= {nray}'
+    assert distance_indices.min() >= 0, f'Negative distance index: {distance_indices.min()}'
+    assert distance_indices.max() < nring, f'invalid distance index: {distance_indices.max()} >= {nring}'
+
+    return distance_indices, angular_indices, distance_offsets, angular_offsets
+
+
 class ZeroPaddedCylindricalConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size):
         super(ZeroPaddedCylindricalConv2d, self).__init__()
