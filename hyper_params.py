@@ -101,8 +101,10 @@ class HyperParams:
         self.action_delay = 0
         self.use_action_masks = True
         self.task_hardness = 0
+        self.max_hardness = 175
+        self.hardness_offset = 1e6  # Number of timesteps steps after which hardness starts to increase
         self.task_randomize = True
-        self.symmetric_map = False
+        self.symmetric_map = 0.0    # Percentage of maps which are symmetric
         self.mix_mp = 0.0       # Fraction of maps that use MICRO_PRACTICE instead of the main objective
         self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
         self.rule_rng_amount = 1.0     # Amount of rule randomization
@@ -137,7 +139,7 @@ class HyperParams:
         hps.gamma = 0.997
         hps.entropy_bonus = 0.001
 
-        hps.symmetric_map = False
+        hps.symmetric_map = 0.0
         hps.eval_symmetric = False
 
         return hps
@@ -211,7 +213,7 @@ class HyperParams:
         hps.gamma = 0.997
         hps.entropy_bonus = 0.001
 
-        hps.symmetric_map = True
+        hps.symmetric_map = 1.0
         hps.task_hardness = 4
 
         return hps
@@ -245,7 +247,7 @@ class HyperParams:
         hps.entropy_bonus = 0.002
         hps.entropy_bonus_schedule = '15e6:0.0005,30e6:0.0'
 
-        hps.symmetric_map = True
+        hps.symmetric_map = 1.0
         hps.task_hardness = 0
 
         return hps

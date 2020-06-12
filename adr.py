@@ -10,7 +10,8 @@ class ADR:
                  initial_hardness=0.0,
                  ruleset: Rules = None,
                  linear_hardness: bool = False,
-                 max_hardness: float = 200):
+                 max_hardness: float = 200,
+                 hardness_offset: float = 0):
         if ruleset is None:
             ruleset = Rules(
                 cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
@@ -39,6 +40,7 @@ class ADR:
         self.hardness = initial_hardness
         self.max_hardness = max_hardness
         self.linear_hardness = linear_hardness
+        self.hardness_offset = hardness_offset
         self.stepsize_hardness = hstepsize
         self.target_elimination_rate = 0.97
 
@@ -103,12 +105,13 @@ class ADR:
             if key == 'size4':
                 self.ruleset.cost_modifier_size[3] *= multiplier
 
-        if self.linear_hardness:
-            self.hardness = min(step * self.stepsize_hardness, self.max_hardness)
-        else:
-            if eplenmean is not None:
-                self.hardness += self.stepsize_hardness * (self.target_eplenmean() - eplenmean)
-                self.hardness = max(0.0, self.hardness)
+        if step > self.hardness_offset:
+            if self.linear_hardness:
+                self.hardness = min((step - self.hardness_offset) * self.stepsize_hardness, self.max_hardness)
+            else:
+                if eplenmean is not None:
+                    self.hardness += self.stepsize_hardness * (self.target_eplenmean() - eplenmean)
+                    self.hardness = max(0.0, self.hardness)
 
         return average_modifier
 

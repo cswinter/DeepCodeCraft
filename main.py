@@ -85,7 +85,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.resume_from == '':
         policy = TransformerPolicy6(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
-        adr = ADR(hstepsize=hps.adr_hstepsize, linear_hardness=hps.linear_hardness)
+        adr = ADR(
+            hstepsize=hps.adr_hstepsize,
+            linear_hardness=hps.linear_hardness,
+            max_hardness=hps.max_hardness,
+            hardness_offset=hps.hardness_offset,
+        )
     else:
         policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
 
@@ -465,7 +470,7 @@ def eval(policy,
                                obs_config=policy.obs_config,
                                randomize=randomize,
                                hardness=hardness,
-                               symmetric=symmetric,
+                               symmetric=1.0 if symmetric else 0.0,
                                strong_scripted_opponent=True,
                                rule_rng_amount=random_rules,
                                rule_rng_fraction=1.0 if random_rules > 0 else 0.0)

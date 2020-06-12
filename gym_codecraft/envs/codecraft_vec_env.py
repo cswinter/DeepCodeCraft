@@ -599,7 +599,7 @@ class CodeCraftVecEnv(object):
                  use_action_masks=True,
                  obs_config=DEFAULT_OBS_CONFIG,
                  hardness=0,
-                 symmetric=False,
+                 symmetric=0.0,
                  strong_scripted_opponent=False,
                  mix_mp=0.0,
                  build_variety_bonus=0.0,
@@ -905,7 +905,7 @@ class CodeCraftVecEnv(object):
                     self_play = game // 2 < self.num_self_play
                     if self.mp_game_count < self.game_count * self.mix_mp:
                         m = map_mp(self.randomize, self.hardness)
-                        m['symmetric'] = self.symmetric
+                        m['symmetric'] = np.random.rand() <= self.symmetric
                         game_id = codecraft.create_game(20 * 60,
                                                         self.action_delay,
                                                         self_play,
@@ -990,7 +990,7 @@ class CodeCraftVecEnv(object):
         else:
             map = self.custom_map(self.randomize, self.hardness)
         if map:
-            map['symmetric'] = self.symmetric
+            map['symmetric'] = np.random.rand() < self.symmetric
         return map
 
     def fair_map(self):
