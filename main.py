@@ -4,6 +4,7 @@ import time
 import os
 from collections import defaultdict
 import dataclasses
+from pathlib import Path
 
 import torch
 import torch.optim as optim
@@ -59,6 +60,10 @@ def warmup_lr_schedule(warmup_steps: int):
 def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
+    if (hps.verify_create_golden or hps.verify) and hps.shuffle:
+        print("WARNING: verification mode configured and shuffle is set")
+    if hps.verify:
+        hps.resume_from = 'verify/model-0.pt'
 
     next_model_save = hps.model_save_frequency
 
@@ -92,7 +97,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hardness_offset=hps.hardness_offset,
         )
     else:
-        policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps)
+        policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
 
 
     lr_scheduler = None
@@ -111,6 +116,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 layer.enable_fp16()
 
     wandb.watch(policy)
+
+    if hps.verify_create_golden:
+        save_policy(policy, 'verify', 0)
 
     total_steps = resume_steps
     next_eval = total_steps
@@ -143,7 +151,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             _, entropy_bonus = entropy_bonus_schedule.pop()
             hps.entropy_bonus = entropy_bonus
 
-        if env is None:
+        if env is None and not hps.verify:
             env = envs.CodeCraftVecEnv(hps.num_envs,
                                        hps.num_self_play,
                                        hps.objective,
@@ -165,7 +173,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        rule_cost_rng=hps.rule_cost_rng)
             obs, action_masks, privileged_obs = env.reset()
 
-        if total_steps >= next_eval and hps.eval_envs > 0:
+        if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:
             eval(policy=policy,
                  num_envs=hps.eval_envs,
                  device=device,
@@ -194,97 +202,109 @@ def train(hps: HyperParams, out_dir: str) -> None:
         policy.eval()
         buildtotal = defaultdict(lambda: 0)
         eliminations = []
-        if hps.adr:
-            env.rng_ruleset = adr.ruleset
-            env.hardness = adr.hardness
-        with torch.no_grad():
-            # Rollout
-            for step in range(hps.seq_rosteps):
-                obs_tensor = torch.tensor(obs).to(device)
-                privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-                action_masks_tensor = torch.tensor(action_masks).to(device)
-                actions, logprobs, entropy, values, probs =\
-                    policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
-                actions = actions.cpu().numpy()
+        if not hps.verify:
+            if hps.adr:
+                env.rng_ruleset = adr.ruleset
+                env.hardness = adr.hardness
+            with torch.no_grad():
+                # Rollout
+                for step in range(hps.seq_rosteps):
+                    obs_tensor = torch.tensor(obs).to(device)
+                    privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+                    action_masks_tensor = torch.tensor(action_masks).to(device)
+                    actions, logprobs, entropy, values, probs =\
+                        policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+                    actions = actions.cpu().numpy()
 
-                entropies.extend(entropy.detach().cpu().numpy())
+                    entropies.extend(entropy.detach().cpu().numpy())
 
-                all_action_masks.extend(action_masks)
-                all_obs.extend(obs)
-                all_privileged_obs.extend(privileged_obs)
-                all_actions.extend(actions)
-                all_logprobs.extend(logprobs.detach().cpu().numpy())
-                all_values.extend(values)
-                all_probs.extend(probs)
+                    all_action_masks.extend(action_masks)
+                    all_obs.extend(obs)
+                    all_privileged_obs.extend(privileged_obs)
+                    all_actions.extend(actions)
+                    all_logprobs.extend(logprobs.detach().cpu().numpy())
+                    all_values.extend(values)
+                    all_probs.extend(probs)
 
-                obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions, action_masks=action_masks)
+                    obs, rews, dones, infos, action_masks, privileged_obs = env.step(actions, action_masks=action_masks)
 
-                rews -= hps.liveness_penalty
-                all_rewards.extend(rews)
-                all_dones.extend(dones)
+                    rews -= hps.liveness_penalty
+                    all_rewards.extend(rews)
+                    all_dones.extend(dones)
 
-                for info in infos:
-                    ema = 0.95 * (1 - 1 / (completed_episodes + 1))
+                    for info in infos:
+                        ema = 0.95 * (1 - 1 / (completed_episodes + 1))
 
-                    decided_by_elimination = info['episode']['elimination']
-                    eliminations.append(decided_by_elimination)
-                    eliminationmean = eliminationmean * ema + (1 - ema) * decided_by_elimination
+                        decided_by_elimination = info['episode']['elimination']
+                        eliminations.append(decided_by_elimination)
+                        eliminationmean = eliminationmean * ema + (1 - ema) * decided_by_elimination
 
-                    eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
-                    eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
+                        eprewmean = eprewmean * ema + (1 - ema) * info['episode']['r']
+                        eplenmean = eplenmean * ema + (1 - ema) * info['episode']['l']
 
-                    builds = info['episode']['builds']
-                    for build in set().union(builds.keys(), buildmean.keys()):
-                        count = builds[build]
-                        buildmean[build] = buildmean[build] * ema + (1 - ema) * count
-                        buildtotal[build] += count
-                    completed_episodes += 1
+                        builds = info['episode']['builds']
+                        for build in set().union(builds.keys(), buildmean.keys()):
+                            count = builds[build]
+                            buildmean[build] = buildmean[build] * ema + (1 - ema) * count
+                            buildtotal[build] += count
+                        completed_episodes += 1
 
-        elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
-        average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
+            elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
+            average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
 
-        obs_tensor = torch.tensor(obs).to(device)
-        action_masks_tensor = torch.tensor(action_masks).to(device)
-        privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-        _, _, _, final_values, final_probs =\
-            policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+            obs_tensor = torch.tensor(obs).to(device)
+            action_masks_tensor = torch.tensor(action_masks).to(device)
+            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+            _, _, _, final_values, final_probs =\
+                policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
 
-        all_rewards = np.array(all_rewards) * hps.rewscale
-        w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
-        rewmean = all_rewards.mean() * (1 - w) + rewmean * w
-        rewstd = all_rewards.std() * (1 - w) + rewstd * w
-        if hps.rewnorm:
-            all_rewards = all_rewards / rewstd - rewmean
+            all_rewards = np.array(all_rewards) * hps.rewscale
+            w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
+            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+            rewstd = all_rewards.std() * (1 - w) + rewstd * w
+            if hps.rewnorm:
+                all_rewards = all_rewards / rewstd - rewmean
 
-        all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-        all_values = np.array(all_values)
-        last_gae = np.zeros(hps.num_envs)
-        for t in reversed(range(hps.seq_rosteps)):
-            # TODO: correct for action delay?
-            # TODO: vectorize
-            for i in range(hps.num_envs):
-                ti = t * hps.num_envs + i
-                tnext_i = (t + 1) * hps.num_envs + i
-                nextnonterminal = 1.0 - all_dones[ti]
-                if t == hps.seq_rosteps - 1:
-                    next_value = final_values[i]
-                else:
-                    next_value = all_values[tnext_i]
-                td_error = all_rewards[ti] + hps.gamma * next_value * nextnonterminal - all_values[ti]
-                last_gae[i] = td_error + hps.gamma * hps.lamb * last_gae[i] * nextnonterminal
-                all_returns[ti] = last_gae[i] + all_values[ti]
+            all_returns = np.zeros(len(all_rewards), dtype=np.float32)
+            all_values = np.array(all_values)
+            last_gae = np.zeros(hps.num_envs)
+            for t in reversed(range(hps.seq_rosteps)):
+                # TODO: correct for action delay?
+                # TODO: vectorize
+                for i in range(hps.num_envs):
+                    ti = t * hps.num_envs + i
+                    tnext_i = (t + 1) * hps.num_envs + i
+                    nextnonterminal = 1.0 - all_dones[ti]
+                    if t == hps.seq_rosteps - 1:
+                        next_value = final_values[i]
+                    else:
+                        next_value = all_values[tnext_i]
+                    td_error = all_rewards[ti] + hps.gamma * next_value * nextnonterminal - all_values[ti]
+                    last_gae[i] = td_error + hps.gamma * hps.lamb * last_gae[i] * nextnonterminal
+                    all_returns[ti] = last_gae[i] + all_values[ti]
 
-        advantages = all_returns - all_values
-        if hps.norm_advs:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        explained_var = explained_variance(all_values, all_returns)
+            advantages = all_returns - all_values
+            if hps.norm_advs:
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            explained_var = explained_variance(all_values, all_returns)
 
-        all_actions = np.array(all_actions)
-        all_logprobs = np.array(all_logprobs)
-        all_obs = np.array(all_obs)
-        all_privileged_obs = np.array(all_privileged_obs)
-        all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
-        all_probs = np.array(all_probs)
+            all_actions = np.array(all_actions)
+            all_logprobs = np.array(all_logprobs)
+            all_obs = np.array(all_obs)
+            all_privileged_obs = np.array(all_privileged_obs)
+            all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
+            all_probs = np.array(all_probs)
+
+        if hps.verify_create_golden and total_steps == 0:
+            write_samples_to_disk(
+                all_obs, all_privileged_obs, all_returns, all_actions, all_logprobs,
+                all_values, advantages, all_action_masks, all_probs
+            )
+            print("Wrote samples from first rollout to disk")
+        if hps.verify and total_steps == 0:
+            all_obs, all_privileged_obs, all_returns, all_actions, all_logprobs,\
+                all_values, advantages, all_action_masks, all_probs = load_samples_from_disk()
+            print("Loaded samples for first rollout from disk")
 
         for epoch in range(hps.sample_reuse):
             if hps.shuffle:
@@ -328,6 +348,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 policy_loss, value_loss, aproxkl, clipfrac =\
                     policy.backprop(hps, o, actions, probs, returns, hps.vf_coef,
                                     advs, vals, amasks, actual_probs, op, hps.split_reward)
+                if hps.verify_create_golden and total_steps == 0:
+                    write_gradients_to_disk(policy, epoch, batch)
+                if hps.verify and total_steps == 0:
+                    if verify_gradients(policy, epoch, batch):
+                        return
                 policy_loss_sum += policy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
@@ -338,6 +363,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     optimizer.step()
                     if lr_scheduler:
                         lr_scheduler.step()
+
+        if hps.verify or hps.verify_create_golden:
+            return
 
         epoch += 1
         total_steps += hps.rosteps
@@ -603,8 +631,11 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
         )
 
 
-def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None):
-    checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name), map_location=device)
+def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None, rawpath=False):
+    if rawpath:
+        checkpoint = torch.load(name, map_location=device)
+    else:
+        checkpoint = torch.load(os.path.join(EVAL_MODELS_PATH, name), map_location=device)
     version = checkpoint.get('policy_version')
     kwargs = checkpoint['model_kwargs']
     if hps:
@@ -678,6 +709,68 @@ def explained_variance(ypred,y):
     assert y.ndim == 1 and ypred.ndim == 1
     vary = np.var(y)
     return np.nan if vary == 0 else 1 - np.var(y-ypred)/vary
+
+
+def load_samples_from_disk():
+    return np.load('verify/obs.npy'), np.load('verify/privileged_obs.npy'), np.load('verify/returns.npy'),\
+        np.load('verify/actions.npy'), np.load('verify/logprobs.npy'), np.load('verify/values.npy'),\
+        np.load('verify/advantages.npy'), np.load('verify/action_masks.npy'), np.load('verify/probs.npy')
+
+
+def write_samples_to_disk(
+    all_obs, all_privileged_obs, all_returns, all_actions, all_logprobs,
+    all_values, advantages, all_action_masks, all_probs
+):
+    Path(f'verify').mkdir(parents=True, exist_ok=True)
+    np.save('verify/obs', all_obs)
+    np.save('verify/privileged_obs', all_privileged_obs)
+    np.save('verify/returns', all_returns)
+    np.save('verify/actions', all_actions)
+    np.save('verify/logprobs', all_logprobs)
+    np.save('verify/values', all_values)
+    np.save('verify/advantages', advantages)
+    np.save('verify/action_masks', all_action_masks)
+    np.save('verify/probs', all_probs)
+
+
+def write_gradients_to_disk(policy, epoch, batch):
+    Path(f'verify/grad/{epoch}/{batch}').mkdir(parents=True, exist_ok=True)
+    for name, param in policy.named_parameters():
+        if param.grad is not None:
+            np.save(f'verify/grad/{epoch}/{batch}/{name}', param.grad.cpu().numpy())
+    print(f"Stored gradients for epoch {epoch}, batch {batch}")
+
+
+def verify_gradients(policy, epoch, batch) -> bool:
+    print(f'Verifying gradients for epoch {epoch} batch {batch}')
+    errors = False
+    expected_grads = {}
+    for file in os.listdir(f'verify/grad/{epoch}/{batch}'):
+        expected_grads[file[:-4]] = np.load(f'verify/grad/{epoch}/{batch}/{file}')
+    remaining = set(expected_grads.keys())
+    for name, param in policy.named_parameters():
+        if name not in expected_grads:
+            print(f"WARNING: no expected gradient found for {name}")
+            continue
+        if param.grad is None:
+            print(f"WARNING: {name} has no gradient")
+            continue
+        remaining.remove(name)
+        error = np.linalg.norm((expected_grads[name] - param.grad.cpu().numpy()))
+        maxnorm = max(np.linalg.norm(expected_grads[name]), np.linalg.norm(param.grad.cpu().numpy()))
+        if maxnorm == 0:
+            relerror = 0.0
+        else:
+            relerror = error / maxnorm
+
+        if relerror >= 1e-2:
+            print(f"ERROR: mismatch for {name}, abs {error:.2g}, rel {relerror:.2g}")
+            errors = True
+        else:
+            print(f"OK: {name}, {relerror:.2g} < 1e-4")
+    for name in remaining:
+        print(f"WARNING: no gradient for {name}")
+    return errors
 
 
 def main():

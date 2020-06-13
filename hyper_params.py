@@ -113,6 +113,10 @@ class HyperParams:
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
 
+        # Testing
+        self.verify_create_golden = False
+        self.verify = False
+
 
     @staticmethod
     def micro_practice():
