@@ -304,7 +304,7 @@ class TransformerPolicy6(nn.Module):
 
         nagents = xagent.size(1)
 
-        agent_active = action_masks.sum(2) > 1
+        agent_active = action_masks.sum(2) > -1
         flat_agent_active = agent_active.flatten()
         agent_group = torch.arange(0, batch_size).to(x.device).repeat_interleave(nagents)
         agent_index = torch.arange(0, batch_size * nagents).to(x.device)
@@ -426,13 +426,13 @@ class TransformerPolicy6(nn.Module):
             x = torch.cat([x, nearby_map], dim=2)
 
         x = self.final_layer(x).squeeze(0)
+        x = x * (~mask_agent).float().unsqueeze(-1)
         if x.is_cuda:
             output = torch.cuda.FloatTensor(batch_size * self.agents, self.d_agent * self.hps.dff_ratio).fill_(0)
         else:
             torch.zeros(batch_size * self.agents, self.d_agent * self.hps.dff_ratio)
         scatter_add(x, index=active_agent_indices, dim=0, out=output)
         x = output.view(batch_size, self.agents, self.d_agent * self.hps.dff_ratio)
-        #x = x * (~mask_agent).float().unsqueeze(-1)
 
         return x, (pitems, pmask)
 
@@ -466,31 +466,35 @@ class InputNorm(nn.Module):
                 assert (batch_size,) == mask.size()
             else:
                 raise Exception(f'Expecting 3 or 4 dimensions, actual: {len(input.size())}')
-            count = mask.float().sum().item()
-            mask = mask.view(-1).unsqueeze(-1).float()
+            #count = mask.float().sum().item()
+            #mask = mask.view(-1).unsqueeze(-1).float()
+            input = input[mask]
         else:
             features = input.size()[-1]
-            count = input.numel() / features
+            input = input.reshape(-1, features)
 
+        count = input.numel() / features
         if count == 0:
             return
-        input = input.reshape(-1, features)
-        mean = input.sum(dim=0) / count
+        #mean = input.sum(dim=0) / count
+        mean = input.mean(dim=0)
         if self.count == 0:
             self.count += count
             self.mean = mean
-            if mask is not None:
-                self.squares_sum = ((input - mean) * (input - mean) * mask).sum(dim=0)
-            else:
-                self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
+            self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
+            #if mask is not None:
+            #    self.squares_sum = ((input - mean) * (input - mean) * mask).sum(dim=0)
+            #else:
+            #    self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
             self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
-            if mask is not None:
-                self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean) * mask).sum(dim=0)
-            else:
-                self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
+            self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
+            #if mask is not None:
+            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean) * mask).sum(dim=0)
+            #else:
+            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
             self.mean = new_mean
 
     def forward(self, input, mask=None):
