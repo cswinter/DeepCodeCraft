@@ -230,6 +230,9 @@ class TransformerPolicy6(nn.Module):
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
         else:
             policy_loss = -vanilla_policy_loss.mean(dim=0).sum()
+        # TODO remove
+        # Adjustement loss magnitude to keep parity with previous averaging scheme
+        policy_loss /= 8
 
         # TODO: do over full distribution, not just selected actions?
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
