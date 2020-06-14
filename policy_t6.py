@@ -204,6 +204,8 @@ class TransformerPolicy6(nn.Module):
             old_logprobs = old_logprobs.half()
 
         action_masks = action_masks[:, :self.agents, :]
+        actions = actions[:, :self.agents]
+        old_logprobs = old_logprobs[:, :self.agents]
 
         probs, values = self.forward(obs, privileged_obs, action_masks)
         probs = probs.view(-1, self.agents, self.naction)
@@ -225,9 +227,9 @@ class TransformerPolicy6(nn.Module):
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
-            policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
+            policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
         else:
-            policy_loss = -vanilla_policy_loss.mean()
+            policy_loss = -vanilla_policy_loss.mean(dim=0).sum()
 
         # TODO: do over full distribution, not just selected actions?
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
