@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from gym_codecraft.envs.codecraft_vec_env import Rules
 
@@ -5,7 +6,7 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 class ADR:
     def __init__(self,
                  hstepsize,
-                 stepsize=0.05,
+                 stepsize=0.002,
                  warmup=100,
                  initial_hardness=0.0,
                  ruleset: Rules = None,
@@ -20,17 +21,17 @@ class ADR:
             )
         self.ruleset = ruleset
         self.target_fractions = normalize({
-            '1m': 15.0,
-            '1s': 3.0,
-            '1m1p': 8.0,
-            '2m': 1.0,
-            '1s1c': 3.0,
-            '2m1e1p': 2.0,
-            '3m1p': 1.0,
-            '2m2p': 1.0,
-            '2s2c': 1.0,
-            '2s1c1e': 1.0,
-            '2s1m1c': 1.0,
+            '1m': 30,
+            '1s': 5,
+            '1m1p': 30,
+            '2m': 2,
+            '1s1c': 8,
+            '2m1e1p': 5,
+            '3m1p': 2,
+            '2m2p': 2,
+            '2s2c': 4,
+            '2s1c1e': 1,
+            '2s1m1c': 1,
         })
         self.target_modifier = 0.8
         self.stepsize = stepsize
@@ -59,11 +60,15 @@ class ADR:
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
         for build, bfraction in normalize(counts).items():
-            loss = self.target_fractions[build] - bfraction
+            if bfraction == 0:
+                loss = -100
+            else:
+                loss = -math.log(self.target_fractions[build] / bfraction)
+
             for module, mfraction in module_norm(build).items():
-                gradient[module] += mfraction * loss * stepsize
+                gradient[module] += mfraction * loss
             # Size is less important predictor of utility than modules, adjust by 0.3
-            gradient[f'size{size(build)}'] += 0.3 * loss * stepsize
+            gradient[f'size{size(build)}'] += 0.3 * loss
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in counts.items()})
         average_modifier = 0.0
@@ -83,9 +88,10 @@ class ADR:
             size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
             average_modifier += modifier * size_modifier * bfraction
 
-        average_cost_grad = (self.target_modifier - average_modifier) * stepsize
+        average_cost_grad = math.log(self.target_modifier / average_modifier)
         for key, grad in gradient.items():
-            multiplier = (1.0 - grad) * (1.0 + average_cost_grad)
+            exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))
+            multiplier = math.exp(exponent)
             if key == 'm':
                 self.ruleset.cost_modifier_missiles *= multiplier
             if key == 's':
@@ -144,5 +150,7 @@ def module_norm(build):
 
 def normalize(weights):
     total = sum(weights.values())
+    if total == 0:
+        total = 1
     return {key: weight / total for key, weight in weights.items()}
 

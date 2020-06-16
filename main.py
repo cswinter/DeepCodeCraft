@@ -13,7 +13,7 @@ import numpy as np
 
 import wandb
 
-from adr import ADR
+from adr import ADR, normalize
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
 from hyper_params import HyperParams
@@ -404,6 +404,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count
+        for action, fraction in normalize(buildmean).items():
+            metrics[f'frac_{action}'] = fraction
+
         metrics.update(adr.metrics())
         total_norm = 0.0
         count = 0
@@ -606,6 +609,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
             'rules': dataclasses.asdict(adr.ruleset),
             'max_hardness': adr.max_hardness,
             'linear_hardness': adr.linear_hardness,
+            'hardness_offset': adr.hardness_offset,
         }
     torch.save(model, model_path)
 
@@ -677,6 +681,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         ruleset = None
         linear_hardness = False
         max_hardness = 200
+        hardness_offset = 0.0
         if 'adr_state_dict' in checkpoint:
             adr_state = checkpoint['adr_state_dict']
             hardness = adr_state['hardness']
@@ -686,12 +691,15 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
                 linear_hardness = adr_state['linear_hardness']
             if 'max_hardness' in adr_state:
                 max_hardness = adr_state['max_hardness']
+            if 'hardness_offset' in adr_state:
+                hardness_offset = adr_state['hardness_offset']
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
             initial_hardness=hardness,
             ruleset=ruleset,
             linear_hardness=linear_hardness,
             max_hardness=max_hardness,
+            hardness_offset=hardness_offset,
         )
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
