@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 from collections import defaultdict
 from gym_codecraft.envs.codecraft_vec_env import Rules
 
@@ -6,13 +7,14 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 class ADR:
     def __init__(self,
                  hstepsize,
-                 stepsize=0.002,
+                 stepsize=0.005,
                  warmup=100,
                  initial_hardness=0.0,
                  ruleset: Rules = None,
                  linear_hardness: bool = False,
                  max_hardness: float = 200,
-                 hardness_offset: float = 0):
+                 hardness_offset: float = 0,
+                 modifier_decay: Optional[float] = 2.0):
         if ruleset is None:
             ruleset = Rules(
                 cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
@@ -20,23 +22,33 @@ class ADR:
                 cost_modifier_constructor=0.5,
             )
         self.ruleset = ruleset
-        self.target_fractions = normalize({
-            '1m': 30,
-            '1s': 5,
-            '1m1p': 30,
-            '2m': 2,
-            '1s1c': 8,
-            '2m1e1p': 5,
-            '3m1p': 2,
-            '2m2p': 2,
-            '2s2c': 4,
-            '2s1c1e': 1,
-            '2s1m1c': 1,
-        })
+        self.modifier_decay = modifier_decay
+        if modifier_decay is None:
+            self.target_fractions = normalize({
+                '1m': 30,
+                '1s': 5,
+                '1m1p': 30,
+                '2m': 2,
+                '1s1c': 8,
+                '2m1e1p': 5,
+                '3m1p': 2,
+                '2m2p': 2,
+                '2s2c': 4,
+                '2s1c1e': 1,
+                '2s1m1c': 1,
+            })
+        else:
+            self.target_fractions = normalize({b: 1.0 for b in [
+                '1m', '1s', '1m1p', '2m', '1s1c', '2m1e1p', '3m1p', '2m2p', '2s2c', '2s1c1e', '2s1m1c'
+            ]})
+
         self.target_modifier = 0.8
         self.stepsize = stepsize
         self.warmup = warmup
         self.step = 0
+
+        self.w_ema = 0.5
+        self.counts = defaultdict(lambda: 0.0)
 
         self.hardness = initial_hardness
         self.max_hardness = max_hardness
@@ -59,7 +71,10 @@ class ADR:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         gradient = defaultdict(lambda: 0.0)
-        for build, bfraction in normalize(counts).items():
+        for build, bfraction in counts.items():
+            self.counts[build] = (1 - self.w_ema) * bfraction + self.w_ema * self.counts[build]
+
+        for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
@@ -70,7 +85,10 @@ class ADR:
             # Size is less important predictor of utility than modules, adjust by 0.3
             gradient[f'size{size(build)}'] += 0.3 * loss
 
-        size_weighted_counts = normalize({build: count * size(build) for build, count in counts.items()})
+        for build, modifier in normalize(self.counts).items():
+            gradient[build] += self.modifier_decay * math.log(self.target_modifier / modifier)
+
+        size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
         average_modifier = 0.0
         for build, bfraction in size_weighted_counts.items():
             modifier = 0.0
@@ -88,7 +106,7 @@ class ADR:
             size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
             average_modifier += modifier * size_modifier * bfraction
 
-        average_cost_grad = math.log(self.target_modifier / average_modifier)
+        average_cost_grad = 2 * math.log(self.target_modifier / average_modifier)
         for key, grad in gradient.items():
             exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))
             multiplier = math.exp(exponent)

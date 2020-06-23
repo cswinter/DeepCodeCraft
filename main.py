@@ -95,10 +95,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
             linear_hardness=hps.linear_hardness,
             max_hardness=hps.max_hardness,
             hardness_offset=hps.hardness_offset,
+            modifier_decay=hps.adr_modifier_decay,
         )
     else:
         policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
-
 
     lr_scheduler = None
     if hps.warmup > 0:

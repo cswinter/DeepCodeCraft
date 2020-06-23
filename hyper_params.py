@@ -112,6 +112,7 @@ class HyperParams:
         self.adr = False      # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
+        self.adr_modifier_decay = 2.0
 
         # Testing
         self.verify_create_golden = False
