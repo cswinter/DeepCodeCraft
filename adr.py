@@ -85,8 +85,15 @@ class ADR:
             # Size is less important predictor of utility than modules, adjust by 0.3
             gradient[f'size{size(build)}'] += 0.3 * loss
 
-        for build, modifier in normalize(self.counts).items():
-            gradient[build] += self.modifier_decay * math.log(self.target_modifier / modifier)
+        if self.modifier_decay is not None:
+            gradient['m'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
+            gradient['s'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
+            gradient['p'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
+            gradient['c'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
+            gradient['e'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
+            gradient['size1'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
+            gradient['size2'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
+            gradient['size4'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
         average_modifier = 0.0
@@ -106,7 +113,7 @@ class ADR:
             size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
             average_modifier += modifier * size_modifier * bfraction
 
-        average_cost_grad = 2 * math.log(self.target_modifier / average_modifier)
+        average_cost_grad = 10 * math.log(self.target_modifier / average_modifier)
         for key, grad in gradient.items():
             exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))
             multiplier = math.exp(exponent)
