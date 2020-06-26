@@ -84,9 +84,8 @@ class ADR:
             for module, mfraction in module_norm(build).items():
                 gradient[module] += mfraction * loss
                 weight[module] += mfraction
-            # Size is less important predictor of utility than modules, adjust by 0.2
             size_key = f'size{size(build)}'
-            gradient[size_key] += 0.2 * loss
+            gradient[size_key] += 0.5 * loss
             weight[size_key] += 1
         for key in gradient.keys():
             gradient[key] /= weight[key]
