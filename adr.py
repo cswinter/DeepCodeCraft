@@ -7,7 +7,7 @@ from gym_codecraft.envs.codecraft_vec_env import Rules
 class ADR:
     def __init__(self,
                  hstepsize,
-                 stepsize=0.005,
+                 stepsize=0.02,
                  warmup=100,
                  initial_hardness=0.0,
                  ruleset: Rules = None,
@@ -70,10 +70,11 @@ class ADR:
     def adjust(self, counts, elimination_rate, eplenmean, step) -> float:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
-        gradient = defaultdict(lambda: 0.0)
         for build, bfraction in counts.items():
             self.counts[build] = (1 - self.w_ema) * bfraction + self.w_ema * self.counts[build]
 
+        gradient = defaultdict(lambda: 0.0)
+        weight = defaultdict(lambda: 0.0)
         for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
@@ -82,8 +83,13 @@ class ADR:
 
             for module, mfraction in module_norm(build).items():
                 gradient[module] += mfraction * loss
-            # Size is less important predictor of utility than modules, adjust by 0.3
-            gradient[f'size{size(build)}'] += 0.3 * loss
+                weight[module] += mfraction
+            # Size is less important predictor of utility than modules, adjust by 0.2
+            size_key = f'size{size(build)}'
+            gradient[size_key] += 0.2 * loss
+            weight[size_key] += 1
+        for key in gradient.keys():
+            gradient[key] /= weight[key]
 
         if self.modifier_decay is not None:
             gradient['m'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
