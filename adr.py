@@ -85,7 +85,7 @@ class ADR:
                 gradient[module] += mfraction * loss
                 weight[module] += mfraction
             size_key = f'size{size(build)}'
-            gradient[size_key] += 0.5 * loss
+            gradient[size_key] += 0.3 * loss
             weight[size_key] += 1
         for key in gradient.keys():
             gradient[key] /= weight[key]

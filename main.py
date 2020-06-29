@@ -206,6 +206,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if hps.adr:
                 env.rng_ruleset = adr.ruleset
                 env.hardness = adr.hardness
+            if hps.symmetry_increase > 0:
+                env.symmetric = min(total_steps * hps.symmetry_increase, 1.0)
             with torch.no_grad():
                 # Rollout
                 for step in range(hps.seq_rosteps):
