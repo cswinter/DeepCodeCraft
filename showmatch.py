@@ -36,7 +36,7 @@ def showmatch(model_paths, task, randomize, hardness, num_envs, symmetric, rando
         objective=objective,
         eval_steps=int(1e20),
         opponents=opponents,
-        printerval=100,
+        printerval=500,
         randomize=randomize,
         hardness=hardness,
         symmetric=symmetric,

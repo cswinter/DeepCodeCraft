@@ -306,6 +306,10 @@ class TransformerPolicy6(nn.Module):
         nagents = xagent.size(1)
 
         agent_active = action_masks.sum(2) > 1
+        # Ensure at least one agent because code doesn't work with empty tensors.
+        # Returning immediately with (empty?) result would be more efficient but probably doesn't matter.
+        if agent_active.float().sum() == 0:
+            agent_active[0][0] = True
         flat_agent_active = agent_active.flatten()
         agent_group = torch.arange(0, batch_size).to(x.device).repeat_interleave(nagents)
         agent_index = torch.arange(0, batch_size * nagents).to(x.device)

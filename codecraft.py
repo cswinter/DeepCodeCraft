@@ -16,19 +16,16 @@ def create_game(game_length: int = None,
                 action_delay: int = 0,
                 self_play: bool = False,
                 custom_map=None,
-                strong_scripted_opponent=False,
+                scripted_opponent: str = 'none',
                 rules=Rules()) -> int:
     if custom_map is None:
         custom_map = ''
     try:
-        scripted_opponent = 'false' if self_play else 'true'
-        idle_opponent = 'false' if strong_scripted_opponent else 'true'
         if game_length:
             response = requests.post(f'http://localhost:9000/start-game'
                                      f'?maxTicks={game_length}'
                                      f'&actionDelay={action_delay}'
                                      f'&scriptedOpponent={scripted_opponent}'
-                                     f'&idleOpponent={idle_opponent}'
                                      f'&mothershipDamageMultiplier={rules.mothership_damage_multiplier}'
                                      f'&costModifierSize1={rules.cost_modifier_size[0]}'
                                      f'&costModifierSize2={rules.cost_modifier_size[1]}'

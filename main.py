@@ -430,9 +430,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
              num_envs=hps.eval_envs,
              device=device,
              objective=hps.objective,
-             eval_steps=hps.eval_timesteps,
+             eval_steps=5 * hps.eval_timesteps,
              curr_step=total_steps,
-             symmetric=hps.eval_symmetric)
+             symmetric=hps.eval_symmetric,
+             printerval=hps.eval_timesteps)
     save_policy(policy, out_dir, total_steps, optimizer, adr)
 
 
@@ -451,6 +452,7 @@ def eval(policy,
     if printerval is None:
         printerval = eval_steps
 
+    scripted_opponents = []
     if opponents is None:
         if objective == envs.Objective.ARENA_TINY:
             opponents = {
@@ -475,9 +477,10 @@ def eval(policy,
             }
         elif objective == envs.Objective.STANDARD:
             opponents = {
-                'beta': {'model_file': 'standard/wandering-eon-50M.pt'},
+                'noble-sky-145': {'model_file': 'standard/noble-sky-145M.pt'},
+                'radiant-sun-35': {'model_file': 'standard/radiant-sun-35M.pt'},
             }
-            randomize = True
+            scripted_opponents = ['destroyer', 'replicator']
             hardness = 5
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
@@ -493,8 +496,19 @@ def eval(policy,
             raise Exception(f'No eval opponents configured for {objective}')
 
     policy.eval()
+
+    n_opponent = len(opponents) + len(scripted_opponents)
+    n_scripted = len(scripted_opponents)
+    if n_opponent == 0:
+        self_play_envs = 0
+    else:
+        assert num_envs * n_scripted % n_opponent == 0
+        non_self_play_envs = num_envs * n_scripted // n_opponent
+        assert (num_envs - non_self_play_envs) % 2 == 0
+        self_play_envs = (num_envs - non_self_play_envs) // 2
+
     env = envs.CodeCraftVecEnv(num_envs,
-                               num_envs // 2 if len(opponents) > 0 else 0,
+                               self_play_envs,
                                objective,
                                action_delay=0,
                                stagger=False,
@@ -504,17 +518,18 @@ def eval(policy,
                                randomize=randomize,
                                hardness=hardness,
                                symmetric=1.0 if symmetric else 0.0,
-                               strong_scripted_opponent=True,
+                               scripted_opponents=[(o, num_envs // n_opponent) for o in scripted_opponents],
                                rule_rng_amount=random_rules,
                                rule_rng_fraction=1.0 if random_rules > 0 else 0.0)
 
     scores = []
     eliminations = []
     scores_by_opp = defaultdict(list)
+    eliminations_by_opp = defaultdict(list)
     lengths = []
-    evens = list([2 * i for i in range(num_envs // 2)])
-    odds = list([2 * i + 1 for i in range(num_envs // 2)])
-    policy_envs = evens
+    evens = list([2 * i for i in range(self_play_envs)])
+    odds = list([2 * i + 1 for i in range(self_play_envs)])
+    policy_envs = evens + list(range(2 * self_play_envs, num_envs))
 
     partitions = [(policy_envs, policy.obs_config)]
     i = 0
@@ -568,13 +583,21 @@ def eval(policy,
             scores.append(score)
             eliminations.append(elimination_win)
             lengths.append(length)
-            for name, opp in opponents.items():
-                if index + 1 in opp['envs']:
-                    scores_by_opp[name].append(score)
-                    break
+            if index >= 2 * self_play_envs:
+                name = info['episode']['opponent']
+                scores_by_opp[name].append(score)
+                eliminations_by_opp[name].append(elimination_win)
+            else:
+                for name, opp in opponents.items():
+                    if index + 1 in opp['envs']:
+                        scores_by_opp[name].append(score)
+                        eliminations_by_opp[name].append(elimination_win)
+                        break
 
         if (step + 1) % printerval == 0:
-            print(f'Eval: {np.array(scores).mean()}')
+            print(f'Eval: {np.array(scores).mean():6.3f}  {sum(eliminations)}/{len(scores)}  (total)')
+            for name, _scores in sorted(scores_by_opp.items()):
+                print(f'      {np.array(_scores).mean():6.3f}  {sum(eliminations_by_opp[name])}/{len(_scores)}  ({name})')
 
     scores = np.array(scores)
     eliminations = np.array(eliminations)
@@ -589,7 +612,11 @@ def eval(policy,
         }, step=curr_step)
         for opp_name, scores in scores_by_opp.items():
             scores = np.array(scores)
-            wandb.log({f'eval_mean_score_vs_{opp_name}': scores.mean()}, step=curr_step)
+            wandb.log({
+                f'eval_mean_score_vs_{opp_name}': scores.mean(),
+                f'eval_games_vs_{opp_name}': len(scores),
+                f'eval_elimination_rate_vs_{opp_name}': np.array(eliminations_by_opp[opp_name]).mean(),
+            }, step=curr_step)
 
     env.close()
 

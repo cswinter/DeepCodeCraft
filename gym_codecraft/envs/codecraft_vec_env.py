@@ -3,7 +3,7 @@ import math
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Union, Optional, Tuple
 import numpy as np
 
 import codecraft
@@ -600,7 +600,7 @@ class CodeCraftVecEnv(object):
                  obs_config=DEFAULT_OBS_CONFIG,
                  hardness=0,
                  symmetric=0.0,
-                 strong_scripted_opponent=False,
+                 scripted_opponents: Optional[List[Tuple[str, int]]] = None,
                  mix_mp=0.0,
                  build_variety_bonus=0.0,
                  win_bonus=0.0,
@@ -627,7 +627,6 @@ class CodeCraftVecEnv(object):
         self.hardness = hardness
         self.symmetric = symmetric
         self.builds = []
-        self.strong_scripted_opponent = strong_scripted_opponent
         self.build_variety_bonus = build_variety_bonus
         self.win_bonus = win_bonus
         self.attac = attac
@@ -638,6 +637,18 @@ class CodeCraftVecEnv(object):
         self.rule_rng_amount = rule_rng_amount
         self.rule_cost_rng = rule_cost_rng
         self.rng_ruleset = None
+
+        remaining_scripted = num_envs - 2 * num_self_play
+        self.scripted_opponents = []
+        if scripted_opponents is not None:
+            for opponent, count in scripted_opponents:
+                remaining_scripted -= count
+                for _ in range(count):
+                    self.scripted_opponents.append(opponent)
+        for _ in range(remaining_scripted):
+            self.scripted_opponents.append('idle')
+        self.next_opponent_index = 0
+
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -720,8 +731,15 @@ class CodeCraftVecEnv(object):
         else:
             return next(self._reset())
 
+    def next_opponent(self) -> str:
+        opp = self.scripted_opponents[self.next_opponent_index]
+        self.next_opponent_index += 1
+        if self.next_opponent_index == len(self.scripted_opponents):
+            self.next_opponent_index = 0
+        return opp
+
     def _reset(self, partitioned_obs_config=None):
-        self.games = []
+        self.games: List[Tuple[int, int, str]] = []
         self.eplen = []
         self.score = []
         self.performed_builds = []
@@ -729,22 +747,23 @@ class CodeCraftVecEnv(object):
             # spread out initial game lengths to stagger start times
             self_play = i < self.num_self_play
             game_length = self.game_length * (i + 1) // (self.num_envs - self.num_self_play) if self.stagger else self.game_length
+            opponent = 'none' if self_play else self.next_opponent()
             game_id = codecraft.create_game(
                 game_length,
                 self.action_delay,
                 self_play,
                 self.next_map(),
-                self.strong_scripted_opponent,
+                opponent,
                 self.rules())
             self.game_count += 1
 
-            self.games.append((game_id, 0))
+            self.games.append((game_id, 0, opponent))
             self.eplen.append(1)
             self.eprew.append(0)
             self.score.append(None)
             self.performed_builds.append(defaultdict(lambda: 0))
             if self_play:
-                self.games.append((game_id, 1))
+                self.games.append((game_id, 1, opponent))
                 self.eplen.append(1)
                 self.eprew.append(0)
                 self.score.append(None)
@@ -770,7 +789,7 @@ class CodeCraftVecEnv(object):
     def step_async(self, actions, env_subset=None, action_masks=None):
         game_actions = []
         games = [self.games[env] for env in env_subset] if env_subset else self.games
-        for (i, ((game_id, player_id), player_actions)) in enumerate(zip(games, actions)):
+        for (i, ((game_id, player_id, opponent), player_actions)) in enumerate(zip(games, actions)):
             if action_masks is not None:
                 action_masks_i = action_masks[i]
             player_actions2 = []
@@ -835,7 +854,7 @@ class CodeCraftVecEnv(object):
         dones = []
         infos = []
         obs = codecraft.observe_batch_raw(obs_config,
-                                          games,
+                                          [(gid, pid) for (gid, pid, _) in games],
                                           allies=obs_config.allies,
                                           drones=obs_config.drones,
                                           minerals=obs_config.minerals,
@@ -904,9 +923,10 @@ class CodeCraftVecEnv(object):
             self.eprew[game] += reward
 
             if winner > 0:
-                (game_id, pid) = games[i]
+                (game_id, pid, opponent_was) = games[i]
                 if pid == 0:
                     self_play = game // 2 < self.num_self_play
+                    opponent = 'none' if self_play else self.next_opponent()
                     if self.mp_game_count < self.game_count * self.mix_mp:
                         m = map_mp(self.randomize, self.hardness)
                         m['symmetric'] = np.random.rand() <= self.symmetric
@@ -914,7 +934,7 @@ class CodeCraftVecEnv(object):
                                                         self.action_delay,
                                                         self_play,
                                                         m,
-                                                        self.strong_scripted_opponent,
+                                                        opponent,
                                                         self.rules())
                         self.mp_game_count += 1
                     else:
@@ -922,13 +942,13 @@ class CodeCraftVecEnv(object):
                                                         self.action_delay,
                                                         self_play,
                                                         self.next_map(),
-                                                        self.strong_scripted_opponent,
+                                                        opponent,
                                                         self.rules())
                     self.game_count += 1
                 else:
-                    game_id = self.games[game - 1][0]
+                    game_id, _, opponent = self.games[game - 1]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
-                self.games[game] = (game_id, pid)
+                self.games[game] = (game_id, pid, opponent)
                 observation = codecraft.observe(game_id, pid)
                 # TODO: use actual observation
                 if not obs.flags['WRITEABLE']:
@@ -944,6 +964,7 @@ class CodeCraftVecEnv(object):
                     'elimination': elimination_win,
                     'builds': self.performed_builds[game],
                     'outcome': outcome,
+                    'opponent': opponent_was,
                 }})
                 self.eplen[game] = 1
                 self.eprew[game] = 0
@@ -977,7 +998,7 @@ class CodeCraftVecEnv(object):
         while running > 0:
             game_actions = []
             active_games = []
-            for (game_id, player_id) in self.games:
+            for (game_id, player_id, _) in self.games:
                 if not done[game_id]:
                     active_games.append((game_id, player_id))
                     game_actions.append((game_id, player_id, [(False, 0, [], False, False, False)]))
