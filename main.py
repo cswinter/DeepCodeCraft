@@ -449,6 +449,8 @@ def eval(policy,
          hardness=10,
          symmetric=True,
          random_rules=0.0):
+    start_time = time.time()
+
     if printerval is None:
         printerval = eval_steps
 
@@ -609,6 +611,7 @@ def eval(policy,
             'eval_min_score': scores.min(),
             'eval_games': len(scores),
             'eval_elimination_rate': eliminations.mean(),
+            'evalu_duration_secs': time.time() - start_time,
         }, step=curr_step)
         for opp_name, scores in scores_by_opp.items():
             scores = np.array(scores)
