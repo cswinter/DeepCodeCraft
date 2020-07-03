@@ -421,7 +421,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         wandb.log(metrics, step=total_steps)
 
-        print(f'{throughput} samples/s')
+        print(f'{throughput} samples/s', flush=True)
 
     env.close()
 
