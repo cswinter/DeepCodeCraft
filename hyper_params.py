@@ -1,4 +1,5 @@
 import argparse
+from typing import List, Tuple
 from gym_codecraft import envs
 
 
@@ -113,7 +114,8 @@ class HyperParams:
         self.adr = False      # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
-        self.adr_modifier_decay = 2.0
+        self.adr_variety = 0.8
+        self.adr_variety_schedule = '20e6:0.7,30e6:0.6,40e6:0.5,60e6:0.4,80e6:0.3,110e6:0.2,140e6:0.1'
 
         # Testing
         self.verify_create_golden = False
@@ -405,6 +407,9 @@ class HyperParams:
     def get_batches_per_update_schedule(self):
         return parse_int_schedule(self.batches_per_update_schedule)
 
+    def get_variety_schedule(self) -> List[Tuple[float, float]]:
+        return parse_float_schedule(self.adr_variety_schedule)
+
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
         for name, value in vars(self).items():
@@ -427,7 +432,7 @@ def parse_int_schedule(schedule):
         return list(reversed(items))
 
 
-def parse_float_schedule(schedule):
+def parse_float_schedule(schedule) -> List[Tuple[float, float]]:
     if schedule == '':
         return []
     else:

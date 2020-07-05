@@ -95,7 +95,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             linear_hardness=hps.linear_hardness,
             max_hardness=hps.max_hardness,
             hardness_offset=hps.hardness_offset,
-            modifier_decay=hps.adr_modifier_decay,
+            variety=hps.adr_variety,
         )
     else:
         policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
@@ -132,6 +132,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
+    variety_schedule = hps.get_variety_schedule()
     rewmean = 0.0
     rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
@@ -141,15 +142,15 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if env is not None:
                 env.close()
                 env = None
-
         if len(batches_per_update_schedule) > 0 and batches_per_update_schedule[-1][0] <= total_steps:
             _, batches_per_update = batches_per_update_schedule.pop()
             hps.batches_per_update = batches_per_update
             assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
-
         if len(entropy_bonus_schedule) > 0 and entropy_bonus_schedule[-1][0] <= total_steps:
             _, entropy_bonus = entropy_bonus_schedule.pop()
             hps.entropy_bonus = entropy_bonus
+        if len(variety_schedule) > 0 and variety_schedule[-1][0] <= total_steps:
+            _, adr.variety = variety_schedule.pop()
 
         if env is None and not hps.verify:
             env = envs.CodeCraftVecEnv(hps.num_envs,

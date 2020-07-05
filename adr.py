@@ -14,7 +14,7 @@ class ADR:
                  linear_hardness: bool = False,
                  max_hardness: float = 200,
                  hardness_offset: float = 0,
-                 modifier_decay: Optional[float] = 2.0):
+                 variety: Optional[float] = 0.7):
         if ruleset is None:
             ruleset = Rules(
                 cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
@@ -22,8 +22,8 @@ class ADR:
                 cost_modifier_constructor=0.5,
             )
         self.ruleset = ruleset
-        self.modifier_decay = modifier_decay
-        if modifier_decay is None:
+        self.variety = variety
+        if variety is None:
             self.target_fractions = normalize({
                 '1m': 30,
                 '1s': 5,
@@ -75,11 +75,12 @@ class ADR:
 
         gradient = defaultdict(lambda: 0.0)
         weight = defaultdict(lambda: 0.0)
+        variety = self.variety if self.variety is not None else 1.0
         for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
-                loss = -math.log(self.target_fractions[build] / bfraction)
+                loss = -variety * math.log(self.target_fractions[build] / bfraction)
 
             for module, mfraction in module_norm(build).items():
                 gradient[module] += mfraction * loss
@@ -90,15 +91,16 @@ class ADR:
         for key in gradient.keys():
             gradient[key] /= weight[key]
 
-        if self.modifier_decay is not None:
-            gradient['m'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
-            gradient['s'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
-            gradient['p'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
-            gradient['c'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
-            gradient['e'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
-            gradient['size1'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
-            gradient['size2'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
-            gradient['size4'] += self.modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
+        if self.variety is not None:
+            modifier_decay = 1 - self.variety
+            gradient['m'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
+            gradient['s'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
+            gradient['p'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
+            gradient['c'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
+            gradient['e'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
+            gradient['size1'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
+            gradient['size2'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
+            gradient['size4'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
         average_modifier = 0.0
