@@ -8,39 +8,20 @@ class ADR:
     def __init__(self,
                  hstepsize,
                  stepsize=0.02,
-                 warmup=100,
+                 warmup=10,
                  initial_hardness=0.0,
                  ruleset: Rules = None,
                  linear_hardness: bool = False,
                  max_hardness: float = 200,
                  hardness_offset: float = 0,
-                 variety: Optional[float] = 0.7):
+                 variety: float = 0.7):
         if ruleset is None:
-            ruleset = Rules(
-                cost_modifier_size=[1.2, 0.8, 0.8, 0.6],
-                cost_modifier_engines=0.7,
-                cost_modifier_constructor=0.5,
-            )
+            ruleset = Rules(cost_modifier_size=[1.2, 0.6, 0.6, 0.4])
         self.ruleset = ruleset
         self.variety = variety
-        if variety is None:
-            self.target_fractions = normalize({
-                '1m': 30,
-                '1s': 5,
-                '1m1p': 30,
-                '2m': 2,
-                '1s1c': 8,
-                '2m1e1p': 5,
-                '3m1p': 2,
-                '2m2p': 2,
-                '2s2c': 4,
-                '2s1c1e': 1,
-                '2s1m1c': 1,
-            })
-        else:
-            self.target_fractions = normalize({b: 1.0 for b in [
-                '1m', '1s', '1m1p', '2m', '1s1c', '2m1e1p', '3m1p', '2m2p', '2s2c', '2s1c1e', '2s1m1c'
-            ]})
+        self.target_fractions = normalize({b: 1.0 for b in [
+            '1m', '1s', '1m1p', '2m', '1s1c', '2m1e1p', '3m1p', '2m2p', '2s2c', '2s1c1e', '2s1m1c'
+        ]})
 
         self.target_modifier = 0.8
         self.stepsize = stepsize
@@ -75,12 +56,11 @@ class ADR:
 
         gradient = defaultdict(lambda: 0.0)
         weight = defaultdict(lambda: 0.0)
-        variety = self.variety if self.variety is not None else 1.0
         for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
-                loss = -variety * math.log(self.target_fractions[build] / bfraction)
+                loss = -self.variety * math.log(self.target_fractions[build] / bfraction)
 
             for module, mfraction in module_norm(build).items():
                 gradient[module] += mfraction * loss
@@ -91,16 +71,15 @@ class ADR:
         for key in gradient.keys():
             gradient[key] /= weight[key]
 
-        if self.variety is not None:
-            modifier_decay = 1 - self.variety
-            gradient['m'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
-            gradient['s'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
-            gradient['p'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
-            gradient['c'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
-            gradient['e'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
-            gradient['size1'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
-            gradient['size2'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
-            gradient['size4'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
+        modifier_decay = 1 - self.variety
+        gradient['m'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
+        gradient['s'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
+        gradient['p'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
+        gradient['c'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
+        gradient['e'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
+        gradient['size1'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
+        gradient['size2'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
+        gradient['size4'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
         average_modifier = 0.0

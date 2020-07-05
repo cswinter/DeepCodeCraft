@@ -343,9 +343,13 @@ def map_arena(randomize: bool, hardness: int):
 def standard_starting_drones(map_height, map_width, randomize):
     drones = []
     starting_resources = np.random.randint(0, 8) if randomize else 7
+    already_1s1c = False
     if randomize and np.random.uniform(0, 1) < 0.3:
         for _ in range(2):
-            mstype = np.random.randint(0, 4)
+            if already_1s1c:
+                mstype = np.random.randint(0, 3)
+            else:
+                mstype = np.random.randint(0, 4)
             if mstype == 0:
                 drones.append(dict(
                     constructors=2,
@@ -368,7 +372,7 @@ def standard_starting_drones(map_height, map_width, randomize):
                 ))
             elif mstype == 3:
                 drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+                already_1s1c = True
     else:
         drones.append(
             dict(constructors=3,
