@@ -99,6 +99,9 @@ class ADR:
             size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
             average_modifier += modifier * size_modifier * bfraction
 
+        if average_modifier == 0:
+            return
+
         average_cost_grad = 10 * math.log(self.target_modifier / average_modifier)
         for key, grad in gradient.items():
             exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))

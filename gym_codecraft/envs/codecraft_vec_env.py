@@ -905,7 +905,12 @@ class CodeCraftVecEnv(object):
                 score = -enemy_score
             elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1] * 0.1
-            elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500, Objective.DISTANCE_TO_ORIGIN]:
+            elif self.objective == Objective.DISTANCE_TO_ORIGIN:
+                start = stride * i+self.obs_config.global_features()
+                x = obs[start]
+                y = obs[start + 1]
+                score = -math.sqrt(x ** 2 + y ** 2) / 1000.0
+            elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500]:
                 raise Exception(f"Deprecated objective {self.objective}")
             else:
                 raise Exception(f"Unknown objective {self.objective}")

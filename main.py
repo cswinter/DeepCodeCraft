@@ -843,6 +843,8 @@ def main():
         hps = HyperParams.micro_practice()
     elif args.hpset == 'scout':
         hps = HyperParams.scout()
+    elif args.hpset == 'd2o':
+        hps = HyperParams.distance_to_origin()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
