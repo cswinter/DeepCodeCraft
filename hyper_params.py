@@ -408,6 +408,21 @@ class HyperParams:
 
         return hps
 
+
+    @staticmethod
+    def distance_to_mineral():
+        hps = HyperParams()
+        hps.objective = envs.Objective.DISTANCE_TO_CRYSTAL
+        hps.num_self_play = 0
+        hps.eval_envs = 0
+        hps.agents = 1
+        hps.obs_allies = 1
+        hps.obs_enemies = 0
+        hps.use_privileged = False
+
+        return hps
+
+
     @property
     def rosteps(self):
         return self.num_envs * self.seq_rosteps

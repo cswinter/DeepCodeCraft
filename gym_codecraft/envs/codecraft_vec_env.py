@@ -641,6 +641,7 @@ class CodeCraftVecEnv(object):
         self.rule_rng_amount = rule_rng_amount
         self.rule_cost_rng = rule_cost_rng
         self.rng_ruleset = None
+        self.allow_harvesting = objective != Objective.DISTANCE_TO_CRYSTAL
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -758,7 +759,8 @@ class CodeCraftVecEnv(object):
                 self_play,
                 self.next_map(),
                 opponent,
-                self.rules())
+                self.rules(),
+                self.allow_harvesting)
             self.game_count += 1
 
             self.games.append((game_id, 0, opponent))
@@ -906,11 +908,25 @@ class CodeCraftVecEnv(object):
             elif self.objective == Objective.ALLIED_WEALTH:
                 score = obs[stride * num_envs + i * obs_config.nonobs_features() + 1] * 0.1
             elif self.objective == Objective.DISTANCE_TO_ORIGIN:
-                start = stride * i+self.obs_config.global_features()
+                start = stride * i + obs_config.endglobals()
                 x = obs[start]
                 y = obs[start + 1]
                 score = -math.sqrt(x ** 2 + y ** 2) / 1000.0
-            elif self.objective in [Objective.DISTANCE_TO_CRYSTAL, Objective.DISTANCE_TO_1000_500]:
+            elif self.objective == Objective.DISTANCE_TO_CRYSTAL:
+                dstart = stride * i + obs_config.endglobals()
+                xd = obs[dstart]
+                yd = obs[dstart + 1]
+                allmstart = stride * i + obs_config.endenemies()
+                score = 0.0
+                for m in range(obs_config.minerals):
+                    mstart = allmstart + obs_config.mstride() * m
+                    x = obs[mstart] - xd
+                    y = obs[mstart + 1] - yd
+                    size = obs[mstart + 2]
+                    nearness = 0.5 - math.sqrt(x ** 2 + y ** 2) / 1000.0
+                    score = max(score, 0.2 * nearness * size)
+            elif self.objective in [Objective.DISTANCE_TO_1000_500]:
+
                 raise Exception(f"Deprecated objective {self.objective}")
             else:
                 raise Exception(f"Unknown objective {self.objective}")
@@ -944,7 +960,8 @@ class CodeCraftVecEnv(object):
                                                         self_play,
                                                         m,
                                                         opponent,
-                                                        self.rules())
+                                                        self.rules(),
+                                                        self.allow_harvesting)
                         self.mp_game_count += 1
                     else:
                         game_id = codecraft.create_game(self.game_length,
@@ -952,7 +969,8 @@ class CodeCraftVecEnv(object):
                                                         self_play,
                                                         self.next_map(),
                                                         opponent,
-                                                        self.rules())
+                                                        self.rules(),
+                                                        self.allow_harvesting)
                     self.game_count += 1
                 else:
                     game_id, _, opponent = self.games[game - 1]

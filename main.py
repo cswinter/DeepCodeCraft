@@ -845,6 +845,8 @@ def main():
         hps = HyperParams.scout()
     elif args.hpset == 'd2o':
         hps = HyperParams.distance_to_origin()
+    elif args.hpset == 'd2m':
+        hps = HyperParams.distance_to_mineral()
     elif args.hpset != 'default':
         raise Exception(f"Unknown hpset `{args.hpset}`")
     for key, value in vars(args).items():
