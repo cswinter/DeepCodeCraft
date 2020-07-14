@@ -19,6 +19,7 @@ def create_game(game_length: int = None,
                 scripted_opponent: str = 'none',
                 rules=Rules(),
                 allowHarvesting: bool = True,
+                forceHarvesting: bool = True,
                 randomizeIdle: bool = True) -> int:
     if custom_map is None:
         custom_map = ''
@@ -39,6 +40,7 @@ def create_game(game_length: int = None,
                                      f'&costModifierMissiles={rules.cost_modifier_missiles}'
                                      f'&costModifierEngines={rules.cost_modifier_engines}'
                                      f'&allowHarvesting={scalabool(allowHarvesting)}'
+                                     f'&forceHarvesting={scalabool(forceHarvesting)}'
                                      f'&randomizeIdle={scalabool(randomizeIdle)}' ,
                                      json=custom_map).json()
         else:

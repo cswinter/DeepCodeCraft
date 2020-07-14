@@ -641,6 +641,7 @@ class CodeCraftVecEnv(object):
         self.rule_cost_rng = rule_cost_rng
         self.rng_ruleset = None
         self.allow_harvesting = objective != Objective.DISTANCE_TO_CRYSTAL
+        self.force_harvesting = objective != Objective.ALLIED_WEALTH
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
 
         remaining_scripted = num_envs - 2 * num_self_play
@@ -761,6 +762,7 @@ class CodeCraftVecEnv(object):
                 opponent,
                 self.rules(),
                 self.allow_harvesting,
+                self.force_harvesting,
                 self.randomize_idle)
             self.game_count += 1
 
@@ -963,6 +965,7 @@ class CodeCraftVecEnv(object):
                                                         opponent,
                                                         self.rules(),
                                                         self.allow_harvesting,
+                                                        self.force_harvesting,
                                                         self.randomize_idle)
                         self.mp_game_count += 1
                     else:
@@ -973,6 +976,7 @@ class CodeCraftVecEnv(object):
                                                         opponent,
                                                         self.rules(),
                                                         self.allow_harvesting,
+                                                        self.force_harvesting,
                                                         self.randomize_idle)
                     self.game_count += 1
                 else:
