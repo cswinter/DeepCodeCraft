@@ -181,9 +181,9 @@ class HyperParams:
         hps.entropy_bonus = 0.01
         hps.entropy_bonus_schedule = '40e6:0.002,80e6:0.0'
 
-        hps.batches_per_update = 4
-        hps.batches_per_update_schedule = '40e6:8,80e6:16'
-        hps.bs = 1024
+        hps.batches_per_update = 8
+        hps.batches_per_update_schedule = '40e6:16,80e6:32'
+        hps.bs = 512
         hps.seq_rosteps = 256
         hps.num_envs = 64
         hps.num_self_play = 32
