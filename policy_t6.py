@@ -305,7 +305,7 @@ class TransformerPolicy6(nn.Module):
 
         nagents = xagent.size(1)
 
-        agent_active = action_masks.sum(2) > 1
+        agent_active = action_masks.sum(2) > 0
         # Ensure at least one agent because code doesn't work with empty tensors.
         # Returning immediately with (empty?) result would be more efficient but probably doesn't matter.
         if agent_active.float().sum() == 0:
