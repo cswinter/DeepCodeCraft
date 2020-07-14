@@ -18,7 +18,8 @@ def create_game(game_length: int = None,
                 custom_map=None,
                 scripted_opponent: str = 'none',
                 rules=Rules(),
-                allowHarvesting: bool = True) -> int:
+                allowHarvesting: bool = True,
+                randomizeIdle: bool = True) -> int:
     if custom_map is None:
         custom_map = ''
     try:
@@ -37,7 +38,8 @@ def create_game(game_length: int = None,
                                      f'&costModifierShields={rules.cost_modifier_shields}'
                                      f'&costModifierMissiles={rules.cost_modifier_missiles}'
                                      f'&costModifierEngines={rules.cost_modifier_engines}'
-                                     f'&allowHarvesting={scalabool(allowHarvesting)}',
+                                     f'&allowHarvesting={scalabool(allowHarvesting)}'
+                                     f'&randomizeIdle={scalabool(randomizeIdle)}' ,
                                      json=custom_map).json()
         else:
             response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()

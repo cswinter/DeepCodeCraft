@@ -8,7 +8,6 @@ import numpy as np
 
 import codecraft
 
-
 @dataclass
 class ObsConfig:
     allies: int
@@ -642,6 +641,7 @@ class CodeCraftVecEnv(object):
         self.rule_cost_rng = rule_cost_rng
         self.rng_ruleset = None
         self.allow_harvesting = objective != Objective.DISTANCE_TO_CRYSTAL
+        self.randomize_idle = objective != Objective.ALLIED_WEALTH
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -760,7 +760,8 @@ class CodeCraftVecEnv(object):
                 self.next_map(),
                 opponent,
                 self.rules(),
-                self.allow_harvesting)
+                self.allow_harvesting,
+                self.randomize_idle)
             self.game_count += 1
 
             self.games.append((game_id, 0, opponent))
@@ -961,7 +962,8 @@ class CodeCraftVecEnv(object):
                                                         m,
                                                         opponent,
                                                         self.rules(),
-                                                        self.allow_harvesting)
+                                                        self.allow_harvesting,
+                                                        self.randomize_idle)
                         self.mp_game_count += 1
                     else:
                         game_id = codecraft.create_game(self.game_length,
@@ -970,7 +972,8 @@ class CodeCraftVecEnv(object):
                                                         self.next_map(),
                                                         opponent,
                                                         self.rules(),
-                                                        self.allow_harvesting)
+                                                        self.allow_harvesting,
+                                                        self.randomize_idle)
                     self.game_count += 1
                 else:
                     game_id, _, opponent = self.games[game - 1]
