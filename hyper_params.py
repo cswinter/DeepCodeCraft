@@ -114,8 +114,9 @@ class HyperParams:
         self.adr = False      # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
+
         self.adr_variety = 0.8
-        self.adr_variety_schedule = '20e6:0.7,30e6:0.6,40e6:0.5,60e6:0.4,80e6:0.3,110e6:0.2,140e6:0.1'
+        self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
 
         # Testing
         self.verify_create_golden = False
@@ -158,9 +159,9 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 50e6
+        hps.steps = 150e6
 
-        hps.agents = 8
+        hps.agents = 15
         hps.nenemy = 10
         hps.nally = 10
         hps.nmineral = 5

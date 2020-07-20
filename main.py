@@ -133,6 +133,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
     variety_schedule = hps.get_variety_schedule()
+    variety_schedule_last_step = 0.0
+    variety_schedule_last_value = hps.adr_variety
     rewmean = 0.0
     rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
@@ -149,8 +151,13 @@ def train(hps: HyperParams, out_dir: str) -> None:
         if len(entropy_bonus_schedule) > 0 and entropy_bonus_schedule[-1][0] <= total_steps:
             _, entropy_bonus = entropy_bonus_schedule.pop()
             hps.entropy_bonus = entropy_bonus
-        if len(variety_schedule) > 0 and variety_schedule[-1][0] <= total_steps:
-            _, adr.variety = variety_schedule.pop()
+        if len(variety_schedule) > 0:
+            w = (total_steps - variety_schedule_last_step) / (variety_schedule[-1][0] - variety_schedule_last_value)
+            adr.variety = variety_schedule_last_value * (1 - w) + variety_schedule[-1][1] * w
+            if variety_schedule[-1][0] <= total_steps:
+                variety_schedule_last_step, variety_schedule_last_value = variety_schedule.pop()
+                adr.variety = variety_schedule_last_value
+        print('variety', adr.variety)
 
         if env is None and not hps.verify:
             env = envs.CodeCraftVecEnv(hps.num_envs,
