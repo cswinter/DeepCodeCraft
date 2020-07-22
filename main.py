@@ -157,7 +157,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if variety_schedule[-1][0] <= total_steps:
                 variety_schedule_last_step, variety_schedule_last_value = variety_schedule.pop()
                 adr.variety = variety_schedule_last_value
-        print('variety', adr.variety)
 
         if env is None and not hps.verify:
             env = envs.CodeCraftVecEnv(hps.num_envs,
@@ -178,7 +177,12 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        max_enemy_army_size_score=hps.max_enemy_army_size_score,
                                        rule_rng_fraction=hps.rule_rng_fraction,
                                        rule_rng_amount=hps.rule_rng_amount,
-                                       rule_cost_rng=hps.rule_cost_rng)
+                                       rule_cost_rng=hps.rule_cost_rng,
+                                       scripted_opponents=[
+                                           ("destroyer", hps.num_vs_destroyer),
+                                           ("replicator", hps.num_vs_replicator),
+                                           ("aggressive_replicator", hps.num_vs_aggro_replicator),
+                                       ])
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:

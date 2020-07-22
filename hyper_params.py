@@ -77,6 +77,9 @@ class HyperParams:
         self.steps = 10e6           # Total number of timesteps
         self.num_envs = 64          # Number of environments
         self.num_self_play = 32     # Number of self-play environments (each provides two environments)
+        self.num_vs_replicator = 0  # Number of environments played vs scripted replicator AI
+        self.num_vs_aggro_replicator = 0  # Number of environments played vs scripted aggressive replicator AI
+        self.num_vs_destroyer = 0   # Number of environments played vs scripted destroyer AI
         self.num_self_play_schedule = ''
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.gamma = 0.99           # Discount factor

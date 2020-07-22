@@ -169,7 +169,7 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
         )
 
 
-def map_arena_tiny(randomize: bool, hardness: int):
+def map_arena_tiny(randomize: bool, hardness: int, require_default_mothership: bool):
     storage_modules = 1
     constructors = 1
     missiles_batteries = 1
@@ -196,7 +196,7 @@ def map_arena_tiny(randomize: bool, hardness: int):
     }
 
 
-def map_arena_tiny_2v2(randomize: bool, hardness: int):
+def map_arena_tiny_2v2(randomize: bool, hardness: int, require_default_mothership: bool):
     s1 = 1
     s2 = 1
     if randomize:
@@ -227,7 +227,7 @@ def map_arena_tiny_2v2(randomize: bool, hardness: int):
     }
 
 
-def map_arena_medium(randomize: bool, hardness: int):
+def map_arena_medium(randomize: bool, hardness: int, require_default_mothership: bool):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
@@ -261,7 +261,7 @@ def map_arena_medium(randomize: bool, hardness: int):
     }
 
 
-def map_arena_medium_large_ms(randomize: bool, hardness: int):
+def map_arena_medium_large_ms(randomize: bool, hardness: int, require_default_mothership: bool):
     ms = dict(constructors=3,
               storage_modules=3,
               missile_batteries=3,
@@ -295,7 +295,7 @@ def map_arena_medium_large_ms(randomize: bool, hardness: int):
     }
 
 
-def map_arena(randomize: bool, hardness: int):
+def map_arena(randomize: bool, hardness: int, require_default_mothership: bool):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
@@ -394,7 +394,7 @@ def standard_starting_drones(map_height, map_width, randomize):
     return player1, player2
 
 
-def map_smol_standard(randomize: bool, hardness: int):
+def map_smol_standard(randomize: bool, hardness: int, require_default_mothership: bool):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
     if hardness == 0:
@@ -406,7 +406,7 @@ def map_smol_standard(randomize: bool, hardness: int):
         map_height = 2500
         mineral_count = 13
 
-    player1, player2 = standard_starting_drones(map_height, map_width, randomize)
+    player1, player2 = standard_starting_drones(map_height, map_width, randomize and not require_default_mothership)
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
@@ -416,7 +416,7 @@ def map_smol_standard(randomize: bool, hardness: int):
     }
 
 
-def map_standard(randomize: bool, hardness: Union[int, float]):
+def map_standard(randomize: bool, hardness: Union[int, float], require_default_mothership: bool):
     # special case conditions for eval that was previously used to get comparable results
     is_eval = isinstance(hardness, int)
     if randomize:
@@ -483,7 +483,7 @@ def map_standard(randomize: bool, hardness: Union[int, float]):
     if minerals is None:
         minerals = mineral_count * [(1, 50)]
 
-    player1, player2 = standard_starting_drones(map_height, map_width, randomize)
+    player1, player2 = standard_starting_drones(map_height, map_width, randomize and not require_default_mothership)
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
@@ -493,7 +493,7 @@ def map_standard(randomize: bool, hardness: Union[int, float]):
     }
 
 
-def map_mp(randomize: bool, hardness: int):
+def map_mp(randomize: bool, hardness: int, require_default_mothership: bool):
     map_width = np.random.randint(2, 7) * 500
     map_height = np.random.randint(2, 7) * 500
     player1_drones = []
@@ -574,7 +574,7 @@ def map_mp(randomize: bool, hardness: int):
     }
 
 
-def map_scout(randomize: bool, hardness: int):
+def map_scout(randomize: bool, hardness: int, require_default_mothership: bool):
     return {
         'mapWidth': 5000,
         'mapHeight': 5000,
@@ -622,7 +622,7 @@ class CodeCraftVecEnv(object):
         self.stagger = stagger
         self.fair = fair
         self.game_length = 3 * 60 * 60
-        self.custom_map = lambda _1, _2: None
+        self.custom_map = lambda _1, _2, _3: None
         self.last_map = None
         self.randomize = randomize
         self.use_action_masks = use_action_masks
@@ -758,7 +758,7 @@ class CodeCraftVecEnv(object):
                 game_length,
                 self.action_delay,
                 self_play,
-                self.next_map(),
+                self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
                 opponent,
                 self.rules(),
                 self.allow_harvesting,
@@ -972,7 +972,7 @@ class CodeCraftVecEnv(object):
                         game_id = codecraft.create_game(self.game_length,
                                                         self.action_delay,
                                                         self_play,
-                                                        self.next_map(),
+                                                        self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
                                                         opponent,
                                                         self.rules(),
                                                         self.allow_harvesting,
@@ -1043,18 +1043,18 @@ class CodeCraftVecEnv(object):
                     done[game_id] = True
                     running -= 1
 
-    def next_map(self):
+    def next_map(self, require_default_mothership=False):
         if self.fair:
-            map = self.fair_map()
+            map = self.fair_map(require_default_mothership)
         else:
-            map = self.custom_map(self.randomize, self.hardness)
+            map = self.custom_map(self.randomize, self.hardness, require_default_mothership)
         if map:
             map['symmetric'] = np.random.rand() < self.symmetric
         return map
 
-    def fair_map(self):
+    def fair_map(self, require_default_mothership=False):
         if self.last_map is None:
-            self.last_map = self.custom_map(self.randomize, self.hardness)
+            self.last_map = self.custom_map(self.randomize, self.hardness, require_default_mothership)
             return self.last_map
         else:
             result = self.last_map
