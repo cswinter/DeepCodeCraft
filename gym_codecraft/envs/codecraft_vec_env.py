@@ -613,7 +613,8 @@ class CodeCraftVecEnv(object):
                  max_enemy_army_size_score=999999,
                  rule_rng_fraction=0.0,
                  rule_rng_amount=0.0,
-                 rule_cost_rng=0.0):
+                 rule_cost_rng=0.0,
+                 max_game_length=None):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -712,6 +713,8 @@ class CodeCraftVecEnv(object):
         elif objective == Objective.SCOUT:
             self.game_length = 2 * 60 * 60
             self.custom_map = map_scout
+        if max_game_length is not None:
+            self.game_length = max_game_length
         self.build_costs = [sum(modules) for modules in self.builds]
         self.base_naction = 8 + len(self.builds)
 

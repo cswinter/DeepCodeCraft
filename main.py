@@ -182,7 +182,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                            ("destroyer", hps.num_vs_destroyer),
                                            ("replicator", hps.num_vs_replicator),
                                            ("aggressive_replicator", hps.num_vs_aggro_replicator),
-                                       ])
+                                       ],
+                                       max_game_length=None if hps.max_game_length == 0 else hps.max_game_length)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:
