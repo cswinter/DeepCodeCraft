@@ -378,6 +378,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     optimizer.step()
                     if lr_scheduler:
                         lr_scheduler.step()
+        torch.cuda.empty_cache()
 
         if hps.verify or hps.verify_create_golden:
             return
