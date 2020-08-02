@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 import numpy as np
 
 import wandb
@@ -101,13 +101,16 @@ def train(hps: HyperParams, out_dir: str) -> None:
         policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
 
     lr_scheduler = None
+    if hps.lr_schedule == 'cosine':
+        assert hps.resume_from == '', f'Restoring learning rate schedule not implemented'
+        lr_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=hps.steps * hps.sample_reuse // (hps.bs * hps.batches_per_update),
+        )
+    else:
+        assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
     if hps.warmup > 0:
-        warmup_steps = hps.sample_reuse * hps.warmup // hps.bs
-        lr_scheduler = LambdaLR(optimizer, lr_lambda=[
-            warmup_lr_schedule(warmup_steps),
-            warmup_lr_schedule(warmup_steps),
-            warmup_lr_schedule(warmup_steps),
-        ])
+        assert False, 'Warmup not implemented'
 
     if hps.fp16:
         policy = policy.half()
@@ -417,6 +420,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'rewstd': rewstd,
             'average_cost_modifier': average_cost_modifier,
             'hardness': adr.hardness,
+            'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count

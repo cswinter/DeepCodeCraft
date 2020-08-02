@@ -8,6 +8,7 @@ class HyperParams:
         # Optimizer
         self.optimizer = 'Adam'  # Optimizer ("SGD" or "RMSProp" or "Adam")
         self.lr = 0.0003            # Learning rate
+        self.lr_schedule = 'none'   # Learning rate schedule ("none" or "cosine")
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
         self.bs = 2048              # Batch size during optimization
