@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
+from torch_scatter import scatter_add, scatter_max
 
 from gather import topk_by, topk_and_index_by
 from multihead_attention import MultiheadAttention
@@ -35,7 +36,7 @@ class TransformerPolicy7(nn.Module):
         self.fp16 = hps.fp16
         self.d_agent = hps.d_agent
         self.d_item = hps.d_item
-        self.naction = hps.objective.naction()
+        self.naction = hps.objective.naction() + obs_config.extra_actions()
 
         if hasattr(obs_config, 'global_drones'):
             self.global_drones = obs_config.global_drones
@@ -79,32 +80,35 @@ class TransformerPolicy7(nn.Module):
                 end=endenemies,
             ))
         else:
+            if self.nally > 0:
+                self.item_nets.append(PosItemBlock(
+                    obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
+                    mask_feature=7,  # Feature 7 is hitpoints
+                    topk=hps.nally,
+                    count=obs_config.allies,
+                    start=endglobals,
+                    end=endallies,
+                ))
+            if self.nenemy > 0:
+                self.item_nets.append(PosItemBlock(
+                    obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
+                    mask_feature=7,  # Feature 7 is hitpoints
+                    topk=hps.nenemy,
+                    count=obs_config.drones - self.obs_config.allies,
+                    start=endallies,
+                    end=endenemies,
+                    start_privileged=endtiles if hps.use_privileged else None,
+                    end_privileged=endallenemies if hps.use_privileged else None,
+                ))
+        if hps.nmineral > 0:
             self.item_nets.append(PosItemBlock(
-                obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
-                mask_feature=7,  # Feature 7 is hitpoints
-                topk=hps.nally,
-                count=obs_config.allies,
-                start=endglobals,
-                end=endallies,
+                obs_config.mstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
+                mask_feature=2,  # Feature 2 is size
+                topk=hps.nmineral,
+                count=obs_config.minerals,
+                start=endenemies,
+                end=endmins,
             ))
-            self.item_nets.append(PosItemBlock(
-                obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
-                mask_feature=7,  # Feature 7 is hitpoints
-                topk=hps.nenemy,
-                count=obs_config.drones - self.obs_config.allies,
-                start=endallies,
-                end=endenemies,
-                start_privileged=endtiles if hps.use_privileged else None,
-                end_privileged=endallenemies if hps.use_privileged else None,
-            ))
-        self.item_nets.append(PosItemBlock(
-            obs_config.mstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
-            mask_feature=2,  # Feature 2 is size
-            topk=hps.nmineral,
-            count=obs_config.minerals,
-            start=endenemies,
-            end=endmins,
-        ))
         if hps.ntile > 0:
             self.item_nets.append(PosItemBlock(
                 obs_config.tstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
@@ -158,7 +162,10 @@ class TransformerPolicy7(nn.Module):
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
-        self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + hps.d_item, 1)
+        if hps.use_privileged:
+            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + 2 * hps.d_item, 1)
+        else:
+            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio, 1)
         if hps.zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
@@ -169,7 +176,7 @@ class TransformerPolicy7(nn.Module):
         if self.fp16:
             action_masks = action_masks.half()
         action_masks = action_masks[:, :self.agents, :]
-        probs, v = self.forward(observation, privileged_obs)
+        probs, v = self.forward(observation, privileged_obs, action_masks)
         probs = probs.view(-1, self.agents, self.naction)
         if action_masks.size(2) != self.naction:
             nbatch, nagent, naction = action_masks.size()
@@ -179,7 +186,7 @@ class TransformerPolicy7(nn.Module):
         # We get device-side assert when using fp16 here (needs more investigation)
         action_dist = distributions.Categorical(probs.float() if self.fp16 else probs)
         actions = action_dist.sample()
-        entropy = action_dist.entropy()[action_masks.sum(2) != 0]
+        entropy = action_dist.entropy()[action_masks.sum(2) > 1]
         return actions, action_dist.log_prob(actions), entropy, v.detach().view(-1).cpu().numpy(), probs.detach().cpu().numpy()
 
     def backprop(self,
@@ -202,17 +209,10 @@ class TransformerPolicy7(nn.Module):
             old_logprobs = old_logprobs.half()
 
         action_masks = action_masks[:, :self.agents, :]
-        x, (items, mask) = self.latents(obs, privileged_obs)
-        batch_size = x.size()[0]
+        actions = actions[:, :self.agents]
+        old_logprobs = old_logprobs[:, :self.agents]
 
-        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.hps.dff_ratio)
-        items_max = items.max(dim=1).values
-        items_avg = items.sum(dim=1) / torch.clamp_min((~mask).float().sum(dim=1), min=1).unsqueeze(-1)
-        vin = torch.cat([vin, items_max, items_avg], dim=1)
-        values = self.value_head(vin).view(-1)
-
-        logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=2)
+        probs, values = self.forward(obs, privileged_obs, action_masks)
         probs = probs.view(-1, self.agents, self.naction)
 
         # add small value to prevent degenerate probability distribution when no action is possible
@@ -232,9 +232,12 @@ class TransformerPolicy7(nn.Module):
         vanilla_policy_loss = advantages * ratios
         clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
         if hps.ppo:
-            policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean()
+            policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
         else:
-            policy_loss = -vanilla_policy_loss.mean()
+            policy_loss = -vanilla_policy_loss.mean(dim=0).sum()
+        # TODO remove
+        # Adjustement loss magnitude to keep parity with previous averaging scheme
+        policy_loss /= 8
 
         # TODO: do over full distribution, not just selected actions?
         approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
@@ -255,31 +258,38 @@ class TransformerPolicy7(nn.Module):
         loss.backward()
         return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
-    def forward(self, x, x_privileged):
+    def forward(self, x, x_privileged, action_masks):
         batch_size = x.size()[0]
-        x, (items, mask) = self.latents(x, x_privileged)
+        x, indices, groups, (pitems, pmask) = self.latents(x, x_privileged, action_masks)
 
-        vin = x.max(dim=1).values.view(batch_size, self.d_agent * self.hps.dff_ratio)
-        items_max = items.max(dim=1).values
-        items_avg = items.sum(dim=1) / torch.clamp_min((~mask).float().sum(dim=1), min=1).unsqueeze(-1)
-        vin = torch.cat([vin, items_max, items_avg], dim=1)
+        if x.is_cuda:
+            vin = torch.cuda.FloatTensor(batch_size, self.d_agent * self.hps.dff_ratio).fill_(0)
+        else:
+            vin = torch.zeros(batch_size, self.d_agent * self.hps.dff_ratio)
+        scatter_max(x, index=groups, dim=0, out=vin)
+        if self.hps.use_privileged:
+            pitems_max = pitems.max(dim=1).values
+            pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
+            vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
         values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
-        probs = F.softmax(logits, dim=2)
 
-        # return probs.view(batch_size, 8, self.allies).permute(0, 2, 1), values
+        if x.is_cuda:
+            padded_logits = torch.cuda.FloatTensor(batch_size * self.agents, self.naction).fill_(0)
+        else:
+            padded_logits = torch.zeros(batch_size * self.agents, self.naction)
+        scatter_add(logits, index=indices, dim=0, out=padded_logits)
+        padded_logits = padded_logits.view(batch_size, self.agents, self.naction)
+        probs = F.softmax(padded_logits, dim=2)
+
         return probs, values
 
-    def logits(self, x, x_privileged):
-        x, x_privileged = self.latents(x, x_privileged)
+    def logits(self, x, x_privileged, action_masks):
+        x, x_privileged = self.latents(x, x_privileged, action_masks)
         return self.policy_head(x)
 
-    def latents(self, x, x_privileged):
-        if self.fp16:
-            # Normalization layers perform fp16 conversion for x after normalization
-            x_privileged = x_privileged.half()
-
+    def latents(self, x, x_privileged, action_masks):
         batch_size = x.size()[0]
 
         endglobals = self.obs_config.endglobals()
@@ -293,52 +303,53 @@ class TransformerPolicy7(nn.Module):
         globals = globals.view(batch_size, 1, self.obs_config.global_features()) \
             .expand(batch_size, self.agents, self.obs_config.global_features())
         xagent = torch.cat([xagent, globals], dim=2)
+
+        nagents = xagent.size(1)
+
+        agent_active = action_masks.sum(2) > 0
+        # Ensure at least one agent because code doesn't work with empty tensors.
+        # Returning immediately with (empty?) result would be more efficient but probably doesn't matter.
+        if agent_active.float().sum() == 0:
+            agent_active[0][0] = True
+        flat_agent_active = agent_active.flatten()
+        agent_group = torch.arange(0, batch_size).to(x.device).repeat_interleave(nagents)
+        agent_index = torch.arange(0, batch_size * nagents).to(x.device)
+        active_agent_groups = agent_group[flat_agent_active]
+        active_agent_indices = agent_index[flat_agent_active]
+        xagent = xagent[agent_active]
         agents, mask_agent = self.agent_embedding(xagent)
 
-        origin = xagent[:, :, 0:2].clone()
-        direction = xagent[:, :, 2:4].clone()
+        origin = xagent[:, 0:2].clone()
+        direction = xagent[:, 2:4].clone()
 
         pemb_list = []
         pmask_list = []
         emb_list = []
         relpos_list = []
-        index_list = []
         mask_list = []
-        offset = 0
         for item_net in self.item_nets:
-            emb, relpos, index, mask = item_net(x, origin, direction)
+            emb, relpos, mask = item_net(x, active_agent_groups, origin, direction)
             emb_list.append(emb)
             relpos_list.append(relpos)
-            index_list.append(index + offset)
             mask_list.append(mask)
-            offset += emb.size(1)
             if item_net.start_privileged is not None:
-                pemb, _, _, pmask = item_net(x, origin, direction, privileged=True)
+                pemb, _, pmask = item_net(x, active_agent_groups, origin, direction, privileged=True)
                 pemb_list.append(pemb)
                 pmask_list.append(pmask)
             else:
                 pemb_list.append(emb)
                 pmask_list.append(mask)
-        relpos = torch.cat(relpos_list, dim=2)
+        relpos = torch.cat(relpos_list, dim=1)
         relpos_embed, _ = self.relpos_net(relpos)
-        embeddings = torch.cat(emb_list, dim=1)
-        mask_all = torch.cat(mask_list, dim=1)
-        indices = torch.cat(index_list, dim=2)
-        nallitem = embeddings.size(1)
-        ntopitem = indices.size(2)
-        embeddings_topk = embeddings.unsqueeze(1)\
-            .expand(batch_size, self.agents, nallitem, self.d_item // 2)\
-            .gather(dim=2, index=indices[:, :, :, 0:1].expand(batch_size, self.agents, ntopitem, self.d_item // 2))
+        embed = torch.cat(emb_list, dim=1)
+        mask = torch.cat(mask_list, dim=1)
+        # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
+        mask[:, 0] = 0
 
-        items = torch.cat([relpos_embed, embeddings_topk], dim=3)
-        mask = mask_all.unsqueeze(1)\
-            .expand(batch_size, self.agents, nallitem)\
-            .gather(dim=2, index=indices[:, :, :, 0].expand(batch_size, self.agents, ntopitem))
+        items = torch.cat([relpos_embed, embed], dim=2)
 
         pitems = torch.cat(pemb_list, dim=1)
         pmask = torch.cat(pmask_list, dim=1)
-
-        mask[:, :, 0] = 0
 
         # TODO: constant item?
         """
@@ -356,47 +367,42 @@ class TransformerPolicy7(nn.Module):
                 """
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        source = items.view(batch_size * self.agents, self.nitem, self.d_item).permute(1, 0, 2)
-        target = agents.view(1, batch_size * self.agents, self.d_agent)
+        source = items.permute(1, 0, 2)
+        target = agents.view(1, -1, self.d_agent)
         x, attn_weights = self.multihead_attention(
             query=target,
             key=source,
             value=source,
-            key_padding_mask=mask.view(batch_size * self.agents, self.nitem),
+            key_padding_mask=mask,
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
         x = self.norm2(x + x2)
-        x = x.view(batch_size, self.agents, self.d_agent)
+        x = x.view(-1, self.d_agent)
 
         if self.hps.nearby_map:
             items = self.norm_map(F.relu(self.downscale(items)))
             items = items * (1 - mask.float().unsqueeze(-1))
-            nearby_map = spatial.spatial_scatter(
-                items=items[:, :, :(self.nitem - self.nconstant - self.ntile), :],
-                positions=relpos[:, :, :self.nitem - self.nconstant - self.ntile, 0:2],
+            nearby_map = spatial.single_batch_dim_spatial_scatter(
+                items=items[:, :(self.nitem - self.nconstant - self.ntile), :],
+                positions=relpos[:, :self.nitem - self.nconstant - self.ntile, :2],
                 nray=self.hps.nm_nrays,
                 nring=self.hps.nm_nrings,
                 inner_radius=self.hps.nm_ring_width,
                 embed_offsets=self.hps.map_embed_offset,
-            ).view(batch_size * self.agents, self.map_channels, self.hps.nm_nrings, self.hps.nm_nrays)
+            ).view(-1, self.map_channels, self.hps.nm_nrings, self.hps.nm_nrays)
             if self.hps.map_conv:
                 nearby_map2 = self.conv2(F.relu(self.conv1(nearby_map)))
                 nearby_map2 = nearby_map2.permute(0, 3, 2, 1)
                 nearby_map = nearby_map.permute(0, 3, 2, 1)
                 nearby_map = self.norm_conv(nearby_map + nearby_map2)
-            nearby_map = nearby_map.reshape(batch_size, self.agents, self.d_agent)
-            x = torch.cat([x, nearby_map], dim=2)
+            nearby_map = nearby_map.reshape(-1, self.d_agent)
+            x = torch.cat([x, nearby_map], dim=1)
 
-        x = self.final_layer(x)
-        x = x.view(batch_size, self.agents, self.d_agent * self.hps.dff_ratio)
+        x = self.final_layer(x).squeeze(0)
+        # TODO: remove
         x = x * (~mask_agent).float().unsqueeze(-1)
-
-        return x, (pitems, pmask)
-
-    def param_groups(self):
-        # TODO?
-        pass
+        return x, active_agent_indices, active_agent_groups, (pitems, pmask)
 
 
 # Computes a running mean/variance of input features and performs normalization.
@@ -410,18 +416,23 @@ class InputNorm(nn.Module):
         self.register_buffer('mean', torch.zeros(num_features))
         self.register_buffer('squares_sum', torch.zeros(num_features))
         self.fp16 = False
+        self._stddev = None
+        self._dirty = True
 
     def update(self, input, mask):
+        self._dirty = True
         if mask is not None:
-            if len(input.size()) == 4:
-                batch_size, nally, nitem, features = input.size()
-                assert (batch_size, nally, nitem) == mask.size()
-            elif len(input.size()) == 3:
-                batch_size, nally, features = input.size()
-                assert (batch_size, nally) == mask.size()
+            if len(input.size()) == 3:
+                batch_size, nitem, features = input.size()
+                assert (batch_size, nitem) == mask.size()
+            elif len(input.size()) == 2:
+                batch_size, features = input.size()
+                assert (batch_size,) == mask.size()
             else:
-                raise Exception(f'Expecting 3 or 4 dimensions, actual: {len(input.size())}')
-            input = input[mask, :]
+                raise Exception(f'Expecting 2 or 3 dimensions, actual: {len(input.size())}')
+            #count = mask.float().sum().item()
+            #mask = mask.view(-1).unsqueeze(-1).float()
+            input = input[mask]
         else:
             features = input.size()[-1]
             input = input.reshape(-1, features)
@@ -429,16 +440,25 @@ class InputNorm(nn.Module):
         count = input.numel() / features
         if count == 0:
             return
+        #mean = input.sum(dim=0) / count
         mean = input.mean(dim=0)
         if self.count == 0:
             self.count += count
             self.mean = mean
             self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
+            #if mask is not None:
+            #    self.squares_sum = ((input - mean) * (input - mean) * mask).sum(dim=0)
+            #else:
+            #    self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
             self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
             self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
+            #if mask is not None:
+            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean) * mask).sum(dim=0)
+            #else:
+            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
             self.mean = new_mean
 
     def forward(self, input, mask=None):
@@ -448,14 +468,6 @@ class InputNorm(nn.Module):
             if self.count > 1:
                 input = (input - self.mean) / self.stddev()
             input = torch.clamp(input, -self.cliprange, self.cliprange)
-            if (input == float('-inf')).sum() > 0 \
-                    or (input == float('inf')).sum() > 0 \
-                    or (input != input).sum() > 0:
-                print(input)
-                print(self.squares_sum)
-                print(self.stddev())
-                print(input)
-                raise Exception("OVER/UNDERFLOW DETECTED!")
 
         return input.half() if self.fp16 else input
 
@@ -465,9 +477,12 @@ class InputNorm(nn.Module):
         self.fp16 = True
 
     def stddev(self):
-        sd = torch.sqrt(self.squares_sum / (self.count - 1))
-        sd[sd == 0] = 1
-        return sd
+        if self._dirty:
+            sd = torch.sqrt(self.squares_sum / (self.count - 1))
+            sd[sd == 0] = 1
+            self._stddev = sd
+            self._dirty = False
+        return self._stddev
 
 
 class InputEmbedding(nn.Module):
@@ -518,6 +533,7 @@ class PosItemBlock(nn.Module):
                  start_privileged=None,
                  end_privileged=None):
         super(PosItemBlock, self).__init__()
+        assert topk > 0
 
         self.d_in = d_in
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
@@ -531,34 +547,35 @@ class PosItemBlock(nn.Module):
         self.start_privileged = start_privileged
         self.end_privileged = end_privileged
 
-    def forward(self, x, origin, direction, privileged=False):
-        batch_size = x.size(0)
-        _, agents, _ = origin.size()
+    def forward(self, x, indices, origin, direction, privileged=False):
+        batch_agents, _ = origin.size()
 
         if privileged:
-            x = x[:, self.start_privileged:self.end_privileged].view(batch_size, self.count, self.d_in)
-            mask = x[:, :, self.mask_feature] == 0
-            topkpos = None
-            topkindex = None
+            x = x[:, self.start_privileged:self.end_privileged].view(-1, self.count, self.d_in)
         else:
-            x = x[:, self.start:self.end].view(batch_size, self.count, self.d_in)
-            mask = x[:, :, self.mask_feature] == 0
+            x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
 
-            abspos = x[:, :, 0:2]
-            relpos = spatial.relative_positions(origin, direction, abspos)
-            dist = relpos.norm(p=2, dim=3)
-            direction = relpos / (dist.unsqueeze(-1) + 1e-8)
-            emask = mask.unsqueeze(1).expand(batch_size, agents, self.count)
-            key = -dist - emask.float() * 1e8
-            dirdist = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=3)
-            topkpos, topkindex = topk_and_index_by(values=dirdist, vdim=2, keys=key, kdim=2, k=self.topk)
+        x = x[indices]
+
+        pos = x[:, :, 0:2]
+        relpos = spatial.unbatched_relative_positions(origin, direction, pos)
+        dist = relpos.norm(p=2, dim=2)
+        direction = relpos / (dist.unsqueeze(-1) + 1e-8)
+        relpos = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
+
+        empty = (x[:, :, self.mask_feature] == 0).float()
+        key = -dist - empty.float() * 1e8
+        x = topk_by(values=x, vdim=1, keys=key, kdim=1, k=self.topk)
+        relpos = topk_by(values=relpos, vdim=1, keys=key, kdim=1, k=self.topk)
+
+        mask = x[:, :, self.mask_feature] == 0
 
         x = self.embedding(x, ~mask)
         if self.resblock is not None:
             x = self.resblock(x)
         x = x * (~mask).unsqueeze(-1).float()
 
-        return x, topkpos, topkindex, mask
+        return x, relpos, mask
 
 
 class ItemBlock(nn.Module):
@@ -572,13 +589,18 @@ class ItemBlock(nn.Module):
 
     def forward(self, x):
         if self.mask_feature:
-            mask = x[:, :, self.mask_feature] == 0
+            if x.dim() == 3:
+                mask = x[:, :, self.mask_feature] == 0
+            else:
+                mask = x[:, self.mask_feature] == 0
         else:
-            batch_size, agents, items, _ = x.size()
-            mask = (torch.zeros(batch_size, agents, items) == 1).to(x.device)
+            if x.dim() == 3:
+                mask = torch.ones_like(x[:, :, 0]).to(x.device) == 0
+            else:
+                mask = torch.ones_like(x[:, 0]).to(x.device) == 0
+
         x = self.embedding(x, ~mask)
         if self.resblock is not None:
             x = self.resblock(x)
         x = x * (~mask).unsqueeze(-1).float()
         return x, mask
-

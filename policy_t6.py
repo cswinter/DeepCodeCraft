@@ -610,6 +610,4 @@ class ItemBlock(nn.Module):
         if self.resblock is not None:
             x = self.resblock(x)
         x = x * (~mask).unsqueeze(-1).float()
-
         return x, relpos, mask
-
