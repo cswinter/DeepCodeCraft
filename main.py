@@ -16,7 +16,7 @@ import wandb
 from adr import ADR, normalize
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
-from hyper_params import HyperParams
+from hyper_params import HyperParams, parse_schedule
 from policy_t2 import TransformerPolicy2, InputNorm
 from policy_t3 import TransformerPolicy3, InputNorm
 from policy_t4 import TransformerPolicy4, InputNorm
@@ -134,7 +134,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
-    entropy_bonus_schedule = hps.get_entropy_bonus_schedule()
+    entropy_bonus_schedule = parse_schedule(hps.entropy_bonus_schedule, hps.entropy_bonus)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -151,9 +151,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             _, batches_per_update = batches_per_update_schedule.pop()
             hps.batches_per_update = batches_per_update
             assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
-        if len(entropy_bonus_schedule) > 0 and entropy_bonus_schedule[-1][0] <= total_steps:
-            _, entropy_bonus = entropy_bonus_schedule.pop()
-            hps.entropy_bonus = entropy_bonus
+        entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
         if len(variety_schedule) > 0:
             w = (total_steps - variety_schedule_last_step) / (variety_schedule[-1][0] - variety_schedule_last_value)
             adr.variety = variety_schedule_last_value * (1 - w) + variety_schedule[-1][1] * w
@@ -421,6 +419,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'average_cost_modifier': average_cost_modifier,
             'hardness': adr.hardness,
             'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
+            'entropy_bonus': entropy_bonus,
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count

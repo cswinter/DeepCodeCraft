@@ -1,5 +1,6 @@
 import argparse
-from typing import List, Tuple
+from abc import ABC, abstractmethod
+from typing import List, Tuple, Optional
 from gym_codecraft import envs
 
 
@@ -454,6 +455,70 @@ class HyperParams:
             else:
                 parser.add_argument(f"--{name}", type=type(value))
         return parser
+
+
+class HPSchedule(ABC):
+    @abstractmethod
+    def value_at(self, step) -> float:
+        pass
+
+
+class LinearHPSchedule(HPSchedule):
+    def __init__(self, segments: List[Tuple[int, float]]):
+        self.segments = segments
+
+    def value_at(self, step) -> float:
+        left, right = find_adjacent(self.segments, step)
+        if right is None:
+            return left[1]
+        return left[1] + (step - left[0]) * (right[1] - left[1]) / (right[0] - left[0])
+
+
+class StepHPSchedule(HPSchedule):
+    def __init__(self, segments: List[Tuple[int, float]]):
+        self.segments = segments
+
+    def value_at(self, step) -> float:
+        left, _ = find_adjacent(self.segments, step)
+        return left[1]
+
+
+class ConstantSchedule(HPSchedule):
+    def __init__(self, value):
+        self.value = value
+
+    def value_at(self, step) -> float:
+        return self.value
+
+
+def parse_schedule(schedule: str, initial_value: float) -> HPSchedule:
+    if schedule == '':
+        return ConstantSchedule(initial_value)
+    elif schedule.startswith('lin '):
+        segments = [(0, initial_value)]
+        for kv in schedule[len('lin '):].split(","):
+            [k, v] = kv.split(":")
+            segments.append((int(float(k)), float(v)))
+        return LinearHPSchedule(segments)
+    else:
+        segments = [(0, initial_value)]
+        for kv in schedule.split(","):
+            [k, v] = kv.split(":")
+            segments.append((int(float(k)), float(v)))
+        return StepHPSchedule(segments)
+
+
+def find_adjacent(segments: List[Tuple[int, float]], step: int) -> Tuple[Tuple[int, float], Optional[Tuple[int, float]]]:
+    left = None
+    right: Optional[Tuple[int, float]] = None
+    for s, v in segments:
+        if s <= step:
+            left = (s, v)
+        if step < s:
+            right = (s, v)
+            break
+    assert left is not None, f"invalid inputs to find_adjacent: segments={segments}, step={step}"
+    return left, right
 
 
 def parse_int_schedule(schedule):
