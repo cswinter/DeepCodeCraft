@@ -54,19 +54,20 @@ class HyperParams:
         self.resume_from = ''       # Filepath to saved policy
 
         # Observations
-        self.obs_allies = 10          # Max number of allied drones returned by the env
-        self.obs_enemies = 10         # Max number of enemy drones returned by the env
-        self.obs_minerals = 10        # Max number of minerals returned by the env
-        self.obs_map_tiles = 10       # Max number of map tiles returned by the env
-        self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
-        self.use_privileged = True    # Whether value function has access to hidden information
-        self.feat_map_size = True     # Global features for width/height of map
-        self.feat_last_seen = False   # Remember last position/time each enemy was seen + missile cooldown feat
-        self.feat_is_visible = True   # Feature for whether drone is currently visible
-        self.feat_abstime = True      # Global features for absolute remaining/elapsed number of timesteps
-        self.feat_mineral_claims = False   # Feature for whether another drone is currently harvesting a mineral
-        self.harvest_action = False   # Harvest action that will freeze drone until one resource has been harvested
-        self.lock_build_action = False # Pair of actions to disable/enable all build actions
+        self.obs_allies = 10            # Max number of allied drones returned by the env
+        self.obs_enemies = 10           # Max number of enemy drones returned by the env
+        self.obs_minerals = 10          # Max number of minerals returned by the env
+        self.obs_map_tiles = 10         # Max number of map tiles returned by the env
+        self.obs_keep_abspos = False    # Have features for both absolute and relative positions on each object
+        self.use_privileged = True      # Whether value function has access to hidden information
+        self.feat_map_size = True       # Global features for width/height of map
+        self.feat_last_seen = False     # Remember last position/time each enemy was seen + missile cooldown feat
+        self.feat_is_visible = True     # Feature for whether drone is currently visible
+        self.feat_abstime = True        # Global features for absolute remaining/elapsed number of timesteps
+        self.feat_mineral_claims = False  # Feature for whether another drone is currently harvesting a mineral
+        self.harvest_action = False     # Harvest action that will freeze drone until one resource has been harvested
+        self.lock_build_action = False  # Pair of actions to disable/enable all build actions
+        self.feat_dist_to_wall = False  # Five features giving distance to closest wall in movement direction, and in movement direction offset by +-pi/2 and +-pi/4
 
         # Eval
         self.eval_envs = 256

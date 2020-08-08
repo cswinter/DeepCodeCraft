@@ -5,7 +5,7 @@ import time
 import orjson
 import numpy as np
 
-from typing import List
+from typing import List, Tuple
 from gym_codecraft.envs.codecraft_vec_env import Rules, ObsConfig
 
 
@@ -125,22 +125,22 @@ def scalabool(b: bool) -> str:
     return 'true' if b else 'false'
 
 
-def observe_batch_raw(obsConfig: ObsConfig,
-                      game_ids: object,
-                      allies: object,
-                      drones: object,
-                      minerals: object,
-                      global_drones: object,
-                      tiles: object,
-                      relative_positions: object,
-                      v2: object,
+def observe_batch_raw(obs_config: ObsConfig,
+                      game_ids: List[Tuple[int, int]],
+                      allies: int,
+                      drones: int,
+                      minerals: int,
+                      global_drones: int,
+                      tiles: int,
+                      relative_positions: bool,
+                      v2: bool,
                       extra_build_actions: List[List[int]],
-                      map_size: object = False,
-                      last_seen: object = False,
-                      is_visible: object = False,
-                      abstime: object = False,
-                      rule_msdm: object = False,
-                      rule_costs: object = False) -> object:
+                      map_size: bool = False,
+                      last_seen: bool = False,
+                      is_visible: bool = False,
+                      abstime: bool = False,
+                      rule_msdm: bool = False,
+                      rule_costs: bool = False) -> object:
     retries = RETRIES
     ebcstr = ''
     url = f'http://localhost:9000/batch-observation?' \
@@ -156,11 +156,12 @@ def observe_batch_raw(obsConfig: ObsConfig,
         f'abstime={"true" if abstime else "false"}&' \
         f'mapSize={"true" if map_size else "false"}&' \
         f'v2={"true" if v2 else "false"}&' \
-        f'mineralClaims={scalabool(obsConfig.feat_mineral_claims)}&' \
-        f'harvestAction={scalabool(obsConfig.harvest_action)}&' \
+        f'mineralClaims={scalabool(obs_config.feat_mineral_claims)}&' \
+        f'harvestAction={scalabool(obs_config.harvest_action)}&' \
         f'ruleMsdm={scalabool(rule_msdm)}&' \
         f'ruleCosts={scalabool(rule_costs)}&' \
-        f'lockBuildAction={scalabool(obsConfig.lock_build_action)}' + ebcstr
+        f'lockBuildAction={scalabool(obs_config.lock_build_action)}&' \
+        f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}' + ebcstr
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:

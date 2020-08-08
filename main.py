@@ -680,7 +680,8 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
             feat_rule_costs=hps.rule_cost_rng > 0 or hps.adr,
             feat_mineral_claims=hps.feat_mineral_claims,
             harvest_action=hps.harvest_action,
-            lock_build_action=hps.lock_build_action
+            lock_build_action=hps.lock_build_action,
+            feat_dist_to_wall=hps.feat_dist_to_wall,
         )
 
 

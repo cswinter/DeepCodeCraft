@@ -26,6 +26,7 @@ class ObsConfig:
     feat_mineral_claims: bool = False
     harvest_action: bool = False
     lock_build_action: bool = False
+    feat_dist_to_wall: bool = False
 
     def global_features(self):
         gf = 2
@@ -47,6 +48,8 @@ class ObsConfig:
             ds += 1
         if self.lock_build_action:
             ds += 1
+        if self.feat_dist_to_wall:
+            ds += 5
         return ds
 
     def mstride(self):
@@ -93,6 +96,7 @@ class ObsConfig:
             return 2
         else:
             return 0
+
 
 DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
 
