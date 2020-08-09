@@ -166,7 +166,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 150e6
+        hps.steps = 200e6
 
         hps.agents = 15
         hps.nenemy = 10
@@ -180,6 +180,8 @@ class HyperParams:
         hps.feat_mineral_claims = True
         hps.harvest_action = True
 
+        hps.lr = 0.001
+        hps.lr_schedule = 'cosine'
         hps.win_bonus = 2
         hps.vf_coef = 0.5
         hps.rule_rng_fraction = 1.0
@@ -189,8 +191,7 @@ class HyperParams:
         hps.entropy_bonus = 0.01
         hps.entropy_bonus_schedule = '40e6:0.002,80e6:0.0'
 
-        hps.batches_per_update = 8
-        hps.batches_per_update_schedule = '40e6:16,80e6:32'
+        hps.batches_per_update = 32
         hps.bs = 512
         hps.seq_rosteps = 256
         hps.num_envs = 64
