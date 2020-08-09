@@ -151,7 +151,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             _, batches_per_update = batches_per_update_schedule.pop()
             hps.batches_per_update = batches_per_update
             assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
-        entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
+        hps.entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
         if len(variety_schedule) > 0:
             w = (total_steps - variety_schedule_last_step) / (variety_schedule[-1][0] - variety_schedule_last_value)
             adr.variety = variety_schedule_last_value * (1 - w) + variety_schedule[-1][1] * w
@@ -419,7 +419,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             'average_cost_modifier': average_cost_modifier,
             'hardness': adr.hardness,
             'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
-            'entropy_bonus': entropy_bonus,
+            'entropy_bonus': hps.entropy_bonus,
         }
         for action, count in buildmean.items():
             metrics[f'build_{action}'] = count
