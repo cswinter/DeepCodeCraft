@@ -22,7 +22,7 @@ def showmatch(model_paths, task, randomize, hardness, num_envs, symmetric, rando
         device = "cpu"
 
     if len(model_paths) == 1:
-        opponents = {}
+        opponents = None
     elif len(model_paths) == 2:
         opponents = {'player2': {'model_file': model_paths[1]}}
     else:
