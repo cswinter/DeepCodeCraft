@@ -106,6 +106,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         lr_scheduler = CosineAnnealingLR(
             optimizer,
             T_max=hps.steps * hps.sample_reuse // (hps.bs * hps.batches_per_update),
+            eta_min=hps.final_lr,
         )
     else:
         assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'

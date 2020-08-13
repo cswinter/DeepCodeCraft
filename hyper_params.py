@@ -9,6 +9,7 @@ class HyperParams:
         # Optimizer
         self.optimizer = 'Adam'  # Optimizer ("SGD" or "RMSProp" or "Adam")
         self.lr = 0.0003            # Learning rate
+        self.final_lr = 0.0001      # Learning rate floor when using cosine schedule
         self.lr_schedule = 'none'   # Learning rate schedule ("none" or "cosine")
         self.momentum = 0.9         # Momentum
         self.weight_decay = 0.0001
@@ -179,8 +180,10 @@ class HyperParams:
         hps.feat_last_seen = True
         hps.feat_mineral_claims = True
         hps.harvest_action = True
+        hps.feat_dist_to_wall = True
 
         hps.lr = 0.001
+        hps.final_lr = 0.0001
         hps.lr_schedule = 'cosine'
         hps.win_bonus = 2
         hps.vf_coef = 0.5
@@ -188,8 +191,8 @@ class HyperParams:
         hps.rule_rng_amount = 1.0
         hps.adr = True
         hps.gamma = 0.999
-        hps.entropy_bonus = 0.01
-        hps.entropy_bonus_schedule = '40e6:0.002,80e6:0.0'
+        hps.entropy_bonus = 0.02
+        hps.entropy_bonus_schedule = 'lin 15e6:0.01,60e6:0.0'
 
         hps.batches_per_update = 32
         hps.bs = 512
