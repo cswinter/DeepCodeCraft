@@ -170,12 +170,14 @@ class HyperParams:
         hps.steps = 200e6
 
         hps.agents = 15
-        hps.nenemy = 10
-        hps.nally = 10
+        hps.nenemy = 15
+        hps.nally = 15
         hps.nmineral = 5
-        hps.ntile = 3
+        hps.ntile = 5
 
+        hps.obs_minerals = 5
         hps.obs_allies = 15
+        hps.obs_map_tiles = 5
         hps.obs_enemies = 15
         hps.feat_last_seen = True
         hps.feat_mineral_claims = True
@@ -393,6 +395,9 @@ class HyperParams:
         hps.objective = envs.Objective.ALLIED_WEALTH
         hps.nally = 1
         hps.nmineral = 10
+        hps.obs_allies = 1
+        hps.obs_map_tiles = 0
+        hps.obs_enemies = 0
         hps.obs_global_drones = 0
         hps.optimizer = 'Adam'
         hps.sample_reuse = 2

@@ -265,6 +265,7 @@ class TransformerPolicy6(nn.Module):
         if self.hps.use_privileged:
             pitems_max = pitems.max(dim=1).values
             pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
+            print(vin.size(), pitems_max.size(), pitems_avg.size(), pitems.size(), pmask.size())
             vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
         values = self.value_head(vin).view(-1)
 

@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 
-from gather import topk_by, topk_and_index_by
 from multihead_attention import MultiheadAttention
 import spatial
 
@@ -16,6 +15,11 @@ class TransformerPolicy7(nn.Module):
             'Must have at least one mineral or drones observation'
         assert obs_config.drones >= obs_config.allies
         assert not hps.use_privileged or (hps.nmineral > 0 and hps.nally > 0 and (hps.nenemy > 0 or hps.ally_enemy_same))
+
+        assert hps.nally == obs_config.allies
+        assert hps.nenemy == obs_config.drones - obs_config.allies
+        assert hps.nmineral == obs_config.minerals
+        assert hps.ntile == obs_config.tiles
 
         self.version = 'transformer_v7'
 
@@ -74,7 +78,6 @@ class TransformerPolicy7(nn.Module):
                 obs_config.dstride(),
                 hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
                 mask_feature=7,  # Feature 7 is hitpoints
-                topk=hps.nally+hps.nenemy,
                 count=obs_config.drones,
                 start=endglobals,
                 end=endenemies,
@@ -84,7 +87,6 @@ class TransformerPolicy7(nn.Module):
                 self.item_nets.append(PosItemBlock(
                     obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
                     mask_feature=7,  # Feature 7 is hitpoints
-                    topk=hps.nally,
                     count=obs_config.allies,
                     start=endglobals,
                     end=endallies,
@@ -93,7 +95,6 @@ class TransformerPolicy7(nn.Module):
                 self.item_nets.append(PosItemBlock(
                     obs_config.dstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
                     mask_feature=7,  # Feature 7 is hitpoints
-                    topk=hps.nenemy,
                     count=obs_config.drones - self.obs_config.allies,
                     start=endallies,
                     end=endenemies,
@@ -104,7 +105,6 @@ class TransformerPolicy7(nn.Module):
             self.item_nets.append(PosItemBlock(
                 obs_config.mstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
                 mask_feature=2,  # Feature 2 is size
-                topk=hps.nmineral,
                 count=obs_config.minerals,
                 start=endenemies,
                 end=endmins,
@@ -113,7 +113,6 @@ class TransformerPolicy7(nn.Module):
             self.item_nets.append(PosItemBlock(
                 obs_config.tstride(), hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff,
                 mask_feature=2,  # Feature is elapsed since last visited time
-                topk=hps.ntile,
                 count=obs_config.tiles,
                 start=endmins,
                 end=endtiles,
@@ -163,7 +162,7 @@ class TransformerPolicy7(nn.Module):
             self.policy_head.bias.data.fill_(0.0)
 
         if hps.use_privileged:
-            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + 2 * hps.d_item, 1)
+            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + hps.d_item, 1)
         else:
             self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio, 1)
         if hps.zero_init_vf:
@@ -268,7 +267,9 @@ class TransformerPolicy7(nn.Module):
             vin = torch.zeros(batch_size, self.d_agent * self.hps.dff_ratio)
         scatter_max(x, index=groups, dim=0, out=vin)
         if self.hps.use_privileged:
-            pitems_max = pitems.max(dim=1).values
+            mask1k = 1000.0 * pmask.float().unsqueeze(-1)
+            pitems_max = (pitems - mask1k).max(dim=1).values
+            pitems_max[pitems_max == -1000.0] = 0.0
             pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
             vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
         values = self.value_head(vin).view(-1)
@@ -328,12 +329,13 @@ class TransformerPolicy7(nn.Module):
         relpos_list = []
         mask_list = []
         for item_net in self.item_nets:
-            emb, relpos, mask = item_net(x, active_agent_groups, origin, direction)
-            emb_list.append(emb)
+            emb, mask = item_net(x)
+            emb_list.append(emb[active_agent_groups])
+            mask_list.append(mask[active_agent_groups])
+            relpos = item_net.relpos(x, active_agent_groups, origin, direction)
             relpos_list.append(relpos)
-            mask_list.append(mask)
             if item_net.start_privileged is not None:
-                pemb, _, pmask = item_net(x, active_agent_groups, origin, direction, privileged=True)
+                pemb, pmask = item_net(x, privileged=True)
                 pemb_list.append(pemb)
                 pmask_list.append(pmask)
             else:
@@ -526,19 +528,16 @@ class PosItemBlock(nn.Module):
                  norm_fn,
                  resblock,
                  mask_feature,
-                 topk,
                  count,
                  start,
                  end,
                  start_privileged=None,
                  end_privileged=None):
         super(PosItemBlock, self).__init__()
-        assert topk > 0
 
         self.d_in = d_in
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
         self.mask_feature = mask_feature
-        self.topk = topk
         if resblock:
             self.resblock = FFResblock(d_model, d_ff, norm_fn)
         self.count = count
@@ -547,26 +546,11 @@ class PosItemBlock(nn.Module):
         self.start_privileged = start_privileged
         self.end_privileged = end_privileged
 
-    def forward(self, x, indices, origin, direction, privileged=False):
-        batch_agents, _ = origin.size()
-
+    def forward(self, x, privileged=False):
         if privileged:
             x = x[:, self.start_privileged:self.end_privileged].view(-1, self.count, self.d_in)
         else:
             x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
-
-        x = x[indices]
-
-        pos = x[:, :, 0:2]
-        relpos = spatial.unbatched_relative_positions(origin, direction, pos)
-        dist = relpos.norm(p=2, dim=2)
-        direction = relpos / (dist.unsqueeze(-1) + 1e-8)
-        relpos = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
-
-        empty = (x[:, :, self.mask_feature] == 0).float()
-        key = -dist - empty.float() * 1e8
-        x = topk_by(values=x, vdim=1, keys=key, kdim=1, k=self.topk)
-        relpos = topk_by(values=relpos, vdim=1, keys=key, kdim=1, k=self.topk)
 
         mask = x[:, :, self.mask_feature] == 0
 
@@ -575,7 +559,16 @@ class PosItemBlock(nn.Module):
             x = self.resblock(x)
         x = x * (~mask).unsqueeze(-1).float()
 
-        return x, relpos, mask
+        return x, mask
+
+    def relpos(self, x, indices, origin, direction):
+        batch_agents, _ = origin.size()
+        x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
+        pos = x[indices, :, 0:2]
+        relpos = spatial.unbatched_relative_positions(origin, direction, pos)
+        dist = relpos.norm(p=2, dim=2)
+        direction = relpos / (dist.unsqueeze(-1) + 1e-8)
+        return torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
 
 
 class ItemBlock(nn.Module):
