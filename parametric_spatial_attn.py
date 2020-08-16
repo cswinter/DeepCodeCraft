@@ -35,15 +35,18 @@ class MultiheadSpatialAttn(nn.Module):
         assert dfeat_kv == self.kvdim
         assert list(mask.size()) == [dbatch, dseq_kv]
 
-        queries = (query @ self.wq + self.bq).reshape(
-            dbatch * self.nhead, dseq_q, self.qdim // self.nhead
-        )
-        keys = (keyval @ self.wk + self.bk).reshape(
-            dbatch * self.nhead, dseq_kv, self.qdim // self.nhead
-        )
-        values = (keyval @ self.wv + self.bv).reshape(
-            dbatch * self.nhead, dseq_kv, self.qdim // self.nhead
-        )
+        queries = (query @ self.wq + self.bq)\
+            .reshape(dbatch, dseq_q, self.nhead, self.qdim // self.nhead)\
+            .transpose(1, 2)\
+            .view(dbatch * self.nhead, dseq_q, self.qdim // self.nhead)
+        keys = (keyval @ self.wk + self.bk)\
+            .reshape(dbatch, dseq_kv, self.nhead, self.qdim // self.nhead)\
+            .transpose(1, 2)\
+            .reshape(dbatch * self.nhead, dseq_kv, self.qdim // self.nhead)
+        values = (keyval @ self.wv + self.bv)\
+            .reshape(dbatch, dseq_kv, self.nhead, self.qdim // self.nhead)\
+            .transpose(1, 2)\
+            .reshape(dbatch * self.nhead, dseq_kv, self.qdim // self.nhead)
 
         scale = (self.qdim / self.nhead) ** -0.5
         attention_weights = queries @ keys.transpose(1, 2) * scale
