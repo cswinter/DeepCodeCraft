@@ -39,6 +39,24 @@ class GaussianAttention(nn.Module):
         print("Initial weight: ", self.weight)
 
 
+def plot_heatmap(mean: float, logvariance: float, weight: float, scale: float, width: int = 1000, height: int = 1000):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    attn = np.zeros((width, height), dtype=np.float)
+    weight = 1/(1 + np.exp(-weight))
+    variance = np.exp(logvariance)
+    for i in range(width):
+        for j in range(height):
+            x = i - width // 2
+            y = j - width // 2
+            dist = (x ** 2 + y ** 2) ** 0.5 / scale
+            attn[i][j] = 1 + weight * (np.exp(-((dist - mean) / variance) ** 2) - 1)
+    plt.imshow(attn, cmap='viridis')
+    plt.colorbar()
+    plt.show()
+
+
 if __name__ == '__main__':
     #__import__('ipdb').set_trace()
     ga = GaussianAttention(8, 1000.0)

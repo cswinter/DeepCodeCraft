@@ -6,3 +6,4 @@ torch==1.2
 wandb
 torch-scatter==1.4
 orjson==3.0.2
+matplotlib
