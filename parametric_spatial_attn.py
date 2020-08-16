@@ -15,7 +15,10 @@ class MultiheadSpatialAttn(nn.Module):
         self.wq = Parameter(torch.Tensor(qdim, qdim))
         self.wk = Parameter(torch.Tensor(kvdim, qdim))
         self.wv = Parameter(torch.Tensor(kvdim, qdim))
-        self.linear = Parameter(torch.Tensor(qdim, qdim))
+        self.bq = Parameter(torch.empty(qdim))
+        self.bk = Parameter(torch.empty(qdim))
+        self.bv = Parameter(torch.empty(qdim))
+        self.out_proj = nn.Linear(qdim, qdim)
 
         self.qdim = qdim
         self.kvdim = kvdim
@@ -32,13 +35,13 @@ class MultiheadSpatialAttn(nn.Module):
         assert dfeat_kv == self.kvdim
         assert list(mask.size()) == [dbatch, dseq_kv]
 
-        queries = (query @ self.wq).reshape(
+        queries = (query @ self.wq + self.bq).reshape(
             dbatch * self.nhead, dseq_q, self.qdim // self.nhead
         )
-        keys = (keyval @ self.wk).reshape(
+        keys = (keyval @ self.wk + self.bk).reshape(
             dbatch * self.nhead, dseq_kv, self.qdim // self.nhead
         )
-        values = (keyval @ self.wv).reshape(
+        values = (keyval @ self.wv + self.bv).reshape(
             dbatch * self.nhead, dseq_kv, self.qdim // self.nhead
         )
 
@@ -51,14 +54,21 @@ class MultiheadSpatialAttn(nn.Module):
 
         attn = torch.softmax(attention_weights, dim=2)
 
-        output = (attn @ values).reshape(dbatch, dseq_q, dfeat_q)
-
-        return output @ self.linear
+        # dbatch * self.nhead x dseq x self.qdim // self.nhead
+        x = (attn @ values)\
+            .view(dbatch, self.nhead, dseq_q, self.qdim // self.nhead)\
+            .transpose(1, 2)\
+            .view(dbatch, dseq_q, self.qdim)
+        return self.out_proj(x)
 
     def _reset_parameters(self):
         xavier_uniform_(self.wq)
         xavier_uniform_(self.wk)
         xavier_uniform_(self.wv)
+        constant_(self.bq, 0.)
+        constant_(self.bk, 0.)
+        constant_(self.bv, 0.)
+        constant_(self.out_proj.bias, 0.)
 
 
 if __name__ == '__main__':
