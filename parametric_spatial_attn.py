@@ -1,9 +1,8 @@
+from typing import Optional, List
 import torch
-import math
 from torch import nn
-from torch.nn import Linear, Parameter, Module
-from torch.nn.functional import softmax, dropout, linear
-from torch.nn.init import xavier_uniform_, constant_, xavier_normal_
+from torch.nn import Parameter
+from torch.nn.init import xavier_uniform_, constant_
 
 
 class MultiheadSpatialAttn(nn.Module):
@@ -26,7 +25,12 @@ class MultiheadSpatialAttn(nn.Module):
 
         self._reset_parameters()
 
-    def forward(self, query: torch.Tensor, keyval: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                query: torch.Tensor,
+                keyval: torch.Tensor,
+                mask: torch.Tensor,
+                modulators: Optional[List[torch.Tensor]]) -> torch.Tensor:
+
         dbatch, dseq_q, dfeat_q = query.size()
         dbatch_kv, dseq_kv, dfeat_kv = keyval.size()
 
@@ -50,8 +54,13 @@ class MultiheadSpatialAttn(nn.Module):
 
         scale = (self.qdim / self.nhead) ** -0.5
         attention_weights = queries @ keys.transpose(1, 2) * scale
+
+        attention_weights = attention_weights.view(dbatch, self.nhead, dseq_q, dseq_kv)
+        if modulators:
+            for modulator in modulators:
+                attention_weights *= modulator
+
         attention_weights = attention_weights\
-            .view(dbatch, self.nhead, dseq_q, dseq_kv)\
             .masked_fill(mask.view(dbatch, 1, 1, dseq_kv), float('-inf'))\
             .view(dbatch * self.nhead, dseq_q, dseq_kv)
 

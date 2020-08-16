@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
+from gaussian_attention import GaussianAttention
 
 from parametric_spatial_attn import MultiheadSpatialAttn
 import spatial
@@ -126,6 +127,7 @@ class SpatialAttnPolicy(nn.Module):
         else:
             self.item_item_attn = None
 
+        self.gattn = GaussianAttention(hps.nhead, scale=1000.0)
         self.multihead_attention = MultiheadSpatialAttn(
             qdim=hps.d_agent,
             kvdim=hps.d_item,
@@ -367,11 +369,14 @@ class SpatialAttnPolicy(nn.Module):
                 """
 
         # Transformer input dimensions are: Sequence length, Batch size, Embedding size
+        distances = relpos[:, :, 2].pow(2).view(-1, 1, self.nitem)
+        spatial_attn = self.gattn(distances)
         target = agents.view(-1, 1, self.d_agent)
         x = self.multihead_attention(
             query=target,
             keyval=items,
             mask=mask,
+            modulators=[spatial_attn],
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
