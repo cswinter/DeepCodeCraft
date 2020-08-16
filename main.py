@@ -25,6 +25,7 @@ from policy_t4 import TransformerPolicy4, InputNorm
 from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
 from policy_t7 import TransformerPolicy7, InputNorm
+from policy_attn import SpatialAttnPolicy, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = TransformerPolicy7(hps, obs_config).to(device)
+        policy = SpatialAttnPolicy(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
