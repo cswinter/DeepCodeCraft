@@ -25,7 +25,7 @@ class HyperParams:
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
 
-        # Policy (transformer)
+        # Policy
         self.d_agent = 256
         self.d_item = 128
         self.dff_ratio = 2
@@ -47,10 +47,11 @@ class HyperParams:
         self.ntile = 0                 # Number of map tiles observed by each drone
         self.nconstant = 0             # Number learnable constant valued items observed by each drone
         self.ally_enemy_same = False   # Use same weights for processing ally and enemy drones
-        self.norm = 'layernorm'     # Normalization layers ("none", "batchnorm", "layernorm")
-        self.fp16 = False           # Whether to use half-precision floating point
-        self.zero_init_vf = True    # Set all initial weights for value function head to zero
-        self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
+        self.norm = 'layernorm'        # Normalization layers ("none", "batchnorm", "layernorm")
+        self.fp16 = False              # Whether to use half-precision floating point
+        self.zero_init_vf = True       # Set all initial weights for value function head to zero
+        self.small_init_pi = False     # Set initial weights for policy head to small values and biases to zero
+        self.spatial_attn = False      # Use parametric spatial attention
 
         self.resume_from = ''       # Filepath to saved policy
 

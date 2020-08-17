@@ -1,3 +1,4 @@
+from typing import Optional, Tuple
 import torch
 from torch import nn
 from torch.nn import Parameter
@@ -31,27 +32,39 @@ class GaussianAttention(nn.Module):
         return 1 + weight * (density - 1)
 
     def _reset_parameters(self):
-        uniform_(self.mean, 0.0, 0.1)
+        uniform_(self.mean, -0.1, 0.1)
         uniform_(self.logvariance, -0.5, 0.5)
         uniform_(self.weight, -0.5, 0.5)
-        print("Initial mean: ", self.mean)
-        print("Initial logvariance: ", self.logvariance)
-        print("Initial weight: ", self.weight)
 
 
-def plot_heatmap(mean: float, logvariance: float, weight: float, scale: float, width: int = 1000, height: int = 1000):
+def plot_heatmap(
+        mean: float,
+        logvariance: float,
+        weight: float,
+        wangle: Optional[Tuple[float, float, float]] = None,
+        scale: float = 1000.0,
+        width: int = 1000,
+        height: int = 1000):
     import matplotlib.pyplot as plt
     import numpy as np
 
     attn = np.zeros((width, height), dtype=np.float)
     weight = 1/(1 + np.exp(-weight))
     variance = np.exp(logvariance)
+    if wangle is not None:
+        meana, logvara, weighta = wangle
+        weighta = 1/(1 + np.exp(-weighta))
+        vara = np.exp(logvara)
     for i in range(width):
         for j in range(height):
             x = i - width // 2
             y = j - width // 2
             dist = (x ** 2 + y ** 2) ** 0.5 / scale
             attn[i][j] = 1 + weight * (np.exp(-((dist - mean) / variance) ** 2) - 1)
+            if wangle is not None:
+                angle = np.arctan2(y, x)
+                attn[i][j] *= (1 + weighta * (np.exp(-((angle - meana) / vara) ** 2) - 1))
+
     plt.imshow(attn, cmap='viridis')
     plt.colorbar()
     plt.show()

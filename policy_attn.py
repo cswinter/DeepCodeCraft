@@ -127,7 +127,8 @@ class SpatialAttnPolicy(nn.Module):
         else:
             self.item_item_attn = None
 
-        self.gattn = GaussianAttention(hps.nhead, scale=1000.0)
+        if hps.spatial_attn:
+            self.gattn = GaussianAttention(hps.nhead, scale=1000.0)
         self.multihead_attention = MultiheadSpatialAttn(
             qdim=hps.d_agent,
             kvdim=hps.d_item,
@@ -368,15 +369,19 @@ class SpatialAttnPolicy(nn.Module):
                 raise Exception("NaN!")
                 """
 
-        # Transformer input dimensions are: Sequence length, Batch size, Embedding size
-        distances = relpos[:, :, 2].pow(2).view(-1, 1, self.nitem)
-        spatial_attn = self.gattn(distances)
+        if self.hps.spatial_attn:
+            distances = relpos[:, :, 2].pow(2).view(-1, 1, self.nitem)
+            spatial_attn = self.gattn(distances)
+            modulators = [spatial_attn]
+        else:
+            modulators = None
+        # Multihead attention input dimensions are: batch size, sequence length, embedding features
         target = agents.view(-1, 1, self.d_agent)
         x = self.multihead_attention(
             query=target,
             keyval=items,
             mask=mask,
-            modulators=[spatial_attn],
+            modulators=modulators,
         )
         x = self.norm1(x + target)
         x2 = self.linear2(F.relu(self.linear1(x)))
