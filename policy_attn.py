@@ -5,7 +5,7 @@ import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 from gaussian_attention import GaussianAttention
 
-from parametric_spatial_attn import MultiheadSpatialAttn
+from transformer import SpatialTransformer
 import spatial
 
 
@@ -122,22 +122,23 @@ class SpatialAttnPolicy(nn.Module):
             self.constant_items = nn.Parameter(torch.normal(0, 1, (hps.nconstant, hps.d_item)))
 
         if hps.item_item_attn_layers > 0:
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hps.d_item, nhead=8)
-            self.item_item_attn = nn.TransformerEncoder(encoder_layer, num_layers=hps.item_item_attn_layers)
+            self.item_item_attn = SpatialTransformer(
+                embed_dim=hps.d_item,
+                kvdim=hps.d_item,
+                nhead=hps.nhead,
+                dff_ratio=hps.dff_ratio
+            )
         else:
             self.item_item_attn = None
 
         if hps.spatial_attn:
             self.gattn = GaussianAttention(hps.nhead, scale=1000.0)
-        self.multihead_attention = MultiheadSpatialAttn(
-            qdim=hps.d_agent,
+        self.transformer = SpatialTransformer(
+            embed_dim=hps.d_agent,
             kvdim=hps.d_item,
             nhead=hps.nhead,
+            dff_ratio=hps.dff_ratio,
         )
-        self.linear1 = nn.Linear(hps.d_agent, hps.d_agent * hps.dff_ratio)
-        self.linear2 = nn.Linear(hps.d_agent * hps.dff_ratio, hps.d_agent)
-        self.norm1 = nn.LayerNorm(hps.d_agent)
-        self.norm2 = nn.LayerNorm(hps.d_agent)
 
         self.map_channels = hps.d_agent // (hps.nm_nrings * hps.nm_nrays)
         map_item_channels = self.map_channels - 2 if self.hps.map_embed_offset else self.map_channels
@@ -377,15 +378,7 @@ class SpatialAttnPolicy(nn.Module):
             modulators = None
         # Multihead attention input dimensions are: batch size, sequence length, embedding features
         target = agents.view(-1, 1, self.d_agent)
-        x = self.multihead_attention(
-            query=target,
-            keyval=items,
-            mask=mask,
-            modulators=modulators,
-        )
-        x = self.norm1(x + target)
-        x2 = self.linear2(F.relu(self.linear1(x)))
-        x = self.norm2(x + x2)
+        x = self.transformer(target, items, mask, modulators)
         x = x.view(-1, self.d_agent)
 
         if self.hps.nearby_map:

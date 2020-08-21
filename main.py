@@ -6,6 +6,7 @@ from collections import defaultdict
 import dataclasses
 from pathlib import Path
 from typing import Optional
+from copy import deepcopy
 
 import torch.distributed as dist
 import torch
@@ -93,7 +94,15 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
     resume_steps = 0
     if hps.resume_from == '':
         policy = SpatialAttnPolicy(hps, obs_config).to(device)
-        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
+        normal_params = [param for name, param in policy.named_parameters() if not name.startswith('gattn')]
+        gattn_params = [param for name, param in policy.named_parameters() if name.startswith('gattn')]
+        assert len(normal_params) + len(gattn_params) == len(list(policy.parameters()))
+        optimizer_settings = deepcopy(optimizer_kwargs)
+        optimizer_settings['params'] = normal_params
+        gattn_optimizer_settings = deepcopy(optimizer_kwargs)
+        gattn_optimizer_settings['lr'] *= hps.spatial_attn_lr_multiplier
+        gattn_optimizer_settings['params'] = gattn_params
+        optimizer = optimizer_fn([optimizer_settings, gattn_optimizer_settings])
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
             linear_hardness=hps.linear_hardness,

@@ -52,6 +52,7 @@ class HyperParams:
         self.zero_init_vf = True       # Set all initial weights for value function head to zero
         self.small_init_pi = False     # Set initial weights for policy head to small values and biases to zero
         self.spatial_attn = False      # Use parametric spatial attention
+        self.spatial_attn_lr_multiplier = 10.0   # Increased learning rate for parametric spatial attention parameters
 
         self.resume_from = ''       # Filepath to saved policy
 
