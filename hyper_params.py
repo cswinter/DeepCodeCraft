@@ -109,17 +109,17 @@ class HyperParams:
         self.action_delay = 0
         self.use_action_masks = True
         self.task_hardness = 0
-        self.max_game_length = 0  # Max length of games, or default game length for map if 0.
-        self.max_hardness = 175
-        self.hardness_offset = 1e6  # Number of timesteps steps after which hardness starts to increase
+        self.max_game_length = 0       # Max length of games, or default game length for map if 0.
+        self.max_hardness = 175        # Maxiumum map area
+        self.hardness_offset = 1e6     # Number of timesteps steps after which hardness starts to increase
         self.task_randomize = True
-        self.symmetric_map = 0.0    # Percentage of maps which are symmetric
+        self.symmetric_map = 0.0       # Percentage of maps which are symmetric
         self.symmetry_increase = 2e-8  # Linearly increase env symmetry parameter with this slope for every step
-        self.mix_mp = 0.0       # Fraction of maps that use MICRO_PRACTICE instead of the main objective
+        self.mix_mp = 0.0              # Fraction of maps that use MICRO_PRACTICE instead of the main objective
         self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
-        self.adr = False      # Automatically adjust environment rules
+        self.adr = False               # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
 

@@ -422,7 +422,7 @@ def map_smol_standard(randomize: bool, hardness: int, require_default_mothership
 
 def map_standard(randomize: bool, hardness: Union[int, float], require_default_mothership: bool):
     # special case conditions for eval that was previously used to get comparable results
-    is_eval = isinstance(hardness, int)
+    is_eval = isinstance(hardness, int) and hardness <= 5
     if randomize:
         if is_eval:
             hardness = np.random.randint(0, hardness+1)
