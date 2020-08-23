@@ -6,6 +6,7 @@ from collections import defaultdict
 import dataclasses
 from pathlib import Path
 
+import torch.distributed as dist
 import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
@@ -58,7 +59,7 @@ def warmup_lr_schedule(warmup_steps: int):
     return lr
 
 
-def train(hps: HyperParams, out_dir: str) -> None:
+def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
     assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
     if (hps.verify_create_golden or hps.verify) and hps.shuffle:
@@ -120,7 +121,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if isinstance(layer, InputNorm):
                 layer.enable_fp16()
 
-    wandb.watch(policy)
+    if hps.rank == 0:
+        wandb.watch(policy)
 
     if hps.verify_create_golden:
         save_policy(policy, 'verify', 0)
@@ -378,6 +380,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 gradnorm += torch.nn.utils.clip_grad_norm_(policy.parameters(), hps.max_grad_norm)
 
                 if (batch + 1) % hps.batches_per_update == 0:
+                    if hps.parallelism > 1:
+                        gradient_allreduce(policy)
                     optimizer.step()
                     if lr_scheduler:
                         lr_scheduler.step()
@@ -387,58 +391,59 @@ def train(hps: HyperParams, out_dir: str) -> None:
             return
 
         epoch += 1
-        total_steps += hps.rosteps
-        throughput = int(hps.rosteps / (time.time() - episode_start))
+        total_steps += hps.rosteps * hps.parallelism
+        throughput = int(hps.rosteps / (time.time() - episode_start)) * hps.parallelism
 
         all_agent_masks = all_action_masks.sum(2) > 1
-        metrics = {
-            'loss': policy_loss_sum / num_minibatches,
-            'value_loss': value_loss_sum / num_minibatches,
-            'clipfrac': clipfrac_sum / num_minibatches,
-            'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
-            'throughput': throughput,
-            'eprewmean': eprewmean,
-            'eplenmean': eplenmean,
-            'target_eplenmean': adr.target_eplenmean(),
-            'eliminationmean': eliminationmean,
-            'entropy': sum(entropies) / len(entropies) / np.log(2),
-            'explained variance': explained_var,
-            'gradnorm': gradnorm * hps.bs / hps.rosteps,
-            'advantages': wandb.Histogram(advantages),
-            'values': wandb.Histogram(all_values),
-            'meanval': all_values.mean(),
-            'returns': wandb.Histogram(all_returns),
-            'meanret': all_returns.mean(),
-            'actions': wandb.Histogram(np.array(all_actions[all_agent_masks])),
-            'active_agents': all_agent_masks.sum() / all_agent_masks.size,
-            'observations': wandb.Histogram(np.array(all_obs)),
-            'obs_max': all_obs.max(),
-            'obs_min': all_obs.min(),
-            'rewards': wandb.Histogram(np.array(all_rewards)),
-            'masked_actions': 1 - all_action_masks.mean(),
-            'rewmean': rewmean,
-            'rewstd': rewstd,
-            'average_cost_modifier': average_cost_modifier,
-            'hardness': adr.hardness,
-            'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
-            'entropy_bonus': hps.entropy_bonus,
-        }
-        for action, count in buildmean.items():
-            metrics[f'build_{action}'] = count
-        for action, fraction in normalize(buildmean).items():
-            metrics[f'frac_{action}'] = fraction
+        if hps.rank == 0:
+            metrics = {
+                'loss': policy_loss_sum / num_minibatches,
+                'value_loss': value_loss_sum / num_minibatches,
+                'clipfrac': clipfrac_sum / num_minibatches,
+                'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
+                'throughput': throughput,
+                'eprewmean': eprewmean,
+                'eplenmean': eplenmean,
+                'target_eplenmean': adr.target_eplenmean(),
+                'eliminationmean': eliminationmean,
+                'entropy': sum(entropies) / len(entropies) / np.log(2),
+                'explained variance': explained_var,
+                'gradnorm': gradnorm * hps.bs / hps.rosteps,
+                'advantages': wandb.Histogram(advantages),
+                'values': wandb.Histogram(all_values),
+                'meanval': all_values.mean(),
+                'returns': wandb.Histogram(all_returns),
+                'meanret': all_returns.mean(),
+                'actions': wandb.Histogram(np.array(all_actions[all_agent_masks])),
+                'active_agents': all_agent_masks.sum() / all_agent_masks.size,
+                'observations': wandb.Histogram(np.array(all_obs)),
+                'obs_max': all_obs.max(),
+                'obs_min': all_obs.min(),
+                'rewards': wandb.Histogram(np.array(all_rewards)),
+                'masked_actions': 1 - all_action_masks.mean(),
+                'rewmean': rewmean,
+                'rewstd': rewstd,
+                'average_cost_modifier': average_cost_modifier,
+                'hardness': adr.hardness,
+                'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
+                'entropy_bonus': hps.entropy_bonus,
+            }
+            for action, count in buildmean.items():
+                metrics[f'build_{action}'] = count
+            for action, fraction in normalize(buildmean).items():
+                metrics[f'frac_{action}'] = fraction
 
-        metrics.update(adr.metrics())
-        total_norm = 0.0
-        count = 0
-        for name, param in policy.named_parameters():
-            norm = param.data.norm()
-            metrics[f'weight_norm[{name}]'] = norm
-            count += 1
-            total_norm += norm
-        metrics['mean_weight_norm'] = total_norm / count
+            metrics.update(adr.metrics())
+            total_norm = 0.0
+            count = 0
+            for name, param in policy.named_parameters():
+                norm = param.data.norm()
+                metrics[f'weight_norm[{name}]'] = norm
+                count += 1
+                total_norm += norm
+            metrics['mean_weight_norm'] = total_norm / count
 
-        wandb.log(metrics, step=total_steps)
+            wandb.log(metrics, step=total_steps)
 
         print(f'{throughput} samples/s', flush=True)
 
@@ -835,6 +840,16 @@ def verify_gradients(policy, epoch, batch) -> bool:
     return errors
 
 
+def gradient_allreduce(model):
+    start = time.time()
+    size = float(dist.get_world_size())
+    for param in model.parameters():
+        if param.grad is not None:
+            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+            param.grad.data /= size
+    print(f'Completed data parallel allreduce in {time.time() - start:.2f}s')
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
     # torch.set_printoptions(threshold=25000)
@@ -881,9 +896,15 @@ def main():
     if isinstance(hps.objective, str):
         hps.objective = envs.Objective(hps.objective)
 
-    wandb_project = 'deep-codecraft-vs' if hps.objective.vs() else 'deep-codecraft'
-    wandb.init(project=wandb_project)
-    wandb.config.update(config)
+    if hps.parallelism > 1:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = str(hps.discovery_port)
+        dist.init_process_group(backend='gloo', rank=hps.rank, world_size=hps.parallelism)
+
+    if hps.rank == 0:
+        wandb_project = 'deep-codecraft-vs' if hps.objective.vs() else 'deep-codecraft'
+        wandb.init(project=wandb_project)
+        wandb.config.update(config)
 
     if not args.out_dir:
         t = time.strftime("%Y-%m-%d~%H:%M:%S")
@@ -893,7 +914,7 @@ def main():
     else:
         out_dir = args.out_dir
 
-    train(hps, out_dir)
+    train(hps, args.device, out_dir)
 
 
 if __name__ == "__main__":

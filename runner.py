@@ -27,6 +27,7 @@ class JobQueue:
         self.active_jobs = 0
         self.active_jobs_per_device = {device: 0 for device in range(devices)}
         self.lock = threading.Lock()
+        self.port_offset = 0
 
     def run(self):
         logging.info(f"Watching {self.queue_dir} for new jobs...")
@@ -40,22 +41,40 @@ class JobQueue:
                     logging.info(f"Found new job file {job_file}")
                     self.process_job_file(job_file)
 
-            while self.queue.qsize() > 0 and self.active_jobs < self.concurrency:
-                with self.lock:
-                    job = self.queue.get()
-
-                    min_load = self.concurrency
-                    min_device = -1
-                    for device, load in self.active_jobs_per_device.items():
-                        if load < min_load:
-                            min_load = load
-                            min_device = device
-                    job.set_device(min_device)
-                    self.active_jobs += 1
-                    self.active_jobs_per_device[job.device] += 1
-                    threading.Thread(target=self.run_job, args=(job,)).start()
-                    logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
+            while self.queue.qsize() > 0:
+                job = self.queue.get()
+                required_devices = min(self.devices, job.parallelism)
+                if job.parallelism > self.devices and job.parallelism % self.devices != 0:
+                    logging.error(f"Can't evenly distribute {job.parallelism} processes across {self.devices} GPUs, dropping job.")
+                    continue
+                required_slots_per_device = job.parallelism // self.devices if job.parallelism > self.devices else 1
+                while True:
+                    selected_devices = []
+                    with self.lock:
+                        min_load = self.concurrency + 1
+                        for device, load in self.active_jobs_per_device.items():
+                            if load + required_slots_per_device <= self.concurrency:
+                                if load < min_load:
+                                    selected_devices = [device]
+                                    min_load = load
+                                elif load == min_load:
+                                    selected_devices.append(device)
+                        if len(selected_devices) == required_devices:
+                            rank = 0
+                            for device in selected_devices:
+                                for _ in range(required_slots_per_device):
+                                    job_copy = copy.deepcopy(job)
+                                    job_copy.set_device(device, rank, 29000 + self.port_offset)
+                                    self.active_jobs_per_device[job_copy.device] += 1
+                                    threading.Thread(target=self.run_job, args=(job_copy,)).start()
+                                    rank += 1
+                            self.active_jobs += 1
+                            self.port_offset = (self.port_offset + 1) % 1000
+                            logging.info(f"In queue: {self.queue.qsize()}  Running: {self.active_jobs_per_device}")
+                            break
                     time.sleep(0.1)
+
+                time.sleep(0.1)
 
             time.sleep(0.1)
 
@@ -100,7 +119,7 @@ class JobQueue:
                         args.append(f"--{name}={value}")
                 args.append(f"--descriptor={job.descriptor}")
 
-                logpath = os.path.join(out_dir, "out.txt")
+                logpath = os.path.join(out_dir, f"out{job.rank}.txt")
 
                 logging.info(f"Running {job_desc}")
                 logging.info(f"Output in {logpath}")
@@ -116,13 +135,13 @@ class JobQueue:
                 else:
                     logging.info(f"Success: {job_desc}")
         finally:
-            self.lock.acquire()
-            self.active_jobs -= 1
-            self.known_jobs[job.handle] -= 1
-            self.active_jobs_per_device[job.device] -= 1
-            if self.known_jobs[job.handle] == 0:
-                del self.known_jobs[job.handle]
-            self.lock.release()
+            with self.lock:
+                if job.rank == 0:
+                    self.active_jobs -= 1
+                    self.known_jobs[job.handle] -= 1
+                    if self.known_jobs[job.handle] == 0:
+                        del self.known_jobs[job.handle]
+                self.active_jobs_per_device[job.device] -= 1
 
     def process_job_file(self, job_file):
         filepath = os.path.join(self.queue_dir, job_file)
@@ -135,7 +154,7 @@ class JobQueue:
         self.known_jobs[job_file] = len(param_sets)
 
         for param_set in param_sets:
-            self.queue.put(Job(job["repo-path"], job["revision"], param_set, job_file))
+            self.queue.put(Job(job["repo-path"], job["revision"], param_set, job_file, param_set.get("parallelism", 1)))
         os.remove(filepath)
 
     def all_combinations(self, params_dict):
@@ -167,17 +186,22 @@ class JobQueue:
 
 
 class Job:
-    def __init__(self, repo_path, revision, params, handle):
+    def __init__(self, repo_path, revision, params, handle, parallelism):
         self.repo_path = repo_path
         self.revision = revision
         self.params = params
         self.handle = handle
         self.device = None
+        self.parallelism = parallelism
         self.descriptor = "-".join([revision[:6]] + [f'{k}{v}' for k, v in params.items()])
+        self.rank = 0
 
-    def set_device(self, device):
+    def set_device(self, device, rank, discovery_port):
         self.device = device
+        self.rank = rank
         self.params['device'] = device
+        self.params['rank'] = rank
+        self.params['discovery_port'] = discovery_port
 
 
 @click.command()

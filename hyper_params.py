@@ -54,6 +54,11 @@ class HyperParams:
 
         self.resume_from = ''       # Filepath to saved policy
 
+        # Data parallel
+        self.rank = 0
+        self.parallelism = 1
+        self.discovery_port = 29500
+
         # Observations
         self.obs_allies = 10            # Max number of allied drones returned by the env
         self.obs_enemies = 10           # Max number of enemy drones returned by the env
