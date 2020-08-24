@@ -5,6 +5,7 @@ import os
 from collections import defaultdict
 import dataclasses
 from pathlib import Path
+from typing import Optional
 
 import torch.distributed as dist
 import torch
@@ -188,20 +189,23 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                                            ("replicator", hps.num_vs_replicator),
                                            ("aggressive_replicator", hps.num_vs_aggro_replicator),
                                        ],
-                                       max_game_length=None if hps.max_game_length == 0 else hps.max_game_length)
+                                       max_game_length=None if hps.max_game_length == 0 else hps.max_game_length,
+                                       stagger_offset=hps.rank / hps.parallelism)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:
             eval(policy=policy,
-                 num_envs=hps.eval_envs,
+                 num_envs=hps.eval_envs // hps.parallelism,
                  device=device,
                  objective=hps.objective,
                  eval_steps=hps.eval_timesteps,
                  curr_step=total_steps,
-                 symmetric=hps.eval_symmetric)
+                 symmetric=hps.eval_symmetric,
+                 rank=hps.rank,
+                 parallelism=hps.parallelism)
             next_eval += hps.eval_frequency
             next_model_save -= 1
-            if next_model_save == 0:
+            if next_model_save == 0 and hps.rank == 0:
                 next_model_save = hps.model_save_frequency
                 save_policy(policy, out_dir, total_steps, optimizer, adr)
 
@@ -451,14 +455,17 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
 
     if hps.eval_envs > 0:
         eval(policy=policy,
-             num_envs=hps.eval_envs,
+             num_envs=hps.eval_envs // hps.parallelism,
              device=device,
              objective=hps.objective,
              eval_steps=5 * hps.eval_timesteps,
              curr_step=total_steps,
              symmetric=hps.eval_symmetric,
-             printerval=hps.eval_timesteps)
-    save_policy(policy, out_dir, total_steps, optimizer, adr)
+             printerval=hps.eval_timesteps,
+             rank=hps.rank,
+             parallelism=hps.parallelism)
+    if hps.rank == 0:
+        save_policy(policy, out_dir, total_steps, optimizer, adr)
 
 
 def eval(policy,
@@ -472,7 +479,9 @@ def eval(policy,
          randomize=False,
          hardness=10,
          symmetric=True,
-         random_rules=0.0):
+         random_rules=0.0,
+         rank=0,
+         parallelism=1):
     start_time = time.time()
 
     if printerval is None:
@@ -507,7 +516,7 @@ def eval(policy,
                 'radiant-sun-35': {'model_file': 'standard/radiant-sun-35M.pt'},
             }
             scripted_opponents = ['destroyer', 'replicator']
-            hardness = 5
+            hardness = 1
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
@@ -625,25 +634,32 @@ def eval(policy,
             for name, _scores in sorted(scores_by_opp.items()):
                 print(f'      {np.array(_scores).mean():6.3f}  {sum(eliminations_by_opp[name])}/{len(_scores)}  ({name})')
 
-    scores = np.array(scores)
-    eliminations = np.array(eliminations)
+    scores = torch.FloatTensor(scores)
+    eliminations = torch.FloatTensor(eliminations)
 
     if curr_step is not None:
-        wandb.log({
-            'eval_mean_score': scores.mean(),
-            'eval_max_score': scores.max(),
-            'eval_min_score': scores.min(),
-            'eval_games': len(scores),
-            'eval_elimination_rate': eliminations.mean(),
-            'evalu_duration_secs': time.time() - start_time,
-        }, step=curr_step)
-        for opp_name, scores in scores_by_opp.items():
-            scores = np.array(scores)
+        if parallelism > 1:
+            scores = allcat(scores, rank, parallelism)
+            eliminations = allcat(eliminations, rank, parallelism)
+        if rank == 0:
             wandb.log({
-                f'eval_mean_score_vs_{opp_name}': scores.mean(),
-                f'eval_games_vs_{opp_name}': len(scores),
-                f'eval_elimination_rate_vs_{opp_name}': np.array(eliminations_by_opp[opp_name]).mean(),
+                'eval_mean_score': scores.mean().item(),
+                'eval_max_score': scores.max().item(),
+                'eval_min_score': scores.min().item(),
+                'eval_games': len(scores),
+                'eval_elimination_rate': eliminations.mean().item(),
+                'evalu_duration_secs': time.time() - start_time,
             }, step=curr_step)
+        for opp_name, scores in scores_by_opp.items():
+            if parallelism > 1:
+                scores = allcat(torch.Tensor(scores), rank, parallelism)
+                eliminations = allcat(torch.Tensor(eliminations_by_opp[opp_name]), rank, parallelism)
+            if rank == 0:
+                wandb.log({
+                    f'eval_mean_score_vs_{opp_name}': scores.mean().item(),
+                    f'eval_games_vs_{opp_name}': len(scores),
+                    f'eval_elimination_rate_vs_{opp_name}': eliminations.mean().item(),
+                }, step=curr_step)
 
     env.close()
 
@@ -847,7 +863,22 @@ def gradient_allreduce(model):
         if param.grad is not None:
             dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
             param.grad.data /= size
-    print(f'Completed data parallel allreduce in {time.time() - start:.2f}s')
+
+
+def allcat(tensor: torch.Tensor, rank: int, parallelism: int) -> Optional[torch.Tensor]:
+    if rank == 0:
+        alltensors = [tensor]
+        for sender in range(1, parallelism):
+            size = torch.zeros(1)
+            dist.recv(size, src=sender)
+            tensor = torch.zeros(int(size.item()))
+            dist.recv(tensor, src=sender)
+            alltensors.append(tensor)
+        return torch.cat(alltensors, dim=0)
+    else:
+        dist.send(torch.FloatTensor([len(tensor)]), dst=0)
+        dist.send(tensor, dst=0)
+        return None
 
 
 def main():

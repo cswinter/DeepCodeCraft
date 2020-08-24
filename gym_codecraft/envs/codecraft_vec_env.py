@@ -618,13 +618,15 @@ class CodeCraftVecEnv(object):
                  rule_rng_fraction=0.0,
                  rule_rng_amount=0.0,
                  rule_cost_rng=0.0,
-                 max_game_length=None):
+                 max_game_length=None,
+                 stagger_offset: float = 0.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
         self.action_delay = action_delay
         self.num_self_play = num_self_play
         self.stagger = stagger
+        self.stagger_offset = stagger_offset
         self.fair = fair
         self.game_length = 3 * 60 * 60
         self.custom_map = lambda _1, _2, _3: None
@@ -759,7 +761,7 @@ class CodeCraftVecEnv(object):
         for i in range(self.num_envs - self.num_self_play):
             # spread out initial game lengths to stagger start times
             self_play = i < self.num_self_play
-            game_length = self.game_length * (i + 1) // (self.num_envs - self.num_self_play) if self.stagger else self.game_length
+            game_length = int(self.game_length * (i + 1 + self.stagger_offset) // (self.num_envs - self.num_self_play)) if self.stagger else self.game_length
             opponent = 'none' if self_play else self.next_opponent()
             game_id = codecraft.create_game(
                 game_length,
