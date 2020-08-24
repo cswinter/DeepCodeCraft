@@ -108,7 +108,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
         assert hps.resume_from == '', f'Restoring learning rate schedule not implemented'
         lr_scheduler = CosineAnnealingLR(
             optimizer,
-            T_max=hps.steps * hps.sample_reuse // (hps.bs * hps.batches_per_update),
+            T_max=hps.steps * hps.sample_reuse * hps.parallelism // (hps.bs * hps.batches_per_update),
             eta_min=hps.final_lr,
         )
     else:
@@ -121,6 +121,9 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
         for layer in policy.modules():
             if isinstance(layer, InputNorm):
                 layer.enable_fp16()
+
+    if hps.parallelism > 1:
+        sync_parameters(policy)
 
     if hps.rank == 0:
         wandb.watch(policy)
@@ -516,7 +519,7 @@ def eval(policy,
                 'radiant-sun-35': {'model_file': 'standard/radiant-sun-35M.pt'},
             }
             scripted_opponents = ['destroyer', 'replicator']
-            hardness = 1
+            hardness = 5
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
@@ -856,8 +859,12 @@ def verify_gradients(policy, epoch, batch) -> bool:
     return errors
 
 
+def sync_parameters(model):
+    for param in model.parameters():
+        dist.broadcast(param.data, src=0)
+
+
 def gradient_allreduce(model):
-    start = time.time()
     size = float(dist.get_world_size())
     for param in model.parameters():
         if param.grad is not None:

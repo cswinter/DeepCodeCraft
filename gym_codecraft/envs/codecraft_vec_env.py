@@ -761,7 +761,7 @@ class CodeCraftVecEnv(object):
         for i in range(self.num_envs - self.num_self_play):
             # spread out initial game lengths to stagger start times
             self_play = i < self.num_self_play
-            game_length = int(self.game_length * (i + 1 + self.stagger_offset) // (self.num_envs - self.num_self_play)) if self.stagger else self.game_length
+            game_length = int(self.game_length * (i + 1 - self.stagger_offset) // (self.num_envs - self.num_self_play)) if self.stagger else self.game_length
             opponent = 'none' if self_play else self.next_opponent()
             game_id = codecraft.create_game(
                 game_length,
