@@ -679,9 +679,11 @@ def eval(policy,
                 'evalu_duration_secs': time.time() - start_time,
             }, step=curr_step)
         for opp_name, scores in scores_by_opp.items():
+            scores = torch.Tensor(scores)
+            eliminations = torch.Tensor(eliminations_by_opp[opp_name])
             if parallelism > 1:
-                scores = allcat(torch.Tensor(scores), rank, parallelism)
-                eliminations = allcat(torch.Tensor(eliminations_by_opp[opp_name]), rank, parallelism)
+                scores = allcat(scores, rank, parallelism)
+                eliminations = allcat(eliminations, rank, parallelism)
             if rank == 0:
                 wandb.log({
                     f'eval_mean_score_vs_{opp_name}': scores.mean().item(),
