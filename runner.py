@@ -53,15 +53,15 @@ class JobQueue:
                     with self.lock:
                         min_load = self.concurrency + 1
                         for device, load in self.active_jobs_per_device.items():
-                            if load + required_slots_per_device <= self.concurrency:
+                            if load + required_slots_per_device <= self.concurrency // self.devices:
                                 if load < min_load:
                                     selected_devices = [device]
                                     min_load = load
                                 elif load == min_load:
                                     selected_devices.append(device)
-                        if len(selected_devices) == required_devices:
+                        if len(selected_devices) >= required_devices:
                             rank = 0
-                            for device in selected_devices:
+                            for device in selected_devices[:required_devices]:
                                 for _ in range(required_slots_per_device):
                                     job_copy = copy.deepcopy(job)
                                     job_copy.set_device(device, rank, 29000 + self.port_offset)
