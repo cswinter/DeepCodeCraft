@@ -37,12 +37,12 @@ class MultiheadSpatialAttn(nn.Module):
         assert dbatch == dbatch_kv
         assert dfeat_q == self.qdim
         assert dfeat_kv == self.kvdim
-        assert list(mask.size()) == [dbatch, dseq_kv]
+        assert list(mask.size()) == [dbatch, dseq_q, dseq_kv]
 
         queries = (query @ self.wq + self.bq)\
             .reshape(dbatch, dseq_q, self.nhead, self.qdim // self.nhead)\
             .transpose(1, 2)\
-            .view(dbatch * self.nhead, dseq_q, self.qdim // self.nhead)
+            .reshape(dbatch * self.nhead, dseq_q, self.qdim // self.nhead)
         keys = (keyval @ self.wk + self.bk)\
             .reshape(dbatch, dseq_kv, self.nhead, self.qdim // self.nhead)\
             .transpose(1, 2)\
@@ -61,7 +61,7 @@ class MultiheadSpatialAttn(nn.Module):
                 attention_weights *= modulator
 
         attention_weights = attention_weights\
-            .masked_fill(mask.view(dbatch, 1, 1, dseq_kv), float('-inf'))\
+            .masked_fill(mask.view(dbatch, 1, dseq_q, dseq_kv), float('-inf'))\
             .view(dbatch * self.nhead, dseq_q, dseq_kv)
 
         attn = torch.softmax(attention_weights, dim=2)
@@ -70,7 +70,7 @@ class MultiheadSpatialAttn(nn.Module):
         x = (attn @ values)\
             .view(dbatch, self.nhead, dseq_q, self.qdim // self.nhead)\
             .transpose(1, 2)\
-            .view(dbatch, dseq_q, self.qdim)
+            .reshape(dbatch, dseq_q, self.qdim)
         return self.out_proj(x)
 
     def _reset_parameters(self):

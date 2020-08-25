@@ -6,7 +6,7 @@ from torch.nn.init import uniform_
 
 
 class GaussianAttention(nn.Module):
-    def __init__(self, nhead: int, scale: float, optional: bool = True):
+    def __init__(self, nhead: int, scale: float, init_scale: float = 1.0, optional: bool = True):
         super(GaussianAttention, self).__init__()
         self.nhead = nhead
         self.scale = scale
@@ -16,7 +16,7 @@ class GaussianAttention(nn.Module):
         self.logvariance = Parameter(torch.Tensor(nhead))
         self.weight = Parameter(torch.Tensor(nhead))
 
-        self._reset_parameters()
+        self._reset_parameters(init_scale)
 
     def forward(self, distances: torch.Tensor) -> torch.Tensor:
         dbatch, dseq1, dseq2 = distances.size()
@@ -31,10 +31,10 @@ class GaussianAttention(nn.Module):
             weight = 1.0
         return 1 + weight * (density - 1)
 
-    def _reset_parameters(self):
-        uniform_(self.mean, -0.1, 0.1)
-        uniform_(self.logvariance, -0.5, 0.5)
-        uniform_(self.weight, -0.5, 0.5)
+    def _reset_parameters(self, init_scale: float):
+        uniform_(self.mean, -0.1 * init_scale, 0.1 * init_scale)
+        uniform_(self.logvariance, -0.5 * init_scale, 0.5 * init_scale)
+        uniform_(self.weight, -0.5 * init_scale, 0.5 * init_scale)
 
 
 def plot_heatmap(

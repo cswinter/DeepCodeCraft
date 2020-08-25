@@ -122,9 +122,10 @@ class SpatialAttnPolicy(nn.Module):
             self.constant_items = nn.Parameter(torch.normal(0, 1, (hps.nconstant, hps.d_item)))
 
         if hps.item_item_attn_layers > 0:
+            assert hps.item_item_attn_layers == 1
             self.item_item_attn = SpatialTransformer(
-                embed_dim=hps.d_item,
-                kvdim=hps.d_item,
+                embed_dim=hps.d_item // 2,
+                kvdim=hps.d_item // 2,
                 nhead=hps.nhead,
                 dff_ratio=hps.dff_ratio
             )
@@ -132,7 +133,9 @@ class SpatialAttnPolicy(nn.Module):
             self.item_item_attn = None
 
         if hps.spatial_attn:
-            self.gattn = GaussianAttention(hps.nhead, scale=1000.0)
+            self.gattn = GaussianAttention(hps.nhead, scale=self.hps.spatial_attn_scale, init_scale=hps.spatial_attn_init_scale)
+        if hps.item_item_spatial_attn:
+            self.gattn_ii = GaussianAttention(hps.nhead, scale=self.hps.spatial_attn_scale, init_scale=hps.spatial_attn_init_scale)
         self.transformer = SpatialTransformer(
             embed_dim=hps.d_agent,
             kvdim=hps.d_item,
@@ -325,50 +328,62 @@ class SpatialAttnPolicy(nn.Module):
         origin = xagent[:, 0:2].clone()
         direction = xagent[:, 2:4].clone()
 
-        pemb_list = []
-        pmask_list = []
         emb_list = []
         relpos_list = []
+        pos_list = []
         mask_list = []
+        pemb_list = []
+        pmask_list = []
+        ppos_list = []
         for item_net in self.item_nets:
             emb, mask = item_net(x)
-            emb_list.append(emb[active_agent_groups])
-            mask_list.append(mask[active_agent_groups])
+            emb_list.append(emb)
+            mask_list.append(mask)
             relpos = item_net.relpos(x, active_agent_groups, origin, direction)
             relpos_list.append(relpos)
+            pos = item_net.pos(x)
+            pos_list.append(pos)
             if item_net.start_privileged is not None:
                 pemb, pmask = item_net(x, privileged=True)
                 pemb_list.append(pemb)
                 pmask_list.append(pmask)
+                ppos_list.append(item_net.pos(x, privileged=True))
             else:
                 pemb_list.append(emb)
                 pmask_list.append(mask)
+                ppos_list.append(pos)
         relpos = torch.cat(relpos_list, dim=1)
         relpos_embed, _ = self.relpos_net(relpos)
         embed = torch.cat(emb_list, dim=1)
         mask = torch.cat(mask_list, dim=1)
+        pos = torch.cat(pos_list, dim=1)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
         mask[:, 0] = 0
 
-        items = torch.cat([relpos_embed, embed], dim=2)
-
         pitems = torch.cat(pemb_list, dim=1)
         pmask = torch.cat(pmask_list, dim=1)
+        ppos = torch.cat(ppos_list, dim=1)
 
         # TODO: constant item?
-        """
+
         if self.item_item_attn:
-            pmask_nonzero = pmask.clone()
-            pmask_nonzero[:, 0] = False
-            pitems = self.item_item_attn(
-                pitems.permute(1, 0, 2),
-                src_key_padding_mask=pmask_nonzero,
-            ).permute(1, 0, 2)
-            if (pitems != pitems).sum() > 0:
-                print(pmask)
-                print(pitems)
-                raise Exception("NaN!")
-                """
+            mask_clone = mask.clone()
+            mask_clone = mask_clone.view(batch_size, 1, self.nitem) | mask_clone.view(batch_size, self.nitem, 1)
+            pmask_clone = pmask.clone()
+            pmask_clone = pmask_clone.view(batch_size, 1, self.nitem) | pmask_clone.view(batch_size, self.nitem, 1)
+            if self.hps.item_item_spatial_attn:
+                spatial_attn = self.gattn_ii(pairwise_distance(pos))
+                pspatial_attn = self.gattn_ii(pairwise_distance(ppos))
+                modulators = [spatial_attn]
+                pmodulators = [pspatial_attn]
+            else:
+                modulators = None
+                pmodulators = None
+            embed = self.item_item_attn(embed, embed, mask_clone, modulators)
+            pitems = self.item_item_attn(pitems, pitems, pmask_clone, pmodulators)
+            # Masked out items in query sequence result in NaN
+            embed[embed != embed] = 0
+            pitems[pitems != pitems] = 0
 
         if self.hps.spatial_attn:
             distances = relpos[:, :, 2].pow(2).view(-1, 1, self.nitem)
@@ -376,9 +391,13 @@ class SpatialAttnPolicy(nn.Module):
             modulators = [spatial_attn]
         else:
             modulators = None
+
         # Multihead attention input dimensions are: batch size, sequence length, embedding features
+        embed = embed[active_agent_groups]
+        mask = mask[active_agent_groups]
+        items = torch.cat([relpos_embed, embed], dim=2)
         target = agents.view(-1, 1, self.d_agent)
-        x = self.transformer(target, items, mask, modulators)
+        x = self.transformer(target, items, mask.view(-1, 1, self.nitem), modulators)
         x = x.view(-1, self.d_agent)
 
         if self.hps.nearby_map:
@@ -560,14 +579,25 @@ class PosItemBlock(nn.Module):
 
         return x, mask
 
-    def relpos(self, x, indices, origin, direction):
-        batch_agents, _ = origin.size()
+    def relpos(self, x, indices, origin, direction) -> torch.Tensor:
         x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
         pos = x[indices, :, 0:2]
         relpos = spatial.unbatched_relative_positions(origin, direction, pos)
         dist = relpos.norm(p=2, dim=2)
         direction = relpos / (dist.unsqueeze(-1) + 1e-8)
         return torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
+
+    def pos(self, x, privileged=False):
+        if privileged:
+            return x[:, self.start_privileged:self.end_privileged].view(-1, self.count, self.d_in)[:, :, 0:2]
+        else:
+            return x[:, self.start:self.end].view(-1, self.count, self.d_in)[:, :, 0:2]
+
+
+def pairwise_distance(positions: torch.Tensor) -> torch.Tensor:
+    dbatch, dseq, dfeats = positions.size()
+    assert dfeats == 2
+    return (positions.view(dbatch, dseq, 1, 2) - positions.view(dbatch, 1, dseq, 2)).pow(2).sum(dim=3).pow(0.5)
 
 
 class ItemBlock(nn.Module):
