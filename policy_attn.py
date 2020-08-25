@@ -367,10 +367,11 @@ class SpatialAttnPolicy(nn.Module):
         # TODO: constant item?
 
         if self.item_item_attn:
-            mask_clone = mask.clone()
-            mask_clone = mask_clone.view(batch_size, 1, self.nitem) | mask_clone.view(batch_size, self.nitem, 1)
-            pmask_clone = pmask.clone()
-            pmask_clone = pmask_clone.view(batch_size, 1, self.nitem) | pmask_clone.view(batch_size, self.nitem, 1)
+            mask_clone = mask.view(batch_size, 1, self.nitem) | mask.view(batch_size, self.nitem, 1)
+            pmask_clone = pmask.view(batch_size, 1, self.nitem) | pmask.view(batch_size, self.nitem, 1)
+            # Ensure that at least one query item is not masked out to prevent NaN in transformer softmax
+            mask_clone[:, :, 0] = 0
+            pmask_clone[:, :, 0] = 0
             if self.hps.item_item_spatial_attn:
                 spatial_attn = self.gattn_ii(pairwise_distance(pos))
                 pspatial_attn = self.gattn_ii(pairwise_distance(ppos))
@@ -380,10 +381,10 @@ class SpatialAttnPolicy(nn.Module):
                 modulators = None
                 pmodulators = None
             embed = self.item_item_attn(embed, embed, mask_clone, modulators)
-            pitems = self.item_item_attn(pitems, pitems, pmask_clone, pmodulators)
-            # Masked out items in query sequence result in NaN
-            embed[embed != embed] = 0
-            pitems[pitems != pitems] = 0
+            if self.hps.use_privileged:
+                pitems = self.item_item_attn(pitems, pitems, pmask_clone, pmodulators)
+            else:
+                pitems = embed
 
         if self.hps.spatial_attn:
             distances = relpos[:, :, 2].pow(2).view(-1, 1, self.nitem)
