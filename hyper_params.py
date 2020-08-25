@@ -391,6 +391,7 @@ class HyperParams:
     def allied_wealth():
         hps = HyperParams()
         hps.clip_vf = True
+        hps.steps = 1.5e6
         hps.dff_ratio = 2
         hps.eval_envs = 0
         hps.gamma = 0.99
