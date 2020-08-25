@@ -153,6 +153,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
     entropy_bonus_schedule = parse_schedule(hps.entropy_bonus_schedule, hps.entropy_bonus)
+    mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -170,6 +171,8 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
             hps.batches_per_update = batches_per_update
             assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
         hps.entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
+        if env is not None:
+            env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(total_steps)
         if len(variety_schedule) > 0:
             w = (total_steps - variety_schedule_last_step) / (variety_schedule[-1][0] - variety_schedule_last_value)
             adr.variety = variety_schedule_last_value * (1 - w) + variety_schedule[-1][1] * w
@@ -203,7 +206,8 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                                            ("aggressive_replicator", hps.num_vs_aggro_replicator),
                                        ],
                                        max_game_length=None if hps.max_game_length == 0 else hps.max_game_length,
-                                       stagger_offset=hps.rank / hps.parallelism)
+                                       stagger_offset=hps.rank / hps.parallelism,
+                                       mothership_damage_scale=hps.mothership_damage_scale)
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:
@@ -444,6 +448,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                 'hardness': adr.hardness,
                 'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
                 'entropy_bonus': hps.entropy_bonus,
+                'mothership_damage_scale': env.mothership_damage_scale,
             }
             for action, count in buildmean.items():
                 metrics[f'build_{action}'] = count
