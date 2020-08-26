@@ -381,7 +381,7 @@ class SpatialAttnPolicy(nn.Module):
                 modulators = None
                 pmodulators = None
             embed = self.item_item_attn(embed, embed, mask_clone, modulators)
-            if self.hps.use_privileged:
+            if self.hps.use_privileged and self.hps.item_item_spatial_attn_vf:
                 pitems = self.item_item_attn(pitems, pitems, pmask_clone, pmodulators)
             else:
                 pitems = embed

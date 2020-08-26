@@ -56,6 +56,7 @@ class HyperParams:
         self.spatial_attn_lr_multiplier = 1.0   # Increased learning rate for parametric spatial attention parameters
         self.spatial_attn_scale = 10000.0
         self.spatial_attn_init_scale = 0.1
+        self.item_item_spatial_attn_vf = False
 
         self.resume_from = ''       # Filepath to saved policy
 
