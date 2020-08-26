@@ -148,7 +148,7 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
             else:
                 return 2 ** np.random.uniform(np.log2(target), 0.0)
         return Rules(
-            mothership_damage_multiplier=rnd(8 * rnd_msdm),
+            mothership_damage_multiplier=rnd(rnd_msdm),
             cost_modifier_size=list(map(rnd, targets.cost_modifier_size)),
             cost_modifier_constructor=rnd(targets.cost_modifier_constructor),
             cost_modifier_missiles=rnd(targets.cost_modifier_missiles),
@@ -620,7 +620,7 @@ class CodeCraftVecEnv(object):
                  rule_cost_rng=0.0,
                  max_game_length=None,
                  stagger_offset: float = 0.0,
-                 mothership_damage_scale: float = 8.0):
+                 mothership_damage_scale: float = 3.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -738,7 +738,7 @@ class CodeCraftVecEnv(object):
 
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
-            return random_rules(self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset)
+            return random_rules(2 ** self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset)
         else:
             return Rules()
 
