@@ -25,6 +25,24 @@ def create_game(game_length: int = None,
         custom_map = ''
     try:
         if game_length:
+            print(f'http://localhost:9000/start-game'
+                                     f'?maxTicks={game_length}'
+                                     f'&actionDelay={action_delay}'
+                                     f'&scriptedOpponent={scripted_opponent}'
+                                     f'&mothershipDamageMultiplier={rules.mothership_damage_multiplier}'
+                                     f'&costModifierSize1={rules.cost_modifier_size[0]}'
+                                     f'&costModifierSize2={rules.cost_modifier_size[1]}'
+                                     f'&costModifierSize3={rules.cost_modifier_size[2]}'
+                                     f'&costModifierSize4={rules.cost_modifier_size[3]}'
+                                     f'&costModifierConstructor={rules.cost_modifier_constructor}'
+                                     f'&costModifierStorage={rules.cost_modifier_storage}'
+                                     f'&costModifierShields={rules.cost_modifier_shields}'
+                                     f'&costModifierMissiles={rules.cost_modifier_missiles}'
+                                     f'&costModifierEngines={rules.cost_modifier_engines}'
+                                     f'&allowHarvesting={scalabool(allowHarvesting)}'
+                                     f'&forceHarvesting={scalabool(forceHarvesting)}'
+                                     f'&randomizeIdle={scalabool(randomizeIdle)}',
+                                     custom_map)
             response = requests.post(f'http://localhost:9000/start-game'
                                      f'?maxTicks={game_length}'
                                      f'&actionDelay={action_delay}'
