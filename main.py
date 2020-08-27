@@ -208,6 +208,8 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                                        max_game_length=None if hps.max_game_length == 0 else hps.max_game_length,
                                        stagger_offset=hps.rank / hps.parallelism,
                                        mothership_damage_scale=hps.mothership_damage_scale)
+            env.rng_ruleset = adr.ruleset
+            env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:

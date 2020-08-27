@@ -158,7 +158,7 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
         )
     else:
         return Rules(
-            mothership_damage_multiplier=2 ** np.random.uniform(0.0, 4.0 * rnd_msdm),
+            mothership_damage_multiplier=2 ** np.random.uniform(0.0, np.log2(rnd_msdm)),
             cost_modifier_size=[
                 1.0,
                 1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
