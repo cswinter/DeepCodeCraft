@@ -27,6 +27,7 @@ from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
 from policy_t7 import TransformerPolicy7, InputNorm
 from policy_attn import SpatialAttnPolicy, InputNorm
+from policy_t8 import TransformerPolicy8, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
 
     resume_steps = 0
     if hps.resume_from == '':
-        policy = SpatialAttnPolicy(hps, obs_config).to(device)
+        policy = TransformerPolicy8(hps, obs_config).to(device)
         normal_params = [param for name, param in policy.named_parameters() if not name.startswith('gattn')]
         gattn_params = [param for name, param in policy.named_parameters() if name.startswith('gattn')]
         assert len(normal_params) + len(gattn_params) == len(list(policy.parameters()))
