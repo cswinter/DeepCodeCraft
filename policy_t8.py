@@ -305,20 +305,13 @@ class TransformerPolicy8(nn.Module):
         pmask_list = []
         emb_list = []
         relpos_list = []
-        relpos_emb_list = []
         mask_list = []
         for item_net in self.item_nets:
             emb, mask = item_net(x)
             emb_list.append(emb[active_agents.batch_index])
             mask_list.append(mask[active_agents.batch_index])
-            relpos, relpos_sparsity = item_net.relpos(x, active_agents.batch_index, origin, direction)
-            if relpos_sparsity.sparse_count > 0:
-                relpos_emb = self.relpos_net(relpos)
-                relpos_emb_list.append(relpos_sparsity.pad(relpos_emb))
-                relpos_list.append(relpos_sparsity.pad(relpos))
-            else:
-                relpos_emb_list.append(torch.zeros(active_agents.sparse_count, item_net.count, self.d_item // 2, device=relpos.device))
-                relpos_list.append(torch.zeros(active_agents.sparse_count, item_net.count, 3, device=relpos.device))
+            relpos = item_net.relpos(x, active_agents.batch_index, origin, direction)
+            relpos_list.append(relpos)
             if item_net.start_privileged is not None:
                 pemb, pmask = item_net(x, privileged=True)
                 pemb_list.append(pemb)
@@ -326,8 +319,8 @@ class TransformerPolicy8(nn.Module):
             else:
                 pemb_list.append(emb)
                 pmask_list.append(mask)
-        relpos_embed = torch.cat(relpos_emb_list, dim=1)
         relpos = torch.cat(relpos_list, dim=1)
+        relpos_embed = self.relpos_net(relpos)
         embed = torch.cat(emb_list, dim=1)
         mask = torch.cat(mask_list, dim=1)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
@@ -389,11 +382,25 @@ class InputNorm(nn.Module):
         self._stddev = None
         self._dirty = True
 
-    def update(self, input):
+    def update(self, input, mask=None):
         self._dirty = True
-        dbatch, dfeat = input.size()
+        if mask is not None:
+            if len(input.size()) == 3:
+                batch_size, nitem, features = input.size()
+                assert (batch_size, nitem) == mask.size()
+            elif len(input.size()) == 2:
+                batch_size, features = input.size()
+                assert (batch_size,) == mask.size()
+            else:
+                raise Exception(f'Expecting 2 or 3 dimensions, actual: {len(input.size())}')
+            #count = mask.float().sum().item()
+            #mask = mask.view(-1).unsqueeze(-1).float()
+            input = input[mask]
+        else:
+            features = input.size()[-1]
+            input = input.reshape(-1, features)
 
-        count = input.numel() / dfeat
+        count = input.numel() / features
         if count == 0:
             return
         mean = input.mean(dim=0)
@@ -411,7 +418,7 @@ class InputNorm(nn.Module):
     def forward(self, input, mask=None):
         with torch.no_grad():
             if self.training:
-                self.update(input)
+                self.update(input, mask)
             if self.count > 1:
                 input = (input - self.mean) / self.stddev()
             input = torch.clamp(input, -self.cliprange, self.cliprange)
@@ -440,8 +447,8 @@ class InputEmbedding(nn.Module):
         self.linear = nn.Linear(d_in, d_model)
         self.norm = norm_fn(d_model)
 
-    def forward(self, x):
-        x = self.normalize(x)
+    def forward(self, x, mask=None):
+        x = self.normalize(x, mask)
         x = F.relu(self.linear(x))
         x = self.norm(x)
         return x
@@ -516,14 +523,11 @@ class PosItemBlock(nn.Module):
     def relpos(self, x, indices, origin, direction):
         batch_agents, _ = origin.size()
         x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
-        mask = (x[:, :, self.mask_feature] != 0)[indices]
         pos = x[indices, :, 0:2]
         relpos = spatial.unbatched_relative_positions(origin, direction, pos)
         dist = relpos.norm(p=2, dim=2)
         direction = relpos / (dist.unsqueeze(-1) + 1e-8)
-        x = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
-        x = x[mask]
-        return x, SparseSequence.from_mask(mask)
+        return torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
 
 
 class ItemBlock(nn.Module):
