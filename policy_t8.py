@@ -560,7 +560,8 @@ def arange(count, device):
     global ARANGE_CACHED, ARANGE_MAX
     if count > ARANGE_MAX or ARANGE_CACHED is None:
         ARANGE_CACHED = torch.arange(0, count, device=device)
-    return ARANGE_CACHED
+        ARANGE_MAX = count
+    return ARANGE_CACHED[:count]
 
 
 class SparseSequence:
