@@ -67,7 +67,6 @@ class TransformerPolicy8(nn.Module):
         self.agent_embedding = ItemBlock(
             obs_config.dstride() + obs_config.global_features(),
             hps.d_agent, hps.d_agent * hps.dff_ratio, norm_fn, True,
-            mask_feature=7,  # Feature 7 is hitpoints
         )
         self.relpos_net = ItemBlock(
             3, hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff
@@ -296,7 +295,7 @@ class TransformerPolicy8(nn.Module):
             action_masks[0][0] = 1.0
         active_agents = SparseSequence(agent_active)
         xagent = xagent[agent_active]
-        agents, _ = self.agent_embedding(xagent)
+        agents = self.agent_embedding(xagent)
 
         origin = xagent[:, 0:2].clone()
         direction = xagent[:, 2:4].clone()
@@ -320,7 +319,7 @@ class TransformerPolicy8(nn.Module):
                 pemb_list.append(emb)
                 pmask_list.append(mask)
         relpos = torch.cat(relpos_list, dim=1)
-        relpos_embed, _ = self.relpos_net(relpos)
+        relpos_embed = self.relpos_net(relpos)
         embed = torch.cat(emb_list, dim=1)
         mask = torch.cat(mask_list, dim=1)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
@@ -533,31 +532,18 @@ class PosItemBlock(nn.Module):
 
 
 class ItemBlock(nn.Module):
-    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock, mask_feature=None):
+    def __init__(self, d_in, d_model, d_ff, norm_fn, resblock):
         super(ItemBlock, self).__init__()
 
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
-        self.mask_feature = mask_feature
         if resblock:
             self.resblock = FFResblock(d_model, d_ff, norm_fn)
 
     def forward(self, x):
-        if self.mask_feature:
-            if x.dim() == 3:
-                mask = x[:, :, self.mask_feature] == 0
-            else:
-                mask = x[:, self.mask_feature] == 0
-        else:
-            if x.dim() == 3:
-                mask = torch.ones_like(x[:, :, 0]).to(x.device) == 0
-            else:
-                mask = torch.ones_like(x[:, 0]).to(x.device) == 0
-
-        x = self.embedding(x, ~mask)
+        x = self.embedding(x)
         if self.resblock is not None:
             x = self.resblock(x)
-        x = x * (~mask).unsqueeze(-1).float()
-        return x, mask
+        return x
 
 
 class SparseSequence:
