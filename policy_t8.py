@@ -507,10 +507,11 @@ class PosItemBlock(nn.Module):
         else:
             x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
 
-        mask = x[:, :, self.mask_feature] == 0
+        select = x[:, :, self.mask_feature] != 0
 
-        active = SparseSequence.from_mask(mask)
-        x_sparse = x[mask]
+        active = SparseSequence.from_mask(select)
+        x_sparse = x[select]
+        mask = select == False
 
         if x_sparse.numel() > 0:
             x_sparse = self.embedding(x_sparse)
