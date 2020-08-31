@@ -305,20 +305,19 @@ class TransformerPolicy8(nn.Module):
         pmask_list = []
         emb_list = []
         relpos_list = []
-        relpos_emb_list = []
+        sparse_relpos_list = []
+        relpos_sparsity_list = []
         mask_list = []
         for item_net in self.item_nets:
             emb, mask = item_net(x)
             emb_list.append(emb[active_agents.batch_index])
             mask_list.append(mask[active_agents.batch_index])
-            relpos, relpos_sparsity = item_net.relpos(x, active_agents.batch_index, origin, direction)
-            if relpos_sparsity.sparse_count > 0:
-                relpos_emb = self.relpos_net(relpos)
-                relpos_emb_list.append(relpos_sparsity.pad(relpos_emb))
-                relpos_list.append(relpos_sparsity.pad(relpos))
-            else:
-                relpos_emb_list.append(torch.zeros(active_agents.sparse_count, item_net.count, self.d_item // 2, device=relpos.device))
-                relpos_list.append(torch.zeros(active_agents.sparse_count, item_net.count, 3, device=relpos.device))
+
+            relpos, sparse_relpos, relpos_sparsity = item_net.relpos(x, active_agents.batch_index, origin, direction)
+            relpos_list.append(relpos)
+            sparse_relpos_list.append(sparse_relpos)
+            relpos_sparsity_list.append(relpos_sparsity)
+
             if item_net.start_privileged is not None:
                 pemb, pmask = item_net(x, privileged=True)
                 pemb_list.append(pemb)
@@ -326,8 +325,20 @@ class TransformerPolicy8(nn.Module):
             else:
                 pemb_list.append(emb)
                 pmask_list.append(mask)
-        relpos_embed = torch.cat(relpos_emb_list, dim=1)
+
         relpos = torch.cat(relpos_list, dim=1)
+        sparse_relpos = torch.cat(sparse_relpos_list, dim=0)
+        sparse_relpos_embed = self.relpos_net(sparse_relpos)
+        relpos_embed_list = []
+        offset = 0
+        for sparsity in relpos_sparsity_list:
+            if sparsity.sparse_count > 0:
+                relpos_embed_list.append(sparsity.pad(sparse_relpos_embed[offset:offset+sparsity.sparse_count]))
+                offset += sparsity.sparse_count
+            else:
+                relpos_embed_list.append(torch.zeros(active_agents.sparse_count, sparsity.dseq, self.d_item // 2, device=relpos.device))
+        relpos_embed = torch.cat(relpos_embed_list, dim=1)
+
         embed = torch.cat(emb_list, dim=1)
         mask = torch.cat(mask_list, dim=1)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
@@ -522,8 +533,8 @@ class PosItemBlock(nn.Module):
         dist = relpos.norm(p=2, dim=2)
         direction = relpos / (dist.unsqueeze(-1) + 1e-8)
         x = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
-        x = x[mask]
-        return x, SparseSequence.from_mask(mask)
+        sparse_x = x[mask]
+        return x, sparse_x, SparseSequence.from_mask(mask)
 
 
 class ItemBlock(nn.Module):
@@ -539,6 +550,17 @@ class ItemBlock(nn.Module):
         if self.resblock is not None:
             x = self.resblock(x)
         return x
+
+
+ARANGE_CACHED = None
+ARANGE_MAX = 0
+
+
+def arange(count, device):
+    global ARANGE_CACHED, ARANGE_MAX
+    if count > ARANGE_MAX or ARANGE_CACHED is None:
+        ARANGE_CACHED = torch.arange(0, count, device=device)
+    return ARANGE_CACHED
 
 
 class SparseSequence:
@@ -561,19 +583,19 @@ class SparseSequence:
     @property
     def batch_index(self):
         if self._batch_index is None:
-            self._batch_index = torch.arange(0, self.dbatch, device=self.device).repeat_interleave(self.dseq)[self.flat_select]
+            self._batch_index = arange(self.dbatch, self.device).repeat_interleave(self.dseq)[self.flat_select]
         return self._batch_index
 
     @property
     def seq_index(self):
         if self._seq_index is None:
-            self._seq_index = torch.arange(0, self.dseq, device=self.device).repeat(self.dbatch)[self.flat_select]
+            self._seq_index = arange(self.dseq, self.device).repeat(self.dbatch)[self.flat_select]
         return self._seq_index
 
     @property
     def flat_index(self):
         if self._flat_index is None:
-            self._flat_index = torch.arange(0, self.dseq * self.dbatch, device=self.device)[self.flat_select]
+            self._flat_index = arange(self.dseq * self.dbatch, self.device)[self.flat_select]
         return self._flat_index
 
     def pad(self, x: torch.Tensor):
