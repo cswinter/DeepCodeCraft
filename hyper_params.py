@@ -133,8 +133,8 @@ class HyperParams:
         self.adr = False               # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6
         self.linear_hardness = True
-        self.mothership_damage_scale = 3.0
-        self.mothership_damage_scale_schedule = ''
+        self.mothership_damage_scale = 4.0
+        self.mothership_damage_scale_schedule = 'lin 50e6:1.0,150:0.0'
 
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
