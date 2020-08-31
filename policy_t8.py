@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
+from typing import List
 
 from multihead_attention import MultiheadAttention
 import spatial
@@ -37,7 +38,7 @@ class TransformerPolicy8(nn.Module):
         self.nmineral = hps.nmineral
         self.nconstant = hps.nconstant
         self.ntile = hps.ntile
-        self.nitem = hps.nally + hps.nenemy + hps.nmineral + hps.nconstant + hps.ntile
+        self.nitem = hps.nally + hps.nenemy + hps.nmineral + hps.ntile
         self.fp16 = hps.fp16
         self.d_agent = hps.d_agent
         self.d_item = hps.d_item
@@ -293,7 +294,7 @@ class TransformerPolicy8(nn.Module):
         if agent_active.float().sum() == 0:
             agent_active[0][0] = True
             action_masks[0][0] = 1.0
-        active_agents = SparseSequence(agent_active)
+        active_agents = SparseSequence.from_mask(agent_active)
         xagent = xagent[agent_active]
         agents = self.agent_embedding(xagent)
 
@@ -304,13 +305,20 @@ class TransformerPolicy8(nn.Module):
         pmask_list = []
         emb_list = []
         relpos_list = []
+        relpos_emb_list = []
         mask_list = []
         for item_net in self.item_nets:
             emb, mask = item_net(x)
             emb_list.append(emb[active_agents.batch_index])
             mask_list.append(mask[active_agents.batch_index])
-            relpos = item_net.relpos(x, active_agents.batch_index, origin, direction)
-            relpos_list.append(relpos)
+            relpos, relpos_sparsity = item_net.relpos(x, active_agents.batch_index, origin, direction)
+            if relpos_sparsity.sparse_count > 0:
+                relpos_emb = self.relpos_net(relpos)
+                relpos_emb_list.append(relpos_sparsity.pad(relpos_emb))
+                relpos_list.append(relpos_sparsity.pad(relpos))
+            else:
+                relpos_emb_list.append(torch.zeros(active_agents.sparse_count, item_net.count, self.d_item // 2, device=relpos.device))
+                relpos_list.append(torch.zeros(active_agents.sparse_count, item_net.count, 3, device=relpos.device))
             if item_net.start_privileged is not None:
                 pemb, pmask = item_net(x, privileged=True)
                 pemb_list.append(pemb)
@@ -318,8 +326,8 @@ class TransformerPolicy8(nn.Module):
             else:
                 pemb_list.append(emb)
                 pmask_list.append(mask)
+        relpos_embed = torch.cat(relpos_emb_list, dim=1)
         relpos = torch.cat(relpos_list, dim=1)
-        relpos_embed = self.relpos_net(relpos)
         embed = torch.cat(emb_list, dim=1)
         mask = torch.cat(mask_list, dim=1)
         # Ensure that at least one item is not masked out to prevent NaN in transformer softmax
@@ -381,52 +389,29 @@ class InputNorm(nn.Module):
         self._stddev = None
         self._dirty = True
 
-    def update(self, input, mask):
+    def update(self, input):
         self._dirty = True
-        if mask is not None:
-            if len(input.size()) == 3:
-                batch_size, nitem, features = input.size()
-                assert (batch_size, nitem) == mask.size()
-            elif len(input.size()) == 2:
-                batch_size, features = input.size()
-                assert (batch_size,) == mask.size()
-            else:
-                raise Exception(f'Expecting 2 or 3 dimensions, actual: {len(input.size())}')
-            #count = mask.float().sum().item()
-            #mask = mask.view(-1).unsqueeze(-1).float()
-            input = input[mask]
-        else:
-            features = input.size()[-1]
-            input = input.reshape(-1, features)
+        dbatch, dfeat = input.size()
 
-        count = input.numel() / features
+        count = input.numel() / dfeat
         if count == 0:
             return
-        #mean = input.sum(dim=0) / count
         mean = input.mean(dim=0)
         if self.count == 0:
             self.count += count
             self.mean = mean
             self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
-            #if mask is not None:
-            #    self.squares_sum = ((input - mean) * (input - mean) * mask).sum(dim=0)
-            #else:
-            #    self.squares_sum = ((input - mean) * (input - mean)).sum(dim=0)
         else:
             self.count += count
             new_mean = self.mean + (mean - self.mean) * count / self.count
             # This is probably not quite right because it applies multiple updates simultaneously.
             self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
-            #if mask is not None:
-            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean) * mask).sum(dim=0)
-            #else:
-            #    self.squares_sum = self.squares_sum + ((input - self.mean) * (input - new_mean)).sum(dim=0)
             self.mean = new_mean
 
     def forward(self, input, mask=None):
         with torch.no_grad():
             if self.training:
-                self.update(input, mask=mask)
+                self.update(input)
             if self.count > 1:
                 input = (input - self.mean) / self.stddev()
             input = torch.clamp(input, -self.cliprange, self.cliprange)
@@ -455,8 +440,8 @@ class InputEmbedding(nn.Module):
         self.linear = nn.Linear(d_in, d_model)
         self.norm = norm_fn(d_model)
 
-    def forward(self, x, mask=None):
-        x = self.normalize(x, mask)
+    def forward(self, x):
+        x = self.normalize(x)
         x = F.relu(self.linear(x))
         x = self.norm(x)
         return x
@@ -496,6 +481,7 @@ class PosItemBlock(nn.Module):
         super(PosItemBlock, self).__init__()
 
         self.d_in = d_in
+        self.d_model = d_model
         self.embedding = InputEmbedding(d_in, d_model, norm_fn)
         self.mask_feature = mask_feature
         if resblock:
@@ -514,21 +500,30 @@ class PosItemBlock(nn.Module):
 
         mask = x[:, :, self.mask_feature] == 0
 
-        x = self.embedding(x, ~mask)
-        if self.resblock is not None:
-            x = self.resblock(x)
-        x = x * (~mask).unsqueeze(-1).float()
+        active = SparseSequence.from_mask(mask)
+        x_sparse = x[mask]
 
-        return x, mask
+        if x_sparse.numel() > 0:
+            x_sparse = self.embedding(x_sparse)
+            if self.resblock is not None:
+                x_sparse = self.resblock(x_sparse)
+            return active.pad(x_sparse), mask
+        elif x.is_cuda:
+            return torch.cuda.FloatTensor(x.size()[0], x.size()[1], self.d_model).fill_(0), mask
+        else:
+            return torch.zeros(x.size()[0], x.size()[1], self.d_model), mask
 
     def relpos(self, x, indices, origin, direction):
         batch_agents, _ = origin.size()
         x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
+        mask = (x[:, :, self.mask_feature] != 0)[indices]
         pos = x[indices, :, 0:2]
         relpos = spatial.unbatched_relative_positions(origin, direction, pos)
         dist = relpos.norm(p=2, dim=2)
         direction = relpos / (dist.unsqueeze(-1) + 1e-8)
-        return torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
+        x = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
+        x = x[mask]
+        return x, SparseSequence.from_mask(mask)
 
 
 class ItemBlock(nn.Module):
@@ -547,15 +542,20 @@ class ItemBlock(nn.Module):
 
 
 class SparseSequence:
-    def __init__(self, select: torch.ByteTensor):
-        device = select.device
-        self.dbatch, self.dseq = select.size()
-        self.count = self.dbatch * self.dseq
-        flat_select = select.flatten()
+    def __init__(self,
+                 dbatch: int,
+                 dseq: int,
+                 select: torch.ByteTensor,
+                 batch_index: torch.LongTensor,
+                 seq_index: torch.LongTensor,
+                 flat_index: torch.LongTensor):
+        self.dbatch = dbatch
+        self.dseq = dseq
+        self.count = dbatch * dseq
         self.select = select
-        self.batch_index = torch.arange(0, self.dbatch, device=device).repeat_interleave(self.dseq)[flat_select]
-        self.seq_index = torch.arange(0, self.dseq, device=device).repeat(self.dbatch)[flat_select]
-        self.flat_index = torch.arange(0, self.count, device=device)[flat_select]
+        self.batch_index = batch_index
+        self.seq_index = seq_index
+        self.flat_index = flat_index
         self.sparse_count = self.flat_index.numel()
 
     def pad(self, x: torch.Tensor):
@@ -567,3 +567,35 @@ class SparseSequence:
             x_padded = torch.zeros(self.count, dfeat)
         scatter_add(x, index=self.flat_index, dim=0, out=x_padded)
         return x_padded.view(self.dbatch, self.dseq, dfeat)
+
+    @staticmethod
+    def cat(seqs: List['SparseSequence']):
+        # Method has never been tested
+        dbatch = seqs[0].dbatch
+        for seq in seqs:
+            assert dbatch == seq.dbatch
+        dseq = sum([seq.dseq for seq in seqs])
+        select = torch.cat([seq.select for seq in seqs], dim=1)
+        batch_index = torch.cat([seq.batch_index for seq in seqs], dim=1)
+
+        seq_indices = []
+        flat_indices = []
+        offset = 0
+        for seq in seqs:
+            seq_indices.append(seq.seq_index + offset)
+            flat_indices.append(seq.flat_index + offset + seq.batch_index * (dseq - seq.dseq))
+            offset += seq.dseq
+        seq_index = torch.cat(seq_indices, dim=1)
+        flat_index = torch.cat(flat_indices, dim=1)
+
+        return SparseSequence(dbatch, dseq, select, batch_index, seq_index, flat_index)
+
+    @staticmethod
+    def from_mask(select: torch.ByteTensor) -> 'SparseSequence':
+        device = select.device
+        dbatch, dseq = select.size()
+        flat_select = select.flatten()
+        batch_index = torch.arange(0, dbatch, device=device).repeat_interleave(dseq)[flat_select]
+        seq_index = torch.arange(0, dseq, device=device).repeat(dbatch)[flat_select]
+        flat_index = torch.arange(0, dseq * dbatch, device=device)[flat_select]
+        return SparseSequence(dbatch, dseq, select, batch_index, seq_index, flat_index)

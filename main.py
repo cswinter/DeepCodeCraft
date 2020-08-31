@@ -918,6 +918,55 @@ def allcat(tensor: torch.Tensor, rank: int, parallelism: int) -> Optional[torch.
         return None
 
 
+def profile_fp(hps: HyperParams) -> None:
+    import torchprof
+    start_time = time.time()
+    device = torch.device("cuda:0")
+    obs_config = obs_config_from(hps)
+    env = envs.CodeCraftVecEnv(hps.num_envs,
+                               hps.num_self_play,
+                               hps.objective,
+                               hps.action_delay,
+                               randomize=hps.task_randomize,
+                               use_action_masks=hps.use_action_masks,
+                               obs_config=obs_config,
+                               symmetric=hps.symmetric_map,
+                               hardness=hps.task_hardness,
+                               mix_mp=hps.mix_mp,
+                               build_variety_bonus=hps.build_variety_bonus,
+                               win_bonus=hps.win_bonus,
+                               attac=hps.attac,
+                               protec=hps.protec,
+                               max_army_size_score=hps.max_army_size_score,
+                               max_enemy_army_size_score=hps.max_enemy_army_size_score,
+                               rule_rng_fraction=hps.rule_rng_fraction,
+                               rule_rng_amount=hps.rule_rng_amount,
+                               rule_cost_rng=hps.rule_cost_rng,
+                               scripted_opponents=[
+                                   ("destroyer", hps.num_vs_destroyer),
+                                   ("replicator", hps.num_vs_replicator),
+                                   ("aggressive_replicator", hps.num_vs_aggro_replicator),
+                               ],
+                               max_game_length=None if hps.max_game_length == 0 else hps.max_game_length,
+                               stagger_offset=hps.rank / hps.parallelism,
+                               mothership_damage_scale=hps.mothership_damage_scale)
+    policy = TransformerPolicy8(hps, obs_config).to(device)
+    obs, action_masks, privileged_obs = env.reset()
+
+    with torchprof.Profile(policy, use_cuda=True) as prof:
+        for _ in range(0, hps.seq_rosteps):
+            obs_tensor = torch.tensor(obs).to(device)
+            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+            action_masks_tensor = torch.tensor(action_masks).to(device)
+            actions, logprobs, entropy, values, probs = \
+                policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+            actions = actions.cpu().numpy()
+            obs, _, _, _, action_masks, privileged_obs = env.step(actions, action_masks=action_masks)
+    elapsed = time.time() - start_time
+    print(f"Collected {hps.seq_rosteps * hps.num_envs} frames in {int(elapsed)}s ({int(hps.seq_rosteps * hps.num_envs / elapsed)}fps)")
+    print(prof.display(show_events=False))
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
     # torch.set_printoptions(threshold=25000)
@@ -928,6 +977,7 @@ def main():
     args_parser.add_argument("--device", default=0)
     args_parser.add_argument("--descriptor", default="none")
     args_parser.add_argument("--hpset", default="default")
+    args_parser.add_argument("--profile", action="store_true")
     args = args_parser.parse_args()
     if args.hpset == 'allied_wealth':
         hps = HyperParams.allied_wealth()
@@ -982,7 +1032,10 @@ def main():
     else:
         out_dir = args.out_dir
 
-    train(hps, args.device, out_dir)
+    if args.profile:
+        profile_fp(hps)
+    else:
+        train(hps, args.device, out_dir)
 
 
 if __name__ == "__main__":
