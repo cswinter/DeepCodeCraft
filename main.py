@@ -765,6 +765,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = TransformerPolicy6(**kwargs)
     elif version == 'transformer_v7':
         policy = TransformerPolicy7(**kwargs)
+    elif version == 'transformer_attn':
+        policy = SpatialAttnPolicy(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 
