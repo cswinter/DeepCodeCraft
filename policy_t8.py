@@ -449,12 +449,10 @@ class InputEmbedding(nn.Module):
 
         self.normalize = InputNorm(d_in)
         self.linear = nn.Linear(d_in, d_model)
-        self.norm = norm_fn(d_model)
 
     def forward(self, x):
         x = self.normalize(x)
         x = F.relu(self.linear(x))
-        x = self.norm(x)
         return x
 
 
