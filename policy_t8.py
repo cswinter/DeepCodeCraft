@@ -545,18 +545,36 @@ class SparseSequence:
     def __init__(self,
                  dbatch: int,
                  dseq: int,
-                 select: torch.ByteTensor,
-                 batch_index: torch.LongTensor,
-                 seq_index: torch.LongTensor,
-                 flat_index: torch.LongTensor):
+                 select: torch.ByteTensor):
         self.dbatch = dbatch
         self.dseq = dseq
         self.count = dbatch * dseq
         self.select = select
-        self.batch_index = batch_index
-        self.seq_index = seq_index
-        self.flat_index = flat_index
-        self.sparse_count = self.flat_index.numel()
+        self.flat_select = select.flatten()
+        self.sparse_count = select.sum().item()
+        self.device = select.device
+
+        self._batch_index = None
+        self._seq_index = None
+        self._flat_index = None
+
+    @property
+    def batch_index(self):
+        if self._batch_index is None:
+            self._batch_index = torch.arange(0, self.dbatch, device=self.device).repeat_interleave(self.dseq)[self.flat_select]
+        return self._batch_index
+
+    @property
+    def seq_index(self):
+        if self._seq_index is None:
+            self._seq_index = torch.arange(0, self.dseq, device=self.device).repeat(self.dbatch)[self.flat_select]
+        return self._seq_index
+
+    @property
+    def flat_index(self):
+        if self._flat_index is None:
+            self._flat_index = torch.arange(0, self.dseq * self.dbatch, device=self.device)[self.flat_select]
+        return self._flat_index
 
     def pad(self, x: torch.Tensor):
         count, dfeat = x.size()
@@ -569,33 +587,6 @@ class SparseSequence:
         return x_padded.view(self.dbatch, self.dseq, dfeat)
 
     @staticmethod
-    def cat(seqs: List['SparseSequence']):
-        # Method has never been tested
-        dbatch = seqs[0].dbatch
-        for seq in seqs:
-            assert dbatch == seq.dbatch
-        dseq = sum([seq.dseq for seq in seqs])
-        select = torch.cat([seq.select for seq in seqs], dim=1)
-        batch_index = torch.cat([seq.batch_index for seq in seqs], dim=1)
-
-        seq_indices = []
-        flat_indices = []
-        offset = 0
-        for seq in seqs:
-            seq_indices.append(seq.seq_index + offset)
-            flat_indices.append(seq.flat_index + offset + seq.batch_index * (dseq - seq.dseq))
-            offset += seq.dseq
-        seq_index = torch.cat(seq_indices, dim=1)
-        flat_index = torch.cat(flat_indices, dim=1)
-
-        return SparseSequence(dbatch, dseq, select, batch_index, seq_index, flat_index)
-
-    @staticmethod
     def from_mask(select: torch.ByteTensor) -> 'SparseSequence':
-        device = select.device
         dbatch, dseq = select.size()
-        flat_select = select.flatten()
-        batch_index = torch.arange(0, dbatch, device=device).repeat_interleave(dseq)[flat_select]
-        seq_index = torch.arange(0, dseq, device=device).repeat(dbatch)[flat_select]
-        flat_index = torch.arange(0, dseq * dbatch, device=device)[flat_select]
-        return SparseSequence(dbatch, dseq, select, batch_index, seq_index, flat_index)
+        return SparseSequence(dbatch, dseq, select)
