@@ -5,7 +5,6 @@ import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 from typing import List
 
-from multihead_attention import MultiheadAttention
 import spatial
 
 
@@ -127,8 +126,7 @@ class TransformerPolicy8(nn.Module):
         else:
             self.item_item_attn = None
 
-        # TODO: use pytorch decoder
-        self.multihead_attention = MultiheadAttention(
+        self.multihead_attention = nn.MultiheadAttention(
             embed_dim=hps.d_agent,
             kdim=hps.d_item,
             vdim=hps.d_item,
