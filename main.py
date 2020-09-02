@@ -312,8 +312,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
             all_values = np.array(all_values)
             last_gae = np.zeros(hps.num_envs)
             for t in reversed(range(hps.seq_rosteps)):
-                # TODO: correct for action delay?
-                # TODO: vectorize
                 for i in range(hps.num_envs):
                     ti = t * hps.num_envs + i
                     tnext_i = (t + 1) * hps.num_envs + i
