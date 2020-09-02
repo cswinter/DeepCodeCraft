@@ -6,7 +6,7 @@ import orjson
 import numpy as np
 
 from typing import List, Tuple
-from gym_codecraft.envs.codecraft_vec_env import Rules, ObsConfig
+from codecraft.vec_env import Rules, ObsConfig
 
 
 RETRIES = 100

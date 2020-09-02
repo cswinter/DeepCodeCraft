@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import List, Union, Optional, Tuple
 import numpy as np
 
-import codecraft
+from codecraft import client
 
 @dataclass
 class ObsConfig:
@@ -765,7 +765,7 @@ class CodeCraftVecEnv(object):
             self_play = i < self.num_self_play
             game_length = int(self.game_length * (i + 1 - self.stagger_offset) // (self.num_envs - self.num_self_play)) if self.stagger else self.game_length
             opponent = 'none' if self_play else self.next_opponent()
-            game_id = codecraft.create_game(
+            game_id = client.create_game(
                 game_length,
                 self.action_delay,
                 self_play,
@@ -863,7 +863,7 @@ class CodeCraftVecEnv(object):
                 player_actions2.append((move, turn, build, harvest, lockBuildAction, unlockBuildAction))
             game_actions.append((game_id, player_id, player_actions2))
 
-        codecraft.act_batch(game_actions)
+        client.act_batch(game_actions)
 
     def observe(self, env_subset=None, obs_config=None):
         obs_config = obs_config or self.obs_config
@@ -873,22 +873,22 @@ class CodeCraftVecEnv(object):
         rews = []
         dones = []
         infos = []
-        obs = codecraft.observe_batch_raw(obs_config,
-                                          [(gid, pid) for (gid, pid, _) in games],
-                                          allies=obs_config.allies,
-                                          drones=obs_config.drones,
-                                          minerals=obs_config.minerals,
-                                          tiles=obs_config.tiles,
-                                          global_drones=obs_config.global_drones,
-                                          relative_positions=obs_config.relative_positions,
-                                          v2=True,
-                                          extra_build_actions=self.builds,
-                                          map_size=obs_config.feat_map_size,
-                                          last_seen=obs_config.feat_last_seen,
-                                          is_visible=obs_config.feat_is_visible,
-                                          abstime=obs_config.feat_abstime,
-                                          rule_msdm=obs_config.feat_rule_msdm,
-                                          rule_costs=obs_config.feat_rule_costs)
+        obs = client.observe_batch_raw(obs_config,
+                                       [(gid, pid) for (gid, pid, _) in games],
+                                       allies=obs_config.allies,
+                                       drones=obs_config.drones,
+                                       minerals=obs_config.minerals,
+                                       tiles=obs_config.tiles,
+                                       global_drones=obs_config.global_drones,
+                                       relative_positions=obs_config.relative_positions,
+                                       v2=True,
+                                       extra_build_actions=self.builds,
+                                       map_size=obs_config.feat_map_size,
+                                       last_seen=obs_config.feat_last_seen,
+                                       is_visible=obs_config.feat_is_visible,
+                                       abstime=obs_config.feat_abstime,
+                                       rule_msdm=obs_config.feat_rule_msdm,
+                                       rule_costs=obs_config.feat_rule_costs)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i
@@ -969,36 +969,36 @@ class CodeCraftVecEnv(object):
                     if self.mp_game_count < self.game_count * self.mix_mp:
                         m = map_mp(self.randomize, self.hardness)
                         m['symmetric'] = np.random.rand() <= self.symmetric
-                        game_id = codecraft.create_game(20 * 60,
-                                                        self.action_delay,
-                                                        self_play,
-                                                        m,
-                                                        opponent,
-                                                        self.rules(),
-                                                        self.allow_harvesting,
-                                                        self.force_harvesting,
-                                                        self.randomize_idle)
+                        game_id = client.create_game(20 * 60,
+                                                     self.action_delay,
+                                                     self_play,
+                                                     m,
+                                                     opponent,
+                                                     self.rules(),
+                                                     self.allow_harvesting,
+                                                     self.force_harvesting,
+                                                     self.randomize_idle)
                         self.mp_game_count += 1
                     else:
-                        game_id = codecraft.create_game(self.game_length,
-                                                        self.action_delay,
-                                                        self_play,
-                                                        self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
-                                                        opponent,
-                                                        self.rules(),
-                                                        self.allow_harvesting,
-                                                        self.force_harvesting,
-                                                        self.randomize_idle)
+                        game_id = client.create_game(self.game_length,
+                                                     self.action_delay,
+                                                     self_play,
+                                                     self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
+                                                     opponent,
+                                                     self.rules(),
+                                                     self.allow_harvesting,
+                                                     self.force_harvesting,
+                                                     self.randomize_idle)
                     self.game_count += 1
                 else:
                     game_id, _, opponent = self.games[game - 1]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
                 self.games[game] = (game_id, pid, opponent)
-                observation = codecraft.observe(game_id, pid)
+                observation = client.observe(game_id, pid)
                 # TODO: use actual observation
                 if not obs.flags['WRITEABLE']:
                     obs = obs.copy()
-                obs[stride * i:stride * (i + 1)] = 0.0  # codecraft.observation_to_np(observation)
+                obs[stride * i:stride * (i + 1)] = 0.0  # client.observation_to_np(observation)
 
                 dones.append(1.0)
                 infos.append({'episode': {
@@ -1047,8 +1047,8 @@ class CodeCraftVecEnv(object):
                 if not done[game_id]:
                     active_games.append((game_id, player_id))
                     game_actions.append((game_id, player_id, [(False, 0, [], False, False, False)]))
-            codecraft.act_batch(game_actions)
-            obs = codecraft.observe_batch(active_games)
+            client.act_batch(game_actions)
+            obs = client.observe_batch(active_games)
             for o, (game_id, _) in zip(obs, active_games):
                 if o['winner']:
                     done[game_id] = True
