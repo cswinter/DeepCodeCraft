@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
-from typing import List
 
 import spatial
 
@@ -247,7 +246,7 @@ class TransformerPolicy8(nn.Module):
         loss = policy_loss + value_loss_scale * value_loss + entropy_loss
         loss /= hps.batches_per_update
         loss.backward()
-        return policy_loss.data.tolist(), value_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
+        return policy_loss.data.tolist(), value_loss.data.tolist(), -entropy_loss.data.tolist(), approxkl.data.tolist(), clipfrac.data.tolist()
 
     def forward(self, x, x_privileged, action_masks):
         batch_size = x.size()[0]

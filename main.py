@@ -368,6 +368,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
             value_loss_sum = 0
             clipfrac_sum = 0
             aproxkl_sum = 0
+            entropy_loss_sum = 0
             gradnorm = 0
             policy.train()
             torch.enable_grad()
@@ -389,7 +390,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                 amasks = torch.tensor(all_action_masks[start:end]).to(device)
                 actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
-                policy_loss, value_loss, aproxkl, clipfrac =\
+                policy_loss, entropy_loss, value_loss, aproxkl, clipfrac =\
                     policy.backprop(hps, o, actions, probs, returns, hps.vf_coef,
                                     advs, vals, amasks, actual_probs, op, hps.split_reward)
                 if hps.verify_create_golden and total_steps == 0:
@@ -398,6 +399,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                     if verify_gradients(policy, epoch, batch):
                         return
                 policy_loss_sum += policy_loss
+                entropy_loss_sum += entropy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
                 clipfrac_sum += clipfrac
@@ -421,8 +423,9 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
         all_agent_masks = all_action_masks.sum(2) > 1
         if hps.rank == 0:
             metrics = {
-                'loss': policy_loss_sum / num_minibatches,
+                'policy_loss': policy_loss_sum / num_minibatches,
                 'value_loss': value_loss_sum / num_minibatches,
+                'entropy_loss': value_loss_sum / num_minibatches,
                 'clipfrac': clipfrac_sum / num_minibatches,
                 'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
                 'throughput': throughput,
