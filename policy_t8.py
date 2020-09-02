@@ -229,8 +229,7 @@ class TransformerPolicy8(nn.Module):
         # Adjustement loss magnitude to keep parity with previous averaging scheme
         policy_loss /= 8
 
-        # TODO: do over full distribution, not just selected actions?
-        approxkl = 0.5 * (old_logprobs - logprobs).pow(2).mean()
+        approxkl = (old_probs * torch.log(old_probs / probs)).sum(dim=2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
 
         clipped_values = old_values + torch.clamp(values - old_values, -hps.cliprange, hps.cliprange)

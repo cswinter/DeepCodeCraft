@@ -427,7 +427,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                 'value_loss': value_loss_sum / num_minibatches,
                 'entropy_loss': value_loss_sum / num_minibatches,
                 'clipfrac': clipfrac_sum / num_minibatches,
-                'aproxkl': aproxkl_sum / num_minibatches,  # TODO: is average a good summary?
+                'aproxkl': aproxkl_sum / num_minibatches,
                 'throughput': throughput,
                 'eprewmean': eprewmean,
                 'eplenmean': eplenmean,
