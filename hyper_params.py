@@ -211,9 +211,9 @@ class HyperParams:
 
         hps.batches_per_update = 32
         hps.bs = 512
-        hps.seq_rosteps = 256
-        hps.num_envs = 64
-        hps.num_self_play = 32
+        hps.seq_rosteps = 128
+        hps.num_envs = 128
+        hps.num_self_play = 64
 
         hps.model_save_frequency = 1
         hps.eval_envs = 128
