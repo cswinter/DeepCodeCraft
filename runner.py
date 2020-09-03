@@ -26,6 +26,8 @@ class JobQueue:
         self.queue = queue.Queue()
         self.active_jobs = 0
         self.active_jobs_per_device = {device: 0 for device in range(devices)}
+        # Prevent jobs from getting scheduled on bad GPU
+        self.active_jobs_per_device[1] = 2
         self.lock = threading.Lock()
         self.port_offset = 0
 
@@ -207,7 +209,8 @@ class Job:
 @click.command()
 @click.option("--concurrency", default=8, help="Maximum number of jobs running at the same time.")
 def main(concurrency):
-    gpus = len(subprocess.check_output(["nvidia-smi", "-L"]).decode("UTF-8").split("\n")) - 1
+    #gpus = len(subprocess.check_output(["nvidia-smi", "-L"]).decode("UTF-8").split("\n")) - 1
+    gpus = 4
     job_queue = JobQueue("/home/clemens/xprun/queue", concurrency, gpus)
     job_queue.run()
 
