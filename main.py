@@ -388,7 +388,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                 amasks = torch.tensor(all_action_masks[start:end]).to(device)
                 actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
-                policy_loss, entropy_loss, value_loss, aproxkl, clipfrac =\
+                policy_loss, value_loss, entropy_loss, aproxkl, clipfrac =\
                     policy.backprop(hps, o, actions, probs, returns, hps.vf_coef,
                                     advs, vals, amasks, actual_probs, op, hps.split_reward)
                 if hps.verify_create_golden and total_steps == 0:
@@ -423,7 +423,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
             metrics = {
                 'policy_loss': policy_loss_sum / num_minibatches,
                 'value_loss': value_loss_sum / num_minibatches,
-                'entropy_loss': value_loss_sum / num_minibatches,
+                'entropy_loss': entropy_loss_sum / num_minibatches,
                 'clipfrac': clipfrac_sum / num_minibatches,
                 'aproxkl': aproxkl_sum / num_minibatches,
                 'throughput': throughput,
