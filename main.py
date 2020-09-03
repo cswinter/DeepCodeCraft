@@ -11,13 +11,14 @@ from copy import deepcopy
 import torch.distributed as dist
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 import numpy as np
 
 import wandb
 
 from adr import ADR, normalize
-from codecraft.vec_env import ObsConfig, Rules, CodeCraftVecEnv, Objective
+from gym_codecraft import envs
+from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
 from hyper_params import HyperParams, parse_schedule
 from policy_t2 import TransformerPolicy2, InputNorm
 from policy_t3 import TransformerPolicy3, InputNorm
@@ -37,7 +38,7 @@ EVAL_MODELS_PATH = '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models'
 
 def run_codecraft():
     nenv = 32
-    env = CodeCraftVecEnv(nenv, Objective.DISTANCE_TO_ORIGIN, 1, action_delay=0)
+    env = envs.CodeCraftVecEnv(nenv, envs.Objective.DISTANCE_TO_ORIGIN, 1, action_delay=0)
 
     log_interval = 5
     frames = 0
@@ -62,7 +63,7 @@ def warmup_lr_schedule(warmup_steps: int):
     return lr
 
 
-def train(hps: HyperParams, out_dir: str) -> None:
+def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
     assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
     if (hps.verify_create_golden or hps.verify) and hps.shuffle:
@@ -520,41 +521,41 @@ def eval(policy,
 
     scripted_opponents = []
     if opponents is None:
-        if objective == Objective.ARENA_TINY:
+        if objective == envs.Objective.ARENA_TINY:
             opponents = {
                 'easy': {'model_file': 'arena_tiny/t2_random.pt'},
             }
-        elif objective == Objective.ARENA_TINY_2V2:
+        elif objective == envs.Objective.ARENA_TINY_2V2:
             opponents = {
                 'easy': {'model_file': 'arena_tiny_2v2/fine-sky-10M.pt'},
             }
-        elif objective == Objective.ARENA_MEDIUM:
+        elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
                 # Scores -0.32 vs previous best, jumping-totem-100M
                 'easy': {'model_file': 'arena_medium/copper-snow-25M.pt'},
             }
-        elif objective == Objective.ARENA_MEDIUM_LARGE_MS:
+        elif objective == envs.Objective.ARENA_MEDIUM_LARGE_MS:
             opponents = {
                 'easy': {'model_file': 'arena_medium_large_ms/honest-violet-50M.pt'},
             }
-        elif objective == Objective.ARENA:
+        elif objective == envs.Objective.ARENA:
             opponents = {
                 'beta': {'model_file': 'arena/glad-breeze-25M.pt'},
             }
-        elif objective == Objective.STANDARD:
+        elif objective == envs.Objective.STANDARD:
             opponents = {
                 'noble-sky-145': {'model_file': 'standard/noble-sky-145M.pt'},
                 'radiant-sun-35': {'model_file': 'standard/radiant-sun-35M.pt'},
             }
             scripted_opponents = ['destroyer', 'replicator']
             hardness = 5
-        elif objective == Objective.SMOL_STANDARD:
+        elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
             }
             randomize = True
             hardness = 1
-        elif objective == Objective.MICRO_PRACTICE:
+        elif objective == envs.Objective.MICRO_PRACTICE:
             opponents = {
                 'beta': {'model_file': 'mp/ethereal-bee-40M.pt'},
             }
@@ -573,20 +574,20 @@ def eval(policy,
         assert (num_envs - non_self_play_envs) % 2 == 0
         self_play_envs = (num_envs - non_self_play_envs) // 2
 
-    env = CodeCraftVecEnv(num_envs,
-                          self_play_envs,
-                          objective,
-                          action_delay=0,
-                          stagger=False,
-                          fair=not symmetric,
-                          use_action_masks=True,
-                          obs_config=policy.obs_config,
-                          randomize=randomize,
-                          hardness=hardness,
-                          symmetric=1.0 if symmetric else 0.0,
-                          scripted_opponents=[(o, num_envs // n_opponent) for o in scripted_opponents],
-                          rule_rng_amount=random_rules,
-                          rule_rng_fraction=1.0 if random_rules > 0 else 0.0)
+    env = envs.CodeCraftVecEnv(num_envs,
+                               self_play_envs,
+                               objective,
+                               action_delay=0,
+                               stagger=False,
+                               fair=not symmetric,
+                               use_action_masks=True,
+                               obs_config=policy.obs_config,
+                               randomize=randomize,
+                               hardness=hardness,
+                               symmetric=1.0 if symmetric else 0.0,
+                               scripted_opponents=[(o, num_envs // n_opponent) for o in scripted_opponents],
+                               rule_rng_amount=random_rules,
+                               rule_rng_fraction=1.0 if random_rules > 0 else 0.0)
 
     scores = []
     eliminations = []
@@ -1037,7 +1038,7 @@ def main():
     if args.profile:
         profile_fp(hps)
     else:
-        train(hps, out_dir)
+        train(hps, args.device, out_dir)
 
 
 if __name__ == "__main__":
