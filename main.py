@@ -682,7 +682,7 @@ def eval(policy,
                 'eval_elimination_rate': eliminations.mean().item(),
                 'evalu_duration_secs': time.time() - start_time,
             }, step=curr_step)
-        for opp_name, scores in scores_by_opp.items():
+        for opp_name, scores in sorted(scores_by_opp.items()):
             scores = torch.Tensor(scores)
             eliminations = torch.Tensor(eliminations_by_opp[opp_name])
             if parallelism > 1:
