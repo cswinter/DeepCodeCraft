@@ -210,6 +210,8 @@ class HyperParams:
         hps.gamma = 0.999
         hps.entropy_bonus = 0.02
         hps.entropy_bonus_schedule = 'lin 15e6:0.01,60e6:0.0'
+        hps.mothership_damage_scale = 4.0
+        hps.mothership_damage_scale_schedule = 'lin 50e6:0.0'
 
         hps.batches_per_update = 32
         hps.bs = 512
