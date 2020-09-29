@@ -389,7 +389,7 @@ class InputNorm(nn.Module):
         super(InputNorm, self).__init__()
 
         self.cliprange = cliprange
-        self.register_buffer('count', torch.tensor(0))
+        self.register_buffer('count', torch.tensor(0.0))
         self.register_buffer('mean', torch.zeros(num_features))
         self.register_buffer('squares_sum', torch.zeros(num_features))
         self.fp16 = False

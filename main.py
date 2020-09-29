@@ -11,7 +11,7 @@ from copy import deepcopy
 import torch.distributed as dist
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 
 import wandb

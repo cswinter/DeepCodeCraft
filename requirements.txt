@@ -2,9 +2,9 @@ requests>=2.21
 gym
 logger
 numpy
-torch==1.2
+torch==1.6
 wandb
-torch-scatter==1.4
+torch-scatter==2.0.5
 orjson==3.0.2
 matplotlib
 torchprof

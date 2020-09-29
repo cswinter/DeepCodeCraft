@@ -8,7 +8,6 @@ import threading
 import tempfile
 import time
 import yaml
-
 import click
 
 
