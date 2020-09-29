@@ -28,8 +28,9 @@ class JobQueue:
         self.lock = threading.Lock()
         self.port_offset = 0
         for device in os.environ.get("GPU_DENYLIST", default="").split(","):
-            self.active_jobs_per_device.pop(int(device))
-            devices -= 1
+            if device != '':
+                self.active_jobs_per_device.pop(int(device))
+                devices -= 1
 
     def run(self):
         logging.info(f"Watching {self.queue_dir} for new jobs...")
