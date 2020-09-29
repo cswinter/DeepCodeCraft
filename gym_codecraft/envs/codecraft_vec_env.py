@@ -620,7 +620,9 @@ class CodeCraftVecEnv(object):
                  rule_cost_rng=0.0,
                  max_game_length=None,
                  stagger_offset: float = 0.0,
-                 mothership_damage_scale: float = 3.0):
+                 mothership_damage_scale: float = 3.0,
+                 loss_penalty: float = 0.0,
+                 partial_score: float = 1.0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -640,6 +642,8 @@ class CodeCraftVecEnv(object):
         self.builds = []
         self.build_variety_bonus = build_variety_bonus
         self.win_bonus = win_bonus
+        self.loss_penalty = loss_penalty
+        self.partial_score = partial_score
         self.attac = attac
         self.protec = protec
         self.max_army_size_score = max_army_size_score
@@ -902,9 +906,12 @@ class CodeCraftVecEnv(object):
                 enemy_score = min(enemy_score, self.max_enemy_army_size_score)
                 min_allied_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 3]
                 min_enemy_ms_health = obs[stride * num_envs + i * obs_config.nonobs_features() + 4]
-                score = 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
-                if winner > 0 and enemy_score == 0:
-                    score += self.win_bonus
+                score = self.partial_score * 2 * allied_score / (allied_score + enemy_score + 1e-8) - 1
+                if winner > 0:
+                    if enemy_score == 0:
+                        score += self.win_bonus
+                    else:
+                        score -= self.loss_penalty
                 if winner > 0:
                     if enemy_score == 0 or allied_score == 0:
                         elimination_win = 1

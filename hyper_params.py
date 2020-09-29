@@ -108,6 +108,8 @@ class HyperParams:
         self.liveness_penalty = 0.0 # Negative reward applied at each timestep
         self.build_variety_bonus = 0.0  # Extra reward for building a drone type at least once during episode
         self.win_bonus = 0.0        # Reward received when winning game by eliminating opponent
+        self.loss_penalty = 0.0     # Negative reward received when losing game by being eliminated
+        self.partial_score = 1.0    # Instantaneous reward received from change in relative amount of resources under allied control
         self.attac = 0.0            # Fraction of shaped reward awarded for minimum health of enemy mothership during episode
         self.protec = 0.0           # Fraction of shaped reward awarded for maximum health of allied mothership during episode
         self.rewnorm = False        # Rescale reward values by ema of mean and variance
