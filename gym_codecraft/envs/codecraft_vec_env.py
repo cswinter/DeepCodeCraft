@@ -346,37 +346,44 @@ def map_arena(randomize: bool, hardness: int, require_default_mothership: bool):
 def standard_starting_drones(map_height, map_width, randomize):
     drones = []
     starting_resources = np.random.randint(0, 8) if randomize else 7
-    drones.append(
-        dict(constructors=3,
-             storage_modules=3,
-             missile_batteries=3,
-             shield_generators=1,
-             resources=3 * starting_resources)
-    )
+    already_1s1c = False
     if randomize and np.random.uniform(0, 1) < 0.3:
-        mstype = np.random.randint(0, 4)
-        if mstype == 0:
-            drones.append(dict(
-                constructors=2,
-                storage_modules=2,
-                resources=2 * starting_resources
-            ))
-        elif mstype == 1:
-            drones.append(dict(
-                constructors=1,
-                storage_modules=2,
-                engines=1,
-                resources=2 * starting_resources
-            ))
-        elif mstype == 2:
-            drones.append(dict(
-                constructors=1,
-                storage_modules=2,
-                missile_batteries=1,
-                resources=2 * starting_resources
-            ))
-        elif mstype == 3:
-            drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+        for _ in range(2):
+            if already_1s1c:
+                mstype = np.random.randint(0, 3)
+            else:
+                mstype = np.random.randint(0, 4)
+            if mstype == 0:
+                drones.append(dict(
+                    constructors=2,
+                    storage_modules=2,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 1:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    engines=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 2:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    missile_batteries=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 3:
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+                already_1s1c = True
+    else:
+        drones.append(
+            dict(constructors=3,
+                 storage_modules=3,
+                 missile_batteries=3,
+                 shield_generators=1,
+                 resources=10)
+        )
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
