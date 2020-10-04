@@ -225,9 +225,6 @@ class TransformerPolicy8(nn.Module):
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
         else:
             policy_loss = -vanilla_policy_loss.mean(dim=0).sum()
-        # TODO remove
-        # Adjustement loss magnitude to keep parity with previous averaging scheme
-        policy_loss /= 8
 
         approxkl = (old_probs * torch.log(old_probs / probs)).sum(dim=2).mean()
         clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(torch.float32) / ratios.numel()
