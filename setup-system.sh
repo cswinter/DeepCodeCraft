@@ -22,9 +22,11 @@ curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89
 apt-get update
 apt-get install --yes openjdk-8-jdk sbt=0.13.16
 
+pip install torch-scatter==2.0.5+cu101 -f https://pytorch-geometric.com/whl/torch-1.6.0.html
 
 cd src
 git clone https://github.com/cswinter/CodeCraftGame.git
+git checkout deepcodecraft
 cd CodeCraftGame
 sbt publishLocal
 
