@@ -1,5 +1,4 @@
 import math
-from typing import Optional
 from collections import defaultdict
 from gym_codecraft.envs.codecraft_vec_env import Rules
 

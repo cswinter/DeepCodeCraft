@@ -6,7 +6,6 @@ from collections import defaultdict
 import dataclasses
 from pathlib import Path
 from typing import Optional
-from copy import deepcopy
 
 import torch.distributed as dist
 import torch
@@ -102,19 +101,19 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hardness_offset=hps.hardness_offset,
             variety=hps.adr_variety,
         )
+        if hps.lr_schedule == 'cosine':
+            lr_scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
+                eta_min=hps.final_lr,
+            )
+        else:
+            assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
+            lr_scheduler = None
     else:
-        policy, optimizer, resume_steps, adr = load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
+        policy, optimizer, resume_steps, adr, lr_scheduler =\
+            load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
 
-    lr_scheduler = None
-    if hps.lr_schedule == 'cosine':
-        assert hps.resume_from == '', f'Restoring learning rate schedule not implemented'
-        lr_scheduler = CosineAnnealingLR(
-            optimizer,
-            T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
-            eta_min=hps.final_lr,
-        )
-    else:
-        assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
     if hps.warmup > 0:
         assert False, 'Warmup not implemented'
 
@@ -204,21 +203,22 @@ def train(hps: HyperParams, out_dir: str) -> None:
             env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()
 
-        if total_steps >= next_eval and hps.eval_envs > 0 and not hps.verify:
-            eval(policy=policy,
-                 num_envs=hps.eval_envs // hps.parallelism,
-                 device=device,
-                 objective=hps.objective,
-                 eval_steps=hps.eval_timesteps,
-                 curr_step=total_steps,
-                 symmetric=hps.eval_symmetric,
-                 rank=hps.rank,
-                 parallelism=hps.parallelism)
+        if total_steps >= next_eval and not hps.verify:
+            if hps.eval_envs > 0:
+                eval(policy=policy,
+                     num_envs=hps.eval_envs // hps.parallelism,
+                     device=device,
+                     objective=hps.objective,
+                     eval_steps=hps.eval_timesteps,
+                     curr_step=total_steps,
+                     symmetric=hps.eval_symmetric,
+                     rank=hps.rank,
+                     parallelism=hps.parallelism)
             next_eval += hps.eval_frequency
             next_model_save -= 1
             if next_model_save == 0 and hps.rank == 0:
                 next_model_save = hps.model_save_frequency
-                save_policy(policy, out_dir, total_steps, optimizer, adr)
+                save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
 
         episode_start = time.time()
         entropies = []
@@ -488,7 +488,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
              rank=hps.rank,
              parallelism=hps.parallelism)
     if hps.rank == 0:
-        save_policy(policy, out_dir, total_steps, optimizer, adr)
+        save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
 
 
 def eval(policy,
@@ -592,7 +592,7 @@ def eval(policy,
     partitions = [(policy_envs, policy.obs_config)]
     i = 0
     for name, opp in opponents.items():
-        opp_policy, _, _, _ = load_policy(opp['model_file'], device)
+        opp_policy, _, _, _, _ = load_policy(opp['model_file'], device)
         opp_policy.eval()
         opp['policy'] = opp_policy
         opp['envs'] = odds[i * len(odds) // len(opponents):(i+1) * len(odds) // len(opponents)]
@@ -689,29 +689,6 @@ def eval(policy,
     env.close()
 
 
-def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
-    model_path = os.path.join(out_dir, f'model-{total_steps}.pt')
-    print(f'Saving policy to {model_path}')
-    model = {
-        'model_state_dict': policy.state_dict(),
-        'model_kwargs': policy.kwargs,
-        'total_steps': total_steps,
-        'policy_version': policy.version,
-    }
-    if optimizer:
-        model['optimizer_state_dict'] = optimizer.state_dict()
-    if adr:
-        model['adr_state_dict'] = {
-            'hardness': adr.hardness,
-            'rules': dataclasses.asdict(adr.ruleset),
-            'max_hardness': adr.max_hardness,
-            'linear_hardness': adr.linear_hardness,
-            'hardness_offset': adr.hardness_offset,
-            'step': adr.step,
-        }
-    torch.save(model, model_path)
-
-
 def obs_config_from(hps: HyperParams) -> ObsConfig:
     return ObsConfig(
             allies=hps.obs_allies,
@@ -732,6 +709,31 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
             lock_build_action=hps.lock_build_action,
             feat_dist_to_wall=hps.feat_dist_to_wall,
         )
+
+
+def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None, lr_scheduler=None):
+    model_path = os.path.join(out_dir, f'model-{total_steps}.pt')
+    print(f'Saving policy to {model_path}')
+    model = {
+        'model_state_dict': policy.state_dict(),
+        'model_kwargs': policy.kwargs,
+        'total_steps': total_steps,
+        'policy_version': policy.version,
+    }
+    if optimizer:
+        model['optimizer_state_dict'] = optimizer.state_dict()
+    if adr:
+        model['adr_state_dict'] = {
+            'hardness': adr.hardness,
+            'rules': dataclasses.asdict(adr.ruleset),
+            'max_hardness': adr.max_hardness,
+            'linear_hardness': adr.linear_hardness,
+            'hardness_offset': adr.hardness_offset,
+            'step': adr.step,
+        }
+    if lr_scheduler:
+        model['lr_scheduler_state_dict'] = lr_scheduler.state_dict()
+    torch.save(model, model_path)
 
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None, rawpath=False):
@@ -779,6 +781,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             logger.warning(f'Failed to restore optimizer state: No `optimizer_state_dict` in saved model.')
 
     adr = None
+    lr_scheduler = None
     if hps is not None:
         hardness = 0.0
         ruleset = None
@@ -809,7 +812,17 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             step=step,
         )
 
-    return policy, optimizer, checkpoint.get('total_steps', 0), adr
+        if hps.lr_schedule == 'cosine':
+            lr_scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
+                eta_min=hps.final_lr,
+            )
+            lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+        else:
+            assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
+
+    return policy, optimizer, checkpoint.get('total_steps', 0), adr, lr_scheduler
 
 
 def explained_variance(ypred,y):
