@@ -14,7 +14,8 @@ class ADR:
                  linear_hardness: bool = False,
                  max_hardness: float = 200,
                  hardness_offset: float = 0,
-                 variety: float = 0.7):
+                 variety: float = 0.7,
+                 step: int = 0):
         if ruleset is None:
             ruleset = Rules(cost_modifier_size=[1.2, 0.6, 0.6, 0.4])
         self.ruleset = ruleset
@@ -26,7 +27,7 @@ class ADR:
         self.target_modifier = 0.8
         self.stepsize = stepsize
         self.warmup = warmup
-        self.step = 0
+        self.step = step
 
         self.w_ema = 0.5
         self.counts = defaultdict(lambda: 0.0)

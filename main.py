@@ -707,6 +707,7 @@ def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None):
             'max_hardness': adr.max_hardness,
             'linear_hardness': adr.linear_hardness,
             'hardness_offset': adr.hardness_offset,
+            'step': adr.step,
         }
     torch.save(model, model_path)
 
@@ -784,6 +785,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         linear_hardness = False
         max_hardness = 200
         hardness_offset = 0.0
+        step = 0
         if 'adr_state_dict' in checkpoint:
             adr_state = checkpoint['adr_state_dict']
             hardness = adr_state['hardness']
@@ -795,6 +797,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
                 max_hardness = adr_state['max_hardness']
             if 'hardness_offset' in adr_state:
                 hardness_offset = adr_state['hardness_offset']
+            if 'step' in adr_state:
+                step = adr_state['step']
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
             initial_hardness=hardness,
@@ -802,6 +806,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
             linear_hardness=linear_hardness,
             max_hardness=max_hardness,
             hardness_offset=hardness_offset,
+            step=step,
         )
 
     return policy, optimizer, checkpoint.get('total_steps', 0), adr
