@@ -26,7 +26,6 @@ from policy_t4 import TransformerPolicy4, InputNorm
 from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
 from policy_t7 import TransformerPolicy7, InputNorm
-from policy_attn import SpatialAttnPolicy, InputNorm
 from policy_t8 import TransformerPolicy8, InputNorm
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ def warmup_lr_schedule(warmup_steps: int):
     return lr
 
 
-def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
+def train(hps: HyperParams, out_dir: str) -> None:
     assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
     assert(hps.eval_envs % 4 == 0)
     if (hps.verify_create_golden or hps.verify) and hps.shuffle:
@@ -95,15 +94,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
     resume_steps = 0
     if hps.resume_from == '':
         policy = TransformerPolicy8(hps, obs_config).to(device)
-        normal_params = [param for name, param in policy.named_parameters() if not name.startswith('gattn')]
-        gattn_params = [param for name, param in policy.named_parameters() if name.startswith('gattn')]
-        assert len(normal_params) + len(gattn_params) == len(list(policy.parameters()))
-        optimizer_settings = deepcopy(optimizer_kwargs)
-        optimizer_settings['params'] = normal_params
-        gattn_optimizer_settings = deepcopy(optimizer_kwargs)
-        gattn_optimizer_settings['lr'] *= hps.spatial_attn_lr_multiplier
-        gattn_optimizer_settings['params'] = gattn_params
-        optimizer = optimizer_fn([optimizer_settings, gattn_optimizer_settings])
+        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
             linear_hardness=hps.linear_hardness,
@@ -768,8 +759,6 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = TransformerPolicy7(**kwargs)
     elif version == 'transformer_v8-alpha':
         policy = TransformerPolicy8(**kwargs)
-    elif version == 'transformer_attn':
-        policy = SpatialAttnPolicy(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 
@@ -1040,7 +1029,7 @@ def main():
     if args.profile:
         profile_fp(hps)
     else:
-        train(hps, args.device, out_dir)
+        train(hps, out_dir)
 
 
 if __name__ == "__main__":
