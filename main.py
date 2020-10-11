@@ -119,7 +119,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
         assert hps.resume_from == '', f'Restoring learning rate schedule not implemented'
         lr_scheduler = CosineAnnealingLR(
             optimizer,
-            T_max=hps.steps * hps.sample_reuse * hps.parallelism // (hps.bs * hps.batches_per_update),
+            T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
             eta_min=hps.final_lr,
         )
     else:
@@ -348,7 +348,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
                 all_values, advantages, all_action_masks, all_probs = load_samples_from_disk()
             print("Loaded samples for first rollout from disk")
 
-        for epoch in range(hps.sample_reuse):
+        for epoch in range(hps.epochs):
             if hps.shuffle:
                 perm = np.random.permutation(len(all_obs))
                 all_obs = all_obs[perm]
@@ -419,7 +419,7 @@ def train(hps: HyperParams, device_id: int, out_dir: str) -> None:
         throughput = int(hps.rosteps / (time.time() - episode_start)) * hps.parallelism
 
         all_agent_masks = all_action_masks.sum(2) > 1
-        if hps.rank == 0:
+        if hps.rank == 0 and hps.epochs > 0:
             metrics = {
                 'policy_loss': policy_loss_sum / num_minibatches,
                 'value_loss': value_loss_sum / num_minibatches,

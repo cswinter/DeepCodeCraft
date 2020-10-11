@@ -21,7 +21,7 @@ class HyperParams:
         self.entropy_bonus = 0.0    # Weighting of  entropy bonus in loss function
         self.entropy_bonus_schedule = ''
         self.max_grad_norm = 20.0   # Maximum gradient norm for gradient clipping
-        self.sample_reuse = 2       # Number of optimizer passes over samples collected during rollout
+        self.epochs = 2             # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
 
@@ -418,7 +418,7 @@ class HyperParams:
         hps.obs_enemies = 0
         hps.obs_global_drones = 0
         hps.optimizer = 'Adam'
-        hps.sample_reuse = 2
+        hps.epochs = 2
         hps.small_init_pi = False
         hps.transformer_layers = 1
         hps.use_action_masks = True
