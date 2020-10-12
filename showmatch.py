@@ -28,7 +28,7 @@ def showmatch(model_paths, task, randomize, hardness, num_envs, symmetric, rando
     else:
         raise Exception("Invalid args")
     objective = envs.Objective(task)
-    policy1, _, _, _ = load_policy(model_paths[0], device)
+    policy1, _, _, _, _ = load_policy(model_paths[0], device)
     eval(
         policy=policy1,
         num_envs=num_envs,
