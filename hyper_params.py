@@ -88,6 +88,8 @@ class HyperParams:
         self.model_save_frequency = 10
         self.eval_symmetric = True
 
+        self.extra_checkpoint_steps = []
+
         # RL
         self.steps = 10e6           # Total number of timesteps
         self.num_envs = 64          # Number of environments
@@ -225,6 +227,8 @@ class HyperParams:
         hps.eval_envs = 128
         hps.eval_frequency = 5e6
         hps.eval_timesteps = 5000
+
+        hps.extra_checkpoint_steps = [1e6, 2.5e6]
 
         return hps
 

@@ -148,6 +148,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
+    extra_checkpoint_steps = [step for step in hps.extra_checkpoint_steps if step > total_steps]
     rewmean = 0.0
     rewstd = 1.0
     while total_steps < hps.steps + resume_steps:
@@ -219,6 +220,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if next_model_save == 0 and hps.rank == 0:
                 next_model_save = hps.model_save_frequency
                 save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
+        if hps.rank == 0 and len(extra_checkpoint_steps) > 0 and total_steps >= extra_checkpoint_steps[0]:
+            del extra_checkpoint_steps[0]
+            save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
 
         episode_start = time.time()
         entropies = []
