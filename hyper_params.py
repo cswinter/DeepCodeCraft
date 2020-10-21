@@ -182,7 +182,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 200e6
+        hps.steps = 100e6
 
         hps.agents = 15
         hps.nenemy = 15
@@ -199,19 +199,21 @@ class HyperParams:
         hps.harvest_action = True
         hps.feat_dist_to_wall = True
 
-        hps.lr = 0.001
-        hps.final_lr = 0.0001
+        hps.lr = 0.0005
+        hps.final_lr = 0.00005
         hps.lr_schedule = 'cosine'
-        hps.win_bonus = 2
-        hps.vf_coef = 0.5
+        hps.win_bonus = 2.0
+        hps.partial_score = 0.0
+        hps.vf_coef = 1.0
         hps.rule_rng_fraction = 1.0
         hps.rule_rng_amount = 1.0
         hps.adr = True
         hps.gamma = 0.999
-        hps.entropy_bonus = 0.02
-        hps.entropy_bonus_schedule = 'lin 15e6:0.01,60e6:0.0'
+        hps.entropy_bonus = 0.2
+        hps.entropy_bonus_schedule = 'lin 15e6:0.1,60e6:0.0'
         hps.mothership_damage_scale = 4.0
         hps.mothership_damage_scale_schedule = 'lin 50e6:0.0'
+        hps.adr_hstepsize = 3.0e-6
 
         hps.batches_per_update = 32
         hps.bs = 512
