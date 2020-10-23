@@ -11,16 +11,15 @@ import yaml
 import click
 
 
-OUT_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
-
 logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
 
 
 class JobQueue:
-    def __init__(self, queue_dir, concurrency, devices):
+    def __init__(self, queue_dir, concurrency, devices, out_dir):
         self.queue_dir = queue_dir
-        self.devices = devices
         self.concurrency = concurrency
+        self.devices = devices
+        self.out_dir = out_dir
         self.known_jobs = {}
         self.queue = queue.Queue()
         self.active_jobs = 0
@@ -105,7 +104,7 @@ class JobQueue:
                 revision = subprocess.check_output(
                         ["git", "-C", dir, "describe", "--tags", "--always", "--dirty"]).decode("UTF-8")[:-1]
 
-                out_dir = os.path.join(OUT_ROOT_DIR, f'{time.strftime("%Y-%m-%d~%H:%M:%S")}-{revision}')
+                out_dir = os.path.join(self.out_dir, f'{time.strftime("%Y-%m-%d~%H:%M:%S")}-{revision}')
                 for name, value in job.params.items():
                     out_dir += f"-{name}{value}"
                 pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -208,10 +207,12 @@ class Job:
 
 
 @click.command()
+@click.option("--jobfile-dir", default="/home/clemens/xprun/queue", help="Directory to watch for new job files.")
 @click.option("--concurrency", default=8, help="Maximum number of jobs running at the same time.")
-def main(concurrency):
+@click.option("--out-dir", default="/home/clemens/Dropbox/artifacts/DeepCodeCraft", help="Root of output directories given to jobs.")
+def main(jobfile_dir, concurrency, out_dir):
     gpus = len(subprocess.check_output(["nvidia-smi", "-L"]).decode("UTF-8").split("\n")) - 1
-    job_queue = JobQueue("/home/clemens/xprun/queue", concurrency, gpus)
+    job_queue = JobQueue(jobfile_dir, concurrency, gpus, out_dir)
     job_queue.run()
 
 

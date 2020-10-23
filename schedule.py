@@ -1,8 +1,5 @@
 import os
-import pathlib
-from shutil import copyfile
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -17,7 +14,6 @@ import yaml
 @click.option("--hps", default=None, help="List of hyperparameters in format name1:value1,name2:value2")
 @click.option("--queue-dir", default="192.168.0.101:/home/clemens/xprun/queue")
 def main(repo_path, revision, params_file, hps, queue_dir):
-    # pathlib.Path(QUEUE_DIR).mkdir(parents=True, exist_ok=True)
     commit = subprocess.check_output(["git", "rev-parse", revision]).decode("UTF-8")[:-1]
 
     if params_file:
