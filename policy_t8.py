@@ -21,7 +21,7 @@ class TransformerPolicy8(nn.Module):
         assert hps.ntile == obs_config.tiles
         assert hps.nconstant == 0
 
-        self.version = 'transformer_v8-alpha'
+        self.version = 'transformer_v8'
 
         self.kwargs = dict(
             hps=hps,
