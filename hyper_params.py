@@ -1,4 +1,5 @@
 import argparse
+import math
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional
 from gym_codecraft import envs
@@ -100,6 +101,7 @@ class HyperParams:
         self.num_self_play_schedule = ''
         self.seq_rosteps = 256      # Number of sequential steps per rollout
         self.gamma = 0.99           # Discount factor
+        self.gamma_schedule = ''
         self.lamb = 0.95            # Generalized advantage estimation parameter lambda
         self.norm_advs = True       # Normalize advantage values
         self.rewscale = 1.0         # Scaling of reward values
@@ -493,7 +495,7 @@ class HyperParams:
 
 class HPSchedule(ABC):
     @abstractmethod
-    def value_at(self, step) -> float:
+    def value_at(self, step: int) -> float:
         pass
 
 
@@ -501,18 +503,29 @@ class LinearHPSchedule(HPSchedule):
     def __init__(self, segments: List[Tuple[int, float]]):
         self.segments = segments
 
-    def value_at(self, step) -> float:
+    def value_at(self, step: int) -> float:
         left, right = find_adjacent(self.segments, step)
         if right is None:
             return left[1]
         return left[1] + (step - left[0]) * (right[1] - left[1]) / (right[0] - left[0])
 
 
+class CosineSchedule(HPSchedule):
+    def __init__(self, initial_value: float, final_value: float, steps: int):
+        self.initial_value = initial_value
+        self.final_value = final_value
+        self.steps = steps
+
+    def value_at(self, step: int) -> float:
+        return (self.initial_value - self.final_value) * 0.5 * (math.cos(math.pi * step / self.steps) + 1) \
+               + self.final_value
+
+
 class StepHPSchedule(HPSchedule):
     def __init__(self, segments: List[Tuple[int, float]]):
         self.segments = segments
 
-    def value_at(self, step) -> float:
+    def value_at(self, step: int) -> float:
         left, _ = find_adjacent(self.segments, step)
         return left[1]
 
@@ -525,7 +538,7 @@ class ConstantSchedule(HPSchedule):
         return self.value
 
 
-def parse_schedule(schedule: str, initial_value: float) -> HPSchedule:
+def parse_schedule(schedule: str, initial_value: float, steps: int) -> HPSchedule:
     if schedule == '':
         return ConstantSchedule(initial_value)
     elif schedule.startswith('lin '):
@@ -534,6 +547,12 @@ def parse_schedule(schedule: str, initial_value: float) -> HPSchedule:
             [k, v] = kv.split(":")
             segments.append((int(float(k)), float(v)))
         return LinearHPSchedule(segments)
+    elif schedule.startswith('cos'):
+        if schedule == 'cos':
+            final_value = 0.0
+        else:
+            final_value = float(schedule[len('cos '):])
+        return CosineSchedule(initial_value, final_value, steps)
     else:
         segments = [(0, initial_value)]
         for kv in schedule.split(","):

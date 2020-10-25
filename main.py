@@ -143,8 +143,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env = None
     num_self_play_schedule = hps.get_num_self_play_schedule()
     batches_per_update_schedule = hps.get_batches_per_update_schedule()
-    entropy_bonus_schedule = parse_schedule(hps.entropy_bonus_schedule, hps.entropy_bonus)
-    mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale)
+    entropy_bonus_schedule = parse_schedule(hps.entropy_bonus_schedule, hps.entropy_bonus, hps.steps)
+    mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale, hps.steps)
+    gamma_schedule = parse_schedule(hps.gamma_schedule, hps.gamma, hps.steps)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -307,6 +308,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             all_returns = np.zeros(len(all_rewards), dtype=np.float32)
             all_values = np.array(all_values)
             last_gae = np.zeros(hps.num_envs)
+            gamma = gamma_schedule.value_at(total_steps)
             for t in reversed(range(hps.seq_rosteps)):
                 for i in range(hps.num_envs):
                     ti = t * hps.num_envs + i
@@ -316,8 +318,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         next_value = final_values[i]
                     else:
                         next_value = all_values[tnext_i]
-                    td_error = all_rewards[ti] + hps.gamma * next_value * nextnonterminal - all_values[ti]
-                    last_gae[i] = td_error + hps.gamma * hps.lamb * last_gae[i] * nextnonterminal
+                    td_error = all_rewards[ti] + gamma * next_value * nextnonterminal - all_values[ti]
+                    last_gae[i] = td_error + gamma * hps.lamb * last_gae[i] * nextnonterminal
                     all_returns[ti] = last_gae[i] + all_values[ti]
 
             advantages = all_returns - all_values
@@ -448,6 +450,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
                 'entropy_bonus': hps.entropy_bonus,
                 'mothership_damage_scale': env.mothership_damage_scale,
+                'gamma': gamma_schedule.value_at(total_steps),
             }
             for action, count in buildmean.items():
                 metrics[f'build_{action}'] = count
