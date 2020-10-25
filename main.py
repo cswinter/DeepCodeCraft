@@ -29,9 +29,8 @@ from policy_t8 import TransformerPolicy8, InputNorm
 
 logger = logging.getLogger(__name__)
 
-TEST_LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft_test'
 LOG_ROOT_DIR = '/home/clemens/Dropbox/artifacts/DeepCodeCraft'
-EVAL_MODELS_PATH = '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models'
+EVAL_MODELS_PATH = os.environ.get('EVAL_MODELS_PATH', '/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models')
 
 
 def run_codecraft():
