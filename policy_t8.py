@@ -259,7 +259,13 @@ class TransformerPolicy8(nn.Module):
             pitems_max[pitems_max == -1000.0] = 0.0
             pitems_avg = pitems.sum(dim=1) / torch.clamp_min((~pmask).float().sum(dim=1), min=1).unsqueeze(-1)
             vin = torch.cat([vin, pitems_max, pitems_avg], dim=1)
-        values = self.value_head(vin).view(-1)
+        if self.hps.tanh_value_function:
+            min_score = -self.hps.partial_score - self.hps.loss_penalty
+            max_score = self.hps.partial_score + self.hps.win_bonus
+            vout = self.value_head(vin).view(-1)
+            values = min_score + 0.5 * (1 + torch.tanh(vout)) * (max_score - min_score)
+        else:
+            values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
         logits = logits.masked_fill(action_masks.reshape(-1, self.naction)[active_agents.flat_index] == 0, float('-inf'))

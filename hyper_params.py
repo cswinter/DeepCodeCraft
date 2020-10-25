@@ -58,6 +58,7 @@ class HyperParams:
         self.spatial_attn_scale = 10000.0
         self.spatial_attn_init_scale = 0.1
         self.item_item_spatial_attn_vf = False
+        self.tanh_value_function = False
 
         self.resume_from = ''       # Filepath to saved policy
 
