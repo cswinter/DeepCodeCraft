@@ -200,7 +200,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        ],
                                        max_game_length=None if hps.max_game_length == 0 else hps.max_game_length,
                                        stagger_offset=hps.rank / hps.parallelism,
-                                       mothership_damage_scale=hps.mothership_damage_scale)
+                                       mothership_damage_scale=hps.mothership_damage_scale,
+                                       loss_penalty=hps.loss_penalty,
+                                       partial_score=hps.partial_score)
             env.rng_ruleset = adr.ruleset
             env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()

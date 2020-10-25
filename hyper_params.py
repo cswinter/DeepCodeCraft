@@ -207,7 +207,7 @@ class HyperParams:
         hps.final_lr = 0.00005
         hps.lr_schedule = 'cosine'
         hps.win_bonus = 2.0
-        hps.partial_score = 0.0
+        hps.partial_score = 1.0
         hps.vf_coef = 1.0
         hps.rule_rng_fraction = 1.0
         hps.rule_rng_amount = 1.0
