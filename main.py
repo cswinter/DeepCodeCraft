@@ -1013,6 +1013,8 @@ def main():
         hps = HyperParams.arena()
     elif args.hpset == 'standard':
         hps = HyperParams.standard()
+    elif args.hpset == 'standard_dataparallel':
+        hps = HyperParams.standard_dataparallel()
     elif args.hpset == 'micro_practice':
         hps = HyperParams.micro_practice()
     elif args.hpset == 'scout':

@@ -236,6 +236,18 @@ class HyperParams:
 
         return hps
 
+    def standard_dataparallel():
+        hps = HyperParams.standard()
+
+        parallelism: 4
+        hps.steps = 300e6
+
+        adr_hstepsize: 2e-06
+        batches_per_update: 16
+        num_envs: 64
+        num_self_play: 32
+        hps.lr = 0.0003
+        hps.lr = 0.00003
 
     @staticmethod
     def arena():
