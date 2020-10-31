@@ -129,7 +129,12 @@ class JobQueue:
                 with open(logpath, "w+") as outfile:
                     retcode = subprocess.call(
                         ["python3", "main.py", "--out-dir", out_dir] + args,
-                        env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(job.device)),
+                        env=dict(
+                            os.environ,
+                            CUDA_VISIBLE_DEVICES=str(job.device),
+                            MASTER_ADDR='localhost',
+                            MASTER_PORT=str(job.discovery_port),
+                        ),
                         stdout=outfile, stderr=outfile, cwd=dir
                     )
                 if retcode != 0:
@@ -197,13 +202,14 @@ class Job:
         self.parallelism = parallelism
         self.descriptor = "-".join([revision[:6]] + [f'{k}{v}' for k, v in params.items()])
         self.rank = 0
+        self.discovery_port = None
 
     def set_device(self, device, rank, discovery_port):
         self.device = device
         self.rank = rank
+        self.discovery_port = discovery_port
         self.params['device'] = device
         self.params['rank'] = rank
-        self.params['discovery_port'] = discovery_port
 
 
 @click.command()

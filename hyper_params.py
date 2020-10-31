@@ -57,8 +57,7 @@ class HyperParams:
 
         # Data parallel
         self.rank = 0
-        self.parallelism = 1
-        self.discovery_port = 29500
+        self.parallelism = 1           # Number of data parallel processes. Must be set explicitly when using schedule.py, otherwise runner.py will just spawn a single process.
 
         # Observations
         self.obs_allies = 10            # Max number of allied drones returned by the env
@@ -228,6 +227,20 @@ class HyperParams:
 
         return hps
 
+    @staticmethod
+    def standard_dataparallel():
+        hps = HyperParams.standard()
+
+        hps.steps = 300e6
+
+        hps.adr_hstepsize = 2e-06
+        hps.batches_per_update = 16
+        hps.num_envs = 64
+        hps.num_self_play = 32
+        hps.lr = 0.0003
+        hps.final_lr = 0.00003
+
+        return hps
 
     @staticmethod
     def arena():

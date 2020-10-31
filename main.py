@@ -1003,6 +1003,8 @@ def main():
         hps = HyperParams.arena()
     elif args.hpset == 'standard':
         hps = HyperParams.standard()
+    elif args.hpset == 'standard_dataparallel':
+        hps = HyperParams.standard_dataparallel()
     elif args.hpset == 'micro_practice':
         hps = HyperParams.micro_practice()
     elif args.hpset == 'scout':
@@ -1025,8 +1027,6 @@ def main():
         hps.objective = envs.Objective(hps.objective)
 
     if hps.parallelism > 1:
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = str(hps.discovery_port)
         dist.init_process_group(backend='gloo', rank=hps.rank, world_size=hps.parallelism)
 
     if hps.rank == 0:
