@@ -213,7 +213,6 @@ class HyperParams:
         hps.rule_rng_amount = 1.0
         hps.adr = True
         hps.gamma = 0.999
-        hps.gamma_schedule = 'cos 1.0'
         hps.entropy_bonus = 0.2
         hps.entropy_bonus_schedule = 'lin 15e6:0.1,60e6:0.0'
         hps.mothership_damage_scale = 4.0
