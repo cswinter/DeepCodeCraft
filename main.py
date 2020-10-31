@@ -457,16 +457,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 metrics[f'build_{action}'] = count
             for action, fraction in normalize(buildmean).items():
                 metrics[f'frac_{action}'] = fraction
-            if hps.spatial_attn:
-                for i in range(hps.nhead):
-                    metrics[f'gattn.mean[{i}]'] = policy.gattn.mean[i]
-                    metrics[f'gattn.logvariance[{i}]'] = policy.gattn.logvariance[i]
-                    metrics[f'gattn.weight[{i}]'] = policy.gattn.weight[i]
-            if hps.item_item_spatial_attn:
-                for i in range(hps.nhead):
-                    metrics[f'gattn_ii.mean[{i}]'] = policy.gattn_ii.mean[i]
-                    metrics[f'gattn_ii.logvariance[{i}]'] = policy.gattn_ii.logvariance[i]
-                    metrics[f'gattn_ii.weight[{i}]'] = policy.gattn_ii.weight[i]
 
             metrics.update(adr.metrics())
             total_norm = 0.0
