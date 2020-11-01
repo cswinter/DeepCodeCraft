@@ -551,7 +551,7 @@ class CodeCraftVecEnv(object):
         self.rule_cost_rng = rule_cost_rng
         self.rng_ruleset = None
         self.allow_harvesting = objective != Objective.DISTANCE_TO_CRYSTAL
-        self.force_harvesting = objective != Objective.ALLIED_WEALTH
+        self.force_harvesting = False
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
         self.mothership_damage_scale = mothership_damage_scale
 
