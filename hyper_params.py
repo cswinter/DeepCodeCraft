@@ -233,12 +233,16 @@ class HyperParams:
 
         hps.steps = 300e6
 
-        hps.adr_hstepsize = 2e-06
         hps.batches_per_update = 16
         hps.num_envs = 64
         hps.num_self_play = 32
-        hps.lr = 0.0003
-        hps.final_lr = 0.00003
+
+        hps.entropy_bonus_schedule = 'lin 30e6:0.1,120e6:0.0'
+        hps.mothership_damage_scale_schedule = 'lin 100e6:0.0'
+        hps.hardness_offset *= 2.0
+        hps.adr_hstepsize *= 0.5
+        hps.mothership_damage_scale_schedule = 'lin 100e6:1.0,300e6:0.0'
+        hps.adr_variety_schedule = '120e6:0.5,240e6:0.4,280e6:0.3'
 
         return hps
 
