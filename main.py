@@ -132,6 +132,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         save_policy(policy, 'verify', 0)
 
     total_steps = resume_steps
+    iteration = 0
     next_eval = total_steps
     epoch = 0
     eprewmean = 0
@@ -414,6 +415,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         epoch += 1
         total_steps += hps.rosteps * hps.parallelism
+        iteration += 1
         throughput = int(hps.rosteps / (time.time() - episode_start)) * hps.parallelism
 
         all_agent_masks = all_action_masks.sum(2) > 1
@@ -452,6 +454,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'entropy_bonus': hps.entropy_bonus,
                 'mothership_damage_scale': env.mothership_damage_scale,
                 'gamma': gamma_schedule.value_at(total_steps),
+                'iteration': iteration,
             }
             for action, count in buildmean.items():
                 metrics[f'build_{action}'] = count
