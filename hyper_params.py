@@ -227,6 +227,15 @@ class HyperParams:
 
         return hps
 
+    # Equivalent to `standard` config when run dataparallel across 2 processes.
+    @staticmethod
+    def standard_2dataparallel():
+        hps = HyperParams.standard()
+        hps.batches_per_update //= 2
+        hps.num_envs //= 2
+        hps.num_self_play //= 2
+        return hps
+
     @staticmethod
     def standard_dataparallel():
         hps = HyperParams.standard()
