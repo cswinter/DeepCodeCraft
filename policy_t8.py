@@ -161,12 +161,20 @@ class TransformerPolicy8(nn.Module):
             self.policy_head.bias.data.fill_(0.0)
 
         if hps.use_privileged:
-            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + hps.d_item, 1)
+            self.value_head = nn.Sequential(
+                nn.Linear(hps.d_agent * hps.dff_ratio + hps.d_item, hps.d_agent * hps.dff_ratio),
+                nn.ReLU(),
+                nn.Linear(hps.d_agent * hps.dff_ratio, 1)
+            )
         else:
-            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio, 1)
+            self.value_head = nn.Sequential(
+                nn.Linear(hps.d_agent * hps.dff_ratio, hps.d_agent * hps.dff_ratio),
+                nn.ReLU(),
+                nn.Linear(hps.d_agent * hps_dff_ratio, 1)
+            )
         if hps.zero_init_vf:
-            self.value_head.weight.data.fill_(0.0)
-            self.value_head.bias.data.fill_(0.0)
+            self.value_head[2].weight.data.fill_(0.0)
+            self.value_head[2].bias.data.fill_(0.0)
 
         self.epsilon = 1e-4 if hps.fp16 else 1e-8
 
