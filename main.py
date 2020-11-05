@@ -103,7 +103,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         if hps.lr_schedule == 'cosine':
             lr_scheduler = CosineAnnealingLR(
                 optimizer,
-                T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
+                T_max=hps.steps * hps.epochs // hps.parallelism // (hps.bs * hps.batches_per_update),
                 eta_min=hps.final_lr,
             )
         else:
