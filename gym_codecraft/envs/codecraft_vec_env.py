@@ -438,7 +438,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
         x, y = eligible[np.random.randint(0, len(eligible))]
         map_width = 500 * x
         map_height = 500 * y
-        mineral_count = int(3 * math.sqrt(area))
+        mineral_count = 1 + np.random.randint(int(math.sqrt(area)), int(4 * math.sqrt(area)))
     else:
         assert(isinstance(hardness, int))
         if hardness == 0:
@@ -485,7 +485,11 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
                 (5, 100),
             ]
     if minerals is None:
-        minerals = mineral_count * [(1, 50)]
+        cluster_size = 1
+        if mineral_count > 10:
+            cluster_size = np.random.randint(1, 10)
+        minerals = [(cluster_size, np.random.randint(30, 100)) for _ in range(mineral_count // cluster_size)]
+
 
     player1, player2 = standard_starting_drones(map_height, map_width, randomize and not require_default_mothership)
     return {
