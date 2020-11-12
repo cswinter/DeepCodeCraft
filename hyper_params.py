@@ -130,10 +130,11 @@ class HyperParams:
         self.rule_rng_amount = 1.0     # Amount of rule randomization
         self.rule_cost_rng = 0.0
         self.adr = False               # Automatically adjust environment rules
-        self.adr_hstepsize = 2.0e-6
-        self.linear_hardness = True
+        self.adr_hstepsize = 2.0e-6    # Amount by which task difficulty/map size is increased for each processed frame
+        self.linear_hardness = True    # Linearly increase task difficulty/map size
         self.mothership_damage_scale = 4.0
         self.mothership_damage_scale_schedule = 'lin 50e6:1.0,150e6:0.0'
+        self.adr_average_cost_target = 0.8  # Target value for average module cost
 
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'

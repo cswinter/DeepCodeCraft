@@ -99,6 +99,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             max_hardness=hps.max_hardness,
             hardness_offset=hps.hardness_offset,
             variety=hps.adr_variety,
+            average_cost_target=hps.adr_average_cost_target,
         )
         if hps.lr_schedule == 'cosine':
             lr_scheduler = CosineAnnealingLR(

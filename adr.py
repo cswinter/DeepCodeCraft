@@ -14,7 +14,8 @@ class ADR:
                  max_hardness: float = 200,
                  hardness_offset: float = 0,
                  variety: float = 0.7,
-                 step: int = 0):
+                 step: int = 0,
+                 average_cost_target: float = 0.8):
         if ruleset is None:
             ruleset = Rules(cost_modifier_size=[1.2, 0.6, 0.6, 0.4])
         self.ruleset = ruleset
@@ -23,7 +24,7 @@ class ADR:
             '1m', '1s', '1m1p', '2m', '1s1c', '2m1e1p', '3m1p', '2m2p', '2s2c', '2s1c1e', '2s1m1c'
         ]})
 
-        self.target_modifier = 0.8
+        self.target_modifier = average_cost_target
         self.stepsize = stepsize
         self.warmup = warmup
         self.step = step
