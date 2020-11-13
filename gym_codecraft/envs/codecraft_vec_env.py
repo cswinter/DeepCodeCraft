@@ -438,7 +438,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
         x, y = eligible[np.random.randint(0, len(eligible))]
         map_width = 500 * x
         map_height = 500 * y
-        mineral_count = 1 + np.random.randint(int(math.sqrt(area)), int(4 * math.sqrt(area)))
+        mineral_count = 1 + np.random.randint(2 * int(math.sqrt(area)), int(5 * math.sqrt(area)))
     else:
         assert(isinstance(hardness, int))
         if hardness == 0:
@@ -486,7 +486,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
             ]
     if minerals is None:
         cluster_size = 1
-        if mineral_count > 10:
+        if np.random.randint(0, 100) < mineral_count:
             cluster_size = np.random.randint(1, 10)
         minerals = [(cluster_size, np.random.randint(30, 100)) for _ in range(mineral_count // cluster_size)]
 
