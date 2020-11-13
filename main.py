@@ -147,6 +147,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     entropy_bonus_schedule = parse_schedule(hps.entropy_bonus_schedule, hps.entropy_bonus, hps.steps)
     mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale, hps.steps)
     gamma_schedule = parse_schedule(hps.gamma_schedule, hps.gamma, hps.steps)
+    adr_avg_cost_schedule = parse_schedule(hps.adr_avg_cost_schedule, hps.adr_average_cost_target, hps.steps)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -173,6 +174,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if variety_schedule[-1][0] <= total_steps:
                 variety_schedule_last_step, variety_schedule_last_value = variety_schedule.pop()
                 adr.variety = variety_schedule_last_value
+        adr.target_modifier = adr_avg_cost_schedule.value_at(total_steps)
 
         if env is None and not hps.verify:
             env = envs.CodeCraftVecEnv(hps.num_envs,
