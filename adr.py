@@ -17,7 +17,14 @@ class ADR:
                  step: int = 0,
                  average_cost_target: float = 0.8):
         if ruleset is None:
-            ruleset = Rules(cost_modifier_size=[1.2, 0.6, 0.6, 0.4])
+            ruleset = Rules(
+                cost_modifier_size=4 * [average_cost_target],
+                cost_modifier_missiles=average_cost_target,
+                cost_modifier_shields=average_cost_target,
+                cost_modifier_storage=average_cost_target,
+                cost_modifier_constructor=average_cost_target,
+                cost_modifier_engines=average_cost_target,
+            )
         self.ruleset = ruleset
         self.variety = variety
         self.target_fractions = normalize({b: 1.0 for b in [
