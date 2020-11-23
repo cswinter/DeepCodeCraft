@@ -5,11 +5,112 @@ import time
 import orjson
 import numpy as np
 
+from dataclasses import dataclass, field
 from typing import List, Tuple
-from gym_codecraft.envs.codecraft_vec_env import Rules, ObsConfig
 
 
 RETRIES = 100
+
+
+@dataclass
+class ObsConfig:
+    allies: int
+    drones: int
+    minerals: int
+    tiles: int
+    global_drones: int = 0
+    relative_positions: bool = True
+    feat_last_seen: bool = False
+    feat_map_size: bool = False
+    feat_is_visible: bool = False
+    feat_abstime: bool = False
+    v2: bool = False
+    feat_rule_msdm: bool = False
+    feat_rule_costs: bool = False
+    feat_mineral_claims: bool = False
+    harvest_action: bool = False
+    lock_build_action: bool = False
+    feat_dist_to_wall: bool = False
+
+    def global_features(self):
+        gf = 2
+        if self.feat_map_size:
+            gf += 2
+        if self.feat_abstime:
+            gf += 2
+        if self.feat_rule_msdm:
+            gf += 1
+        if self.feat_rule_costs:
+            gf += 9
+        return gf
+
+    def dstride(self):
+        ds = 15
+        if self.feat_last_seen:
+            ds += 2
+        if self.feat_is_visible:
+            ds += 1
+        if self.lock_build_action:
+            ds += 1
+        if self.feat_dist_to_wall:
+            ds += 5
+        return ds
+
+    def mstride(self):
+        return 4 if self.feat_mineral_claims else 3
+
+    def tstride(self):
+        return 4
+
+    def nonobs_features(self):
+        return 5
+
+    def enemies(self):
+        return self.drones - self.allies
+
+    def total_drones(self):
+        return 2 * self.drones - self.allies
+
+    def stride(self):
+        return self.global_features() \
+               + self.total_drones() * self.dstride() \
+               + self.minerals * self.mstride() \
+               + self.tiles * self.tstride()
+
+    def endglobals(self):
+        return self.global_features()
+
+    def endallies(self):
+        return self.global_features() + self.dstride() * self.allies
+
+    def endenemies(self):
+        return self.global_features() + self.dstride() * self.drones
+
+    def endmins(self):
+        return self.endenemies() + self.mstride() * self.minerals
+
+    def endtiles(self):
+        return self.endmins() + self.tstride() * self.tiles
+
+    def endallenemies(self):
+        return self.endtiles() + self.dstride() * self.enemies()
+
+    def extra_actions(self):
+        if self.lock_build_action:
+            return 2
+        else:
+            return 0
+
+
+@dataclass
+class Rules:
+    mothership_damage_multiplier: float = 1.0
+    cost_modifier_size: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
+    cost_modifier_missiles: float = 1.0
+    cost_modifier_shields: float = 1.0
+    cost_modifier_storage: float = 1.0
+    cost_modifier_constructor: float = 1.0
+    cost_modifier_engines: float = 1.0
 
 
 def create_game(game_length: int = None,
