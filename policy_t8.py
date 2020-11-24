@@ -210,7 +210,8 @@ class TransformerPolicy8(nn.Module):
         # gradients still get blocked by the action mask
         probs = probs * action_masks + self.epsilon
 
-        active_agents = torch.clamp_min((action_masks.sum(dim=2) > 0).float().sum(dim=1), min=1)
+        agent_masks = (action_masks.sum(dim=2) > 1).float()
+        active_agents = torch.clamp_min(agent_masks.sum(dim=1), min=1)
 
         dist = distributions.Categorical(probs)
         entropy = dist.entropy()
@@ -219,8 +220,8 @@ class TransformerPolicy8(nn.Module):
         advantages = advantages.view(-1, 1)
         if split_reward:
             advantages = advantages / active_agents.view(-1, 1)
-        vanilla_policy_loss = advantages * ratios
-        clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
+        vanilla_policy_loss = advantages * ratios * agent_masks
+        clipped_policy_loss = advantages * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange) * agent_masks
         if hps.ppo:
             policy_loss = -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
         else:
