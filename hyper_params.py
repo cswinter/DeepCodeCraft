@@ -34,7 +34,7 @@ class HyperParams:
         self.item_item_attn_layers = 0
         self.dropout = 0.0             # Try 0.1?
         self.nearby_map = True         # Construct map of nearby objects populated with scatter connections
-        self.nm_ring_width = 30        # Width of circles on nearby map
+        self.nm_ring_width = 60        # Width of circles on nearby map
         self.nm_nrays = 8              # Number of rays on nearby map
         self.nm_nrings = 8             # Number of rings on nearby map
         self.map_conv = False          # Whether to perform convolution on nearby map
@@ -134,7 +134,7 @@ class HyperParams:
         self.linear_hardness = True    # Linearly increase task difficulty/map size
         self.mothership_damage_scale = 4.0
         self.mothership_damage_scale_schedule = 'lin 50e6:1.0,150e6:0.0'
-        self.adr_average_cost_target = 0.8  # Target value for average module cost
+        self.adr_average_cost_target = 1.0  # Target value for average module cost
         self.adr_avg_cost_schedule = ''
 
         self.adr_variety = 0.8
@@ -181,7 +181,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 100e6
+        hps.steps = 150e6
 
         hps.agents = 15
         hps.nenemy = 15
