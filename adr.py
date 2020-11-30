@@ -27,9 +27,6 @@ class ADR:
             )
         self.ruleset = ruleset
         self.variety = variety
-        self.target_fractions = normalize({b: 1.0 for b in [
-            '1m', '1s', '1m1p', '2m', '1s1c', '2m1e1p', '3m1p', '2m2p', '2s2c', '2s1c1e', '2s1m1c'
-        ]})
 
         self.target_modifier = average_cost_target
         self.stepsize = stepsize
@@ -62,13 +59,14 @@ class ADR:
         for build, bfraction in counts.items():
             self.counts[build] = (1 - self.w_ema) * bfraction + self.w_ema * self.counts[build]
 
+        target_fraction = 1.0 / len(self.counts) if len(self.counts) > 0 else 1
         gradient = defaultdict(lambda: 0.0)
         weight = defaultdict(lambda: 0.0)
         for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
-                loss = -self.variety * math.log(self.target_fractions[build] / bfraction)
+                loss = -self.variety * math.log(target_fraction / bfraction)
 
             for module, mfraction in module_norm(build).items():
                 gradient[module] += mfraction * loss

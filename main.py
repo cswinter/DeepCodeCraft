@@ -1009,6 +1009,8 @@ def main():
         hps = HyperParams.arena()
     elif args.hpset == 'standard':
         hps = HyperParams.standard()
+    elif args.hpset == 'enhanced':
+        hps = HyperParams.enhanced()
     elif args.hpset == 'standard_2dataparallel':
         hps = HyperParams.standard_2dataparallel()
     elif args.hpset == 'standard_dataparallel':

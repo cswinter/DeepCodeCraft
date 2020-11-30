@@ -229,6 +229,12 @@ class HyperParams:
 
         return hps
 
+    @staticmethod
+    def enhanced():
+        hps = HyperParams.standard()
+        hps.objective = envs.Objective.ENHANCED
+        return hps
+
     # Equivalent to `standard` config when run dataparallel across 2 processes.
     @staticmethod
     def standard_2dataparallel():

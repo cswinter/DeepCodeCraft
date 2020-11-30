@@ -296,6 +296,55 @@ def standard_starting_drones(map_height, map_width, randomize):
     return player1, player2
 
 
+def enhanced_starting_drones(map_height, map_width, randomize):
+    drones = []
+    starting_resources = np.random.randint(0, 8) if randomize else 7
+    if randomize and np.random.uniform(0, 1) < 0.3:
+        for i in range(2):
+            if i == 0:
+                mstype = np.random.randint(0, 3)
+            else:
+                mstype = np.random.randint(0, 5)
+            if mstype == 0:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=3,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 1:
+                drones.append(dict(
+                    constructors=1,
+                    storage_modules=2,
+                    engines=1,
+                    resources=2 * starting_resources
+                ))
+            elif mstype == 2:
+                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+            elif mstype == 3:
+                drones.append(dict(storage_modules=1, resources=starting_resources))
+            elif mstype == 4:
+                drones.append(dict(storage_modules=2, resources=starting_resources))
+    else:
+        drones.append(
+            dict(constructors=2,
+                 storage_modules=4,
+                 missile_batteries=3,
+                 shield_generators=1,
+                 resources=10)
+        )
+
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    dcount = len(drones)
+    spawn_offsets = [(
+        40 * np.sin(2 * math.pi * i / dcount),
+        40 * np.cos(2 * math.pi * i / dcount),
+    ) for i in range(dcount)]
+    player1 = [drone_dict(spawn_x + x, spawn_y + y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    player2 = [drone_dict(-spawn_x - x, -spawn_y - y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    return player1, player2
+
 def map_smol_standard(randomize: bool, hardness: int, require_default_mothership: bool):
     if randomize:
         hardness = np.random.randint(0, hardness+1)
@@ -386,6 +435,30 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
         minerals = mineral_count * [(1, 50)]
 
     player1, player2 = standard_starting_drones(map_height, map_width, randomize and not require_default_mothership)
+    return {
+        'mapWidth': map_width,
+        'mapHeight': map_height,
+        'minerals': minerals,
+        'player1Drones': player1,
+        'player2Drones': player2,
+    }
+
+
+def map_enhanced(randomize: bool, hardness: Union[int, float], require_default_mothership: bool):
+    if randomize:
+        area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
+
+    eligible = [(x, y)
+                for y in range(1, 20)
+                for x in range(y, y * 2 + 1)
+                if x * y <= area <= x * y * 2]
+    x, y = eligible[np.random.randint(0, len(eligible))]
+    map_width = 500 * x
+    map_height = 500 * y
+    mineral_count = 2 + int(np.random.randint(0, area // 10 + 2))
+    minerals = [(1, np.random.randint(100, 1000)) for _ in range(mineral_count)]
+
+    player1, player2 = enhanced_starting_drones(map_height, map_width, randomize and not require_default_mothership)
     return {
         'mapWidth': map_width,
         'mapHeight': map_height,
@@ -617,6 +690,24 @@ class CodeCraftVecEnv(object):
                 [1, 0, 0, 0, 0],
             ]
             self.custom_map = map_standard
+        elif objective == Objective.ENHANCED:
+            self.game_length = 5 * 60 * 60
+            self.builds = [
+                # [s, m, c, e, p]
+                [1, 0, 0, 0, 0],  # 1s
+                [1, 0, 1, 0, 0],  # 1s1c
+                [2, 0, 0, 0, 0],  # 2s
+                [0, 2, 0, 0, 0],  # 2m
+                [0, 1, 0, 0, 1],  # 1m1p
+                [0, 4, 0, 0, 0],  # 4m
+                [0, 3, 0, 0, 1],  # 3m1p
+                [0, 2, 0, 0, 2],  # 2m2p
+                [0, 2, 0, 2, 0],  # 2m2e
+                [0, 2, 0, 1, 1],  # 2m1e1p
+                [3, 0, 1, 0, 0],  # 3s1c
+                [2, 0, 1, 1, 0],  # 2s1c1e
+            ]
+            self.custom_map = map_enhanced
         elif objective == Objective.MICRO_PRACTICE:
             self.game_length = 20 * 60
             self.custom_map = map_mp
@@ -992,6 +1083,7 @@ class Objective(Enum):
     ARENA_MEDIUM_LARGE_MS = 'ARENA_MEDIUM_LARGE_MS'
     ARENA = 'ARENA'
     STANDARD = 'STANDARD'
+    ENHANCED = 'ENHANCED'
     SMOL_STANDARD = 'SMOL_STANDARD'
     MICRO_PRACTICE = 'MICRO_PRACTICE'
     SCOUT = 'SCOUT'
@@ -1008,6 +1100,7 @@ class Objective(Enum):
                 self == Objective.ARENA_MEDIUM or\
                 self == Objective.ARENA or\
                 self == Objective.STANDARD or \
+                self == Objective.ENHANCED or \
                 self == Objective.SMOL_STANDARD or\
                 self == Objective.MICRO_PRACTICE or\
                 self == Objective.ARENA_MEDIUM_LARGE_MS:
@@ -1018,6 +1111,8 @@ class Objective(Enum):
     def naction(self):
         if self == Objective.STANDARD or self == Objective.SMOL_STANDARD:
             return 18
+        elif self == Objective.ENHANCED:
+            return 20
         elif self == Objective.ARENA:
             return 11
         else:
