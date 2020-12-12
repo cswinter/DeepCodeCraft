@@ -181,7 +181,7 @@ class HyperParams:
         hps = HyperParams()
         hps.objective = envs.Objective.STANDARD
 
-        hps.steps = 150e6
+        hps.steps = 125e6
 
         hps.agents = 15
         hps.nenemy = 15
@@ -197,6 +197,7 @@ class HyperParams:
         hps.feat_mineral_claims = True
         hps.harvest_action = True
         hps.feat_dist_to_wall = True
+        hps.nearby_map = False
 
         hps.lr = 0.0005
         hps.final_lr = 0.00005
