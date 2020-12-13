@@ -10,7 +10,7 @@ from typing import Optional
 import torch.distributed as dist
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
 import numpy as np
 
 import wandb
@@ -90,6 +90,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         raise Exception(f'Invalid optimizer name `{hps.optimizer}`')
 
     resume_steps = 0
+    total_steps = resume_steps
     if hps.resume_from == '':
         policy = TransformerPolicy8(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
@@ -107,9 +108,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 T_max=hps.steps * hps.epochs // hps.parallelism // (hps.bs * hps.batches_per_update),
                 eta_min=hps.final_lr,
             )
-        else:
-            assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
+        elif hps.lr_schedule == 'none':
             lr_scheduler = None
+        else:
+            lr_schedule = parse_schedule(hps.lr_schedule, hps.lr, hps.steps)
+            lr_scheduler = LambdaLR(optimizer, lambda _: lr_schedule.value_at(total_steps) / hps.lr)
     else:
         policy, optimizer, resume_steps, adr, lr_scheduler =\
             load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
@@ -132,7 +135,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
     if hps.verify_create_golden:
         save_policy(policy, 'verify', 0)
 
-    total_steps = resume_steps
     iteration = 0
     next_eval = total_steps
     epoch = 0
@@ -453,7 +455,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'rewstd': rewstd,
                 'average_cost_modifier': average_cost_modifier,
                 'hardness': adr.hardness,
-                'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_lr()[0]),
+                'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_last_lr()[0]),
                 'entropy_bonus': hps.entropy_bonus,
                 'mothership_damage_scale': env.mothership_damage_scale,
                 'gamma': gamma_schedule.value_at(total_steps),
