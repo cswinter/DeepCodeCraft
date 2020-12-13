@@ -97,6 +97,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
             linear_hardness=hps.linear_hardness,
+            initial_hardness=hps.task_hardness,
             max_hardness=hps.max_hardness,
             hardness_offset=hps.hardness_offset,
             variety=hps.adr_variety,
@@ -250,6 +251,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         if not hps.verify:
             if hps.adr:
                 env.rng_ruleset = adr.ruleset
+            if hps.adr or hps.linear_hardness:
                 env.hardness = adr.hardness
             if hps.symmetry_increase > 0:
                 env.symmetric = min(total_steps * hps.symmetry_increase, 1.0)

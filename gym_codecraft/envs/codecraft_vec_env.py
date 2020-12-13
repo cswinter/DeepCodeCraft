@@ -57,17 +57,6 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
     else:
         return Rules(
             mothership_damage_multiplier=2 ** np.random.uniform(0.0, np.log2(rnd_msdm)),
-            cost_modifier_size=[
-                1.0,
-                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-                1.0 - np.random.uniform(0.0, 0.4 * rnd_cost),
-                ],
-            cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-            cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-            cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-            cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-            cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * rnd_cost),
         )
 
 
