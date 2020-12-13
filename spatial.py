@@ -73,6 +73,7 @@ def unbatched_relative_positions(
         origin,     # (N, 2)
         direction,  # (N, 2)
         positions,  # (N, L, 2)
+        rotate: bool = True,
 ):  # (N, L, 2)
     n, _ = origin.size()
     _, l, _ = positions.size()
@@ -82,6 +83,9 @@ def unbatched_relative_positions(
     positions = positions.view(n, l, 2)
 
     positions = positions - origin
+
+    if not rotate:
+        return positions
 
     angle = -torch.atan2(direction[:, :, 1], direction[:, :, 0])
     rotation = torch.cat(

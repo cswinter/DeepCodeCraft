@@ -63,6 +63,11 @@ class TransformerPolicy8(nn.Module):
         endtiles = self.obs_config.endtiles()
         endallenemies = self.obs_config.endallenemies()
 
+        if hasattr(hps, 'rotational_invariance'):
+            rotational_invariance = hps.rotational_invariance
+        else:
+            rotational_invariance = True
+
         self.agent_embedding = ItemBlock(
             obs_config.dstride() + obs_config.global_features(),
             hps.d_agent, hps.d_agent * hps.dff_ratio, norm_fn, True,
@@ -80,6 +85,7 @@ class TransformerPolicy8(nn.Module):
                 count=obs_config.drones,
                 start=endglobals,
                 end=endenemies,
+                rotate=rotational_invariance,
             ))
         else:
             if self.nally > 0:
@@ -89,6 +95,7 @@ class TransformerPolicy8(nn.Module):
                     count=obs_config.allies,
                     start=endglobals,
                     end=endallies,
+                    rotate=rotational_invariance,
                 ))
             if self.nenemy > 0:
                 self.item_nets.append(PosItemBlock(
@@ -99,6 +106,7 @@ class TransformerPolicy8(nn.Module):
                     end=endenemies,
                     start_privileged=endtiles if hps.use_privileged else None,
                     end_privileged=endallenemies if hps.use_privileged else None,
+                    rotate=rotational_invariance,
                 ))
         if hps.nmineral > 0:
             self.item_nets.append(PosItemBlock(
@@ -107,6 +115,7 @@ class TransformerPolicy8(nn.Module):
                 count=obs_config.minerals,
                 start=endenemies,
                 end=endmins,
+                rotate=rotational_invariance,
             ))
         if hps.ntile > 0:
             self.item_nets.append(PosItemBlock(
@@ -115,6 +124,7 @@ class TransformerPolicy8(nn.Module):
                 count=obs_config.tiles,
                 start=endmins,
                 end=endtiles,
+                rotate=rotational_invariance,
             ))
         if hps.nconstant > 0:
             self.constant_items = nn.Parameter(torch.normal(0, 1, (hps.nconstant, hps.d_item)))
@@ -481,7 +491,8 @@ class PosItemBlock(nn.Module):
                  start,
                  end,
                  start_privileged=None,
-                 end_privileged=None):
+                 end_privileged=None,
+                 rotate=True):
         super(PosItemBlock, self).__init__()
 
         self.d_in = d_in
@@ -495,6 +506,7 @@ class PosItemBlock(nn.Module):
         self.end = end
         self.start_privileged = start_privileged
         self.end_privileged = end_privileged
+        self.rotate = rotate
 
     def forward(self, x, privileged=False):
         if privileged:
@@ -523,7 +535,7 @@ class PosItemBlock(nn.Module):
         x = x[:, self.start:self.end].view(-1, self.count, self.d_in)
         mask = (x[:, :, self.mask_feature] != 0)[indices]
         pos = x[indices, :, 0:2]
-        relpos = spatial.unbatched_relative_positions(origin, direction, pos)
+        relpos = spatial.unbatched_relative_positions(origin, direction, pos, self.rotate)
         dist = relpos.norm(p=2, dim=2)
         direction = relpos / (dist.unsqueeze(-1) + 1e-8)
         x = torch.cat([direction, torch.sqrt(dist.unsqueeze(-1))], dim=2)
