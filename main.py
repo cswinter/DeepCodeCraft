@@ -299,7 +299,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         completed_episodes += 1
 
             elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
-            average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
+            if hps.adr:
+                average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
 
             obs_tensor = torch.tensor(obs).to(device)
             action_masks_tensor = torch.tensor(action_masks).to(device)
