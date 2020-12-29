@@ -447,6 +447,8 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
 def map_enhanced(randomize: bool, hardness: Union[int, float], require_default_mothership: bool):
     if randomize:
         area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
+    else:
+        area = hardness
 
     eligible = [(x, y)
                 for y in range(1, 20)
