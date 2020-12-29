@@ -15,7 +15,7 @@ import numpy as np
 
 import wandb
 
-from adr import ADR, normalize
+from adr import ADR, normalize, spec_key
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
 from hyper_params import HyperParams, parse_schedule
@@ -100,6 +100,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hardness_offset=hps.hardness_offset,
             variety=hps.adr_variety,
             average_cost_target=hps.adr_average_cost_target,
+            ruleset=Rules(
+                mothership_damage_multiplier=hps.mothership_damage_scale,
+                cost_modifiers={build: 1.0 for build in hps.objective.builds()},
+            )
         )
         if hps.lr_schedule == 'cosine':
             lr_scheduler = CosineAnnealingLR(
@@ -460,9 +464,9 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'iteration': iteration,
             }
             for action, count in buildmean.items():
-                metrics[f'build_{action}'] = count
+                metrics[f'build_{spec_key(action)}'] = count
             for action, fraction in normalize(buildmean).items():
-                metrics[f'frac_{action}'] = fraction
+                metrics[f'frac_{spec_key(action)}'] = fraction
 
             metrics.update(adr.metrics())
             total_norm = 0.0
@@ -703,6 +707,7 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
             drones=hps.obs_allies + hps.obs_enemies,
             minerals=hps.obs_minerals,
             tiles=hps.obs_map_tiles,
+            num_builds=len(hps.objective.builds()),
             global_drones=hps.obs_enemies if hps.use_privileged else 0,
             relative_positions=False,
             feat_last_seen=hps.feat_last_seen,

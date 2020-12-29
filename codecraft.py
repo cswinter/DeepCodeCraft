@@ -6,7 +6,7 @@ import orjson
 import numpy as np
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 RETRIES = 100
@@ -18,6 +18,7 @@ class ObsConfig:
     drones: int
     minerals: int
     tiles: int
+    num_builds: int
     global_drones: int = 0
     relative_positions: bool = True
     feat_last_seen: bool = False
@@ -41,7 +42,7 @@ class ObsConfig:
         if self.feat_rule_msdm:
             gf += 1
         if self.feat_rule_costs:
-            gf += 9
+            gf += self.num_builds
         return gf
 
     def dstride(self):
@@ -104,13 +105,8 @@ class ObsConfig:
 
 @dataclass
 class Rules:
-    mothership_damage_multiplier: float = 1.0
-    cost_modifier_size: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
-    cost_modifier_missiles: float = 1.0
-    cost_modifier_shields: float = 1.0
-    cost_modifier_storage: float = 1.0
-    cost_modifier_constructor: float = 1.0
-    cost_modifier_engines: float = 1.0
+    mothership_damage_multiplier: float
+    cost_modifiers: Dict[(Tuple[int, int, int, int, int], float)]
 
 
 def create_game(game_length: int = None,
@@ -118,12 +114,15 @@ def create_game(game_length: int = None,
                 self_play: bool = False,
                 custom_map=None,
                 scripted_opponent: str = 'none',
-                rules=Rules(),
+                rules=None,
                 allowHarvesting: bool = True,
                 forceHarvesting: bool = True,
                 randomizeIdle: bool = True) -> int:
-    if custom_map is None:
-        custom_map = ''
+    assert rules is not None
+    json = {
+        'map': [] if custom_map is None else [custom_map],
+        'costModifiers': list(rules.cost_modifiers.items()),
+    }
     try:
         if game_length:
             response = requests.post(f'http://localhost:9000/start-game'
@@ -131,19 +130,10 @@ def create_game(game_length: int = None,
                                      f'&actionDelay={action_delay}'
                                      f'&scriptedOpponent={scripted_opponent}'
                                      f'&mothershipDamageMultiplier={rules.mothership_damage_multiplier}'
-                                     f'&costModifierSize1={rules.cost_modifier_size[0]}'
-                                     f'&costModifierSize2={rules.cost_modifier_size[1]}'
-                                     f'&costModifierSize3={rules.cost_modifier_size[2]}'
-                                     f'&costModifierSize4={rules.cost_modifier_size[3]}'
-                                     f'&costModifierConstructor={rules.cost_modifier_constructor}'
-                                     f'&costModifierStorage={rules.cost_modifier_storage}'
-                                     f'&costModifierShields={rules.cost_modifier_shields}'
-                                     f'&costModifierMissiles={rules.cost_modifier_missiles}'
-                                     f'&costModifierEngines={rules.cost_modifier_engines}'
                                      f'&allowHarvesting={scalabool(allowHarvesting)}'
                                      f'&forceHarvesting={scalabool(forceHarvesting)}'
                                      f'&randomizeIdle={scalabool(randomizeIdle)}' ,
-                                     json=custom_map).json()
+                                     json=json).json()
         else:
             response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()
         return int(response['id'])

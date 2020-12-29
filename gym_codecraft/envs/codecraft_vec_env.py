@@ -8,7 +8,7 @@ import numpy as np
 import codecraft
 from codecraft import Rules, ObsConfig
 
-DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4)
+DEFAULT_OBS_CONFIG = ObsConfig(allies=2, drones=4, minerals=2, tiles=0, global_drones=4, num_builds=0)
 
 def drone_dict(x, y,
                storage_modules=0,
@@ -39,36 +39,15 @@ def random_drone():
 
 
 def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
-    if targets is not None:
-        def rnd(target):
-            if target > 1:
-                return 2 ** np.random.uniform(0.0, np.log2(target))
-            else:
-                return 2 ** np.random.uniform(np.log2(target), 0.0)
-        return Rules(
-            mothership_damage_multiplier=rnd(rnd_msdm),
-            cost_modifier_size=list(map(rnd, targets.cost_modifier_size)),
-            cost_modifier_constructor=rnd(targets.cost_modifier_constructor),
-            cost_modifier_missiles=rnd(targets.cost_modifier_missiles),
-            cost_modifier_shields=rnd(targets.cost_modifier_shields),
-            cost_modifier_engines=rnd(targets.cost_modifier_engines),
-            cost_modifier_storage=rnd(targets.cost_modifier_storage),
-        )
-    else:
-        return Rules(
-            mothership_damage_multiplier=2 ** np.random.uniform(0.0, np.log2(rnd_msdm)),
-            cost_modifier_size=[
-                1.0,
-                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-                1.0 - np.random.uniform(0.0, 0.15 * rnd_cost),
-                1.0 - np.random.uniform(0.0, 0.4 * rnd_cost),
-                ],
-            cost_modifier_constructor=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-            cost_modifier_missiles=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-            cost_modifier_shields=1.0-np.random.uniform(0.0, 0.1 * rnd_cost),
-            cost_modifier_storage=1.0-np.random.uniform(0.0, 0.4 * rnd_cost),
-            cost_modifier_engines=1.0-np.random.uniform(0.0, 0.3 * rnd_cost),
-        )
+    def rnd(target):
+        if target > 1:
+            return 2 ** np.random.uniform(0.0, np.log2(target))
+        else:
+            return 2 ** np.random.uniform(np.log2(target), 0.0)
+    return Rules(
+        mothership_damage_multiplier=rnd(rnd_msdm),
+        cost_modifiers={spec: rnd(modifier) for spec, modifier in targets.cost_modifiers.items()},
+    )
 
 
 def map_arena_tiny(randomize: bool, hardness: int, require_default_mothership: bool):
@@ -612,7 +591,6 @@ class CodeCraftVecEnv(object):
         self.obs_config = obs_config
         self.hardness = hardness
         self.symmetric = symmetric
-        self.builds = []
         self.build_variety_bonus = build_variety_bonus
         self.win_bonus = win_bonus
         self.loss_penalty = loss_penalty
@@ -641,6 +619,7 @@ class CodeCraftVecEnv(object):
             self.scripted_opponents.append('idle')
         self.next_opponent_index = 0
 
+        self.builds = objective.extra_builds()
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny
@@ -655,60 +634,15 @@ class CodeCraftVecEnv(object):
             self.custom_map = map_arena_medium_large_ms
         elif objective == Objective.ARENA:
             self.game_length = 3 * 60 * 60
-            # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
-            self.builds = [
-                [1, 0, 1, 0, 0],
-                [0, 2, 0, 0, 0],
-                [0, 1, 0, 0, 1]
-            ]
             self.custom_map = map_arena
         elif objective == Objective.SMOL_STANDARD:
             self.game_length = 5 * 60 * 60
-            self.builds = [
-                [1, 0, 1, 0, 0],
-                [0, 2, 0, 0, 0],
-                [0, 1, 0, 0, 1],
-                [0, 3, 0, 0, 1],
-                [0, 2, 0, 0, 2],
-                [2, 1, 1, 0, 0],
-                [2, 0, 2, 0, 0],
-                [2, 0, 1, 1, 0],
-                [0, 2, 0, 1, 1],
-                [1, 0, 0, 0, 0],
-            ]
             self.custom_map = map_smol_standard
         elif objective == Objective.STANDARD:
             self.game_length = 5 * 60 * 60
-            self.builds = [
-                [1, 0, 1, 0, 0],
-                [0, 2, 0, 0, 0],
-                [0, 1, 0, 0, 1],
-                [0, 3, 0, 0, 1],
-                [0, 2, 0, 0, 2],
-                [2, 1, 1, 0, 0],
-                [2, 0, 2, 0, 0],
-                [2, 0, 1, 1, 0],
-                [0, 2, 0, 1, 1],
-                [1, 0, 0, 0, 0],
-            ]
             self.custom_map = map_standard
         elif objective == Objective.ENHANCED:
             self.game_length = 5 * 60 * 60
-            self.builds = [
-                # [s, m, c, e, p]
-                [1, 0, 0, 0, 0],  # 1s
-                [1, 0, 1, 0, 0],  # 1s1c
-                [2, 0, 0, 0, 0],  # 2s
-                [0, 2, 0, 0, 0],  # 2m
-                [0, 1, 0, 0, 1],  # 1m1p
-                [0, 4, 0, 0, 0],  # 4m
-                [0, 3, 0, 0, 1],  # 3m1p
-                [0, 2, 0, 0, 2],  # 2m2p
-                [0, 2, 0, 2, 0],  # 2m2e
-                [0, 2, 0, 1, 1],  # 2m1e1p
-                [3, 0, 1, 0, 0],  # 3s1c
-                [2, 0, 1, 1, 0],  # 2s1c1e
-            ]
             self.custom_map = map_enhanced
         elif objective == Objective.MICRO_PRACTICE:
             self.game_length = 20 * 60
@@ -735,7 +669,10 @@ class CodeCraftVecEnv(object):
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
             return random_rules(2 ** self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset)
         else:
-            return Rules()
+            return Rules(
+                mothership_damage_multiplier=self.mothership_damage_scale,
+                cost_modifiers={build: 1.0 for build in self.objective.builds()},
+            )
 
     def reset(self, partitioned_obs_config=None):
         if partitioned_obs_config:
@@ -827,7 +764,7 @@ class CodeCraftVecEnv(object):
                 if action == 2 or action == 5:
                     turn = 1
                 if action == 6:
-                    build = [[0, 1, 0, 0, 0]]
+                    build = [(0, 1, 0, 0, 0)]
                 if action == 7:
                     harvest = True
                 if action >= 8 + len(self.builds) and self.obs_config.lock_build_action:
@@ -840,21 +777,9 @@ class CodeCraftVecEnv(object):
                     if b < len(self.builds):
                         build = [self.builds[b]]
                     else:
-                        build = [[0, 1, 0, 0, 0]]
+                        build = [(0, 1, 0, 0, 0)]
                 if len(build) > 0 and action_masks is not None and action_masks_drone[action] == 1.0:
-                    repr = ''
-                    [storage, missile, constructor, engine, shield] = build[0]
-                    if storage > 0:
-                        repr += f'{storage}s'
-                    if missile > 0:
-                        repr += f'{missile}m'
-                    if constructor > 0:
-                        repr += f'{constructor}c'
-                    if engine > 0:
-                        repr += f'{engine}e'
-                    if shield > 0:
-                        repr += f'{shield}p'
-                    self.performed_builds[i][repr] += 1
+                    self.performed_builds[i][build[0]] += 1
                 player_actions2.append((move, turn, build, harvest, lockBuildAction, unlockBuildAction))
             game_actions.append((game_id, player_id, player_actions2))
 
@@ -1111,14 +1036,52 @@ class Objective(Enum):
             raise Exception(f'Objective.vs not implemented for {self}')
 
     def naction(self):
-        if self == Objective.STANDARD or self == Objective.SMOL_STANDARD:
-            return 18
+        return 8 + len(self.extra_builds())
+
+    def builds(self):
+        b = self.extra_builds()
+        b.append((0, 1, 0, 0, 0))
+        return b
+
+    def extra_builds(self):
+        # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
+        if self == Objective.ARENA:
+            return [
+                (1, 0, 1, 0, 0),
+                (0, 2, 0, 0, 0),
+                (0, 1, 0, 0, 1)
+            ]
+        elif self == Objective.SMOL_STANDARD or self == Objective.STANDARD:
+            return [
+                (1, 0, 1, 0, 0),
+                (0, 2, 0, 0, 0),
+                (0, 1, 0, 0, 1),
+                (0, 3, 0, 0, 1),
+                (0, 2, 0, 0, 2),
+                (2, 1, 1, 0, 0),
+                (2, 0, 2, 0, 0),
+                (2, 0, 1, 1, 0),
+                (0, 2, 0, 1, 1),
+                (1, 0, 0, 0, 0),
+            ]
         elif self == Objective.ENHANCED:
-            return 20
-        elif self == Objective.ARENA:
-            return 11
+            return [
+                # [s, m, c, e, p]
+                (1, 0, 0, 0, 0),  # 1s
+                (1, 0, 1, 0, 0),  # 1s1c
+                (2, 0, 0, 0, 0),  # 2s
+                (0, 2, 0, 0, 0),  # 2m
+                (0, 1, 0, 0, 1),  # 1m1p
+                (0, 4, 0, 0, 0),  # 4m
+                (0, 3, 0, 0, 1),  # 3m1p
+                (0, 2, 0, 0, 2),  # 2m2p
+                (0, 2, 0, 2, 0),  # 2m2e
+                (0, 2, 0, 1, 1),  # 2m1e1p
+                (3, 0, 1, 0, 0),  # 3s1c
+                (2, 0, 1, 1, 0),  # 2s1c1e
+            ]
         else:
-            return 8
+            return []
 
 
 def dist2(x1, y1, x2, y2):

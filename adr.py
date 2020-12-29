@@ -1,6 +1,7 @@
 import math
 from collections import defaultdict
 from gym_codecraft.envs.codecraft_vec_env import Rules
+from typing import List
 
 
 class ADR:
@@ -17,14 +18,7 @@ class ADR:
                  step: int = 0,
                  average_cost_target: float = 0.8):
         if ruleset is None:
-            ruleset = Rules(
-                cost_modifier_size=4 * [average_cost_target],
-                cost_modifier_missiles=average_cost_target,
-                cost_modifier_shields=average_cost_target,
-                cost_modifier_storage=average_cost_target,
-                cost_modifier_constructor=average_cost_target,
-                cost_modifier_engines=average_cost_target,
-            )
+            ruleset = Rules()
         self.ruleset = ruleset
         self.variety = variety
 
@@ -61,75 +55,29 @@ class ADR:
 
         target_fraction = 1.0 / len(self.counts) if len(self.counts) > 0 else 1
         gradient = defaultdict(lambda: 0.0)
-        weight = defaultdict(lambda: 0.0)
         for build, bfraction in normalize(self.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
                 loss = -self.variety * math.log(target_fraction / bfraction)
-
-            for module, mfraction in module_norm(build).items():
-                gradient[module] += mfraction * loss
-                weight[module] += mfraction
-            size_key = f'size{size(build)}'
-            gradient[size_key] += 0.3 * loss
-            weight[size_key] += 1
-        for key in gradient.keys():
-            gradient[key] /= weight[key]
+            gradient[build] += loss
 
         modifier_decay = 1 - self.variety
-        gradient['m'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_missiles)
-        gradient['s'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_storage)
-        gradient['p'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_shields)
-        gradient['c'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_constructor)
-        gradient['e'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_engines)
-        gradient['size1'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[0])
-        gradient['size2'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[1])
-        gradient['size4'] += modifier_decay * math.log(self.target_modifier / self.ruleset.cost_modifier_size[3])
+        for spec, modifier in self.ruleset.cost_modifiers.items():
+            gradient[spec] += modifier_decay * math.log(self.target_modifier / modifier)
 
         size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
-        average_modifier = 0.0
-        for build, bfraction in size_weighted_counts.items():
-            modifier = 0.0
-            for module, mfraction in module_norm(build).items():
-                if module == 'm':
-                    modifier += self.ruleset.cost_modifier_missiles * mfraction
-                if module == 's':
-                    modifier += self.ruleset.cost_modifier_storage * mfraction
-                if module == 'p':
-                    modifier += self.ruleset.cost_modifier_shields * mfraction
-                if module == 'c':
-                    modifier += self.ruleset.cost_modifier_constructor * mfraction
-                if module == 'e':
-                    modifier += self.ruleset.cost_modifier_engines * mfraction
-            size_modifier = self.ruleset.cost_modifier_size[size(build) - 1]
-            average_modifier += modifier * size_modifier * bfraction
+        average_modifier = sum([self.ruleset.cost_modifiers[build] * bfraction
+                                for build, bfraction in size_weighted_counts.items()])
 
         if average_modifier == 0:
-            return
+            return 0
 
         average_cost_grad = 10 * math.log(self.target_modifier / average_modifier)
-        for key, grad in gradient.items():
+        for spec, grad in gradient.items():
             exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))
             multiplier = math.exp(exponent)
-            if key == 'm':
-                self.ruleset.cost_modifier_missiles *= multiplier
-            if key == 's':
-                self.ruleset.cost_modifier_storage *= multiplier
-            if key == 'p':
-                self.ruleset.cost_modifier_shields *= multiplier
-            if key == 'c':
-                self.ruleset.cost_modifier_constructor *= multiplier
-            if key == 'e':
-                self.ruleset.cost_modifier_engines *= multiplier
-            if key == 'size1':
-                self.ruleset.cost_modifier_size[0] *= multiplier
-            if key == 'size2':
-                self.ruleset.cost_modifier_size[1] *= multiplier
-            if key == 'size3':
-                self.ruleset.cost_modifier_size[2] *= multiplier
-            if key == 'size4':
-                self.ruleset.cost_modifier_size[3] *= multiplier
+            self.ruleset.cost_modifiers[spec] *= multiplier
 
         if step > self.hardness_offset:
             if self.linear_hardness:
@@ -143,29 +91,29 @@ class ADR:
 
     def metrics(self):
         return {
-            'adr_missile_cost': self.ruleset.cost_modifier_missiles,
-            'adr_storage_cost': self.ruleset.cost_modifier_storage,
-            'adr_constructor_cost': self.ruleset.cost_modifier_constructor,
-            'adr_engine_cost': self.ruleset.cost_modifier_engines,
-            'adr_shield_cost': self.ruleset.cost_modifier_shields,
-            'adr_size1_cost': self.ruleset.cost_modifier_size[0],
-            'adr_size2_cost': self.ruleset.cost_modifier_size[1],
-            'adr_size4_cost': self.ruleset.cost_modifier_size[3],
+            f'adr_{spec_key(spec)}_cost': cost
+            for spec, cost in self.ruleset.cost_modifiers.items()
         }
 
 
+def spec_key(module_counts: List[int]):
+    key = ''
+    [s, m, c, e, p] = module_counts
+    if s > 0:
+        key += f"{s}s"
+    if m > 0:
+        key += f"{m}m"
+    if c > 0:
+        key += f"{c}c"
+    if e > 0:
+        key += f"{e}e"
+    if p > 0:
+        key += f"{p}p"
+    return key
+
+
 def size(build):
-    modules = 0
-    for module in [build[i:i+2] for i in range(0, len(build), 2)]:
-        modules += int(module[:1])
-    return modules
-
-
-def module_norm(build):
-    weights = defaultdict(lambda: 0.0)
-    for module in [build[i:i+2] for i in range(0, len(build), 2)]:
-        weights[module[1:]] = float(module[:1])
-    return normalize(weights)
+    return sum(build)
 
 
 def normalize(weights):
