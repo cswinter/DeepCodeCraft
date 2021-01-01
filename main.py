@@ -90,7 +90,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
         raise Exception(f'Invalid optimizer name `{hps.optimizer}`')
 
     resume_steps = 0
-    total_steps = resume_steps
     if hps.resume_from == '':
         policy = TransformerPolicy8(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
@@ -117,6 +116,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     else:
         policy, optimizer, resume_steps, adr, lr_scheduler =\
             load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
+    total_steps = resume_steps
 
     if hps.warmup > 0:
         assert False, 'Warmup not implemented'
