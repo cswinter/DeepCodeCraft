@@ -436,7 +436,7 @@ def map_enhanced(randomize: bool, hardness: Union[int, float], require_default_m
     x, y = eligible[np.random.randint(0, len(eligible))]
     map_width = 500 * x
     map_height = 500 * y
-    mineral_count = 2 + np.random.randint(0, math.ceil(math.sqrt(x * y) / 5))
+    mineral_count = 2 + np.random.randint(0, math.ceil(math.sqrt(x * y) / 5) + 2)
     minerals = [(1, np.random.randint(100, 1000)) for _ in range(mineral_count)]
 
     player1, player2 = enhanced_starting_drones(map_height, map_width, randomize and not require_default_mothership)
