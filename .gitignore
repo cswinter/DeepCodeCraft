@@ -3,3 +3,5 @@ __pycache__
 params*.yaml
 wandb
 verify
+plots
+plotspng
