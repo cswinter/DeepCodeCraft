@@ -26,6 +26,7 @@ from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
 from policy_t7 import TransformerPolicy7, InputNorm
 from policy_t8 import TransformerPolicy8, InputNorm
+from policy_t8_no_shared_relpos import TransformerPolicy8NoSharedRelpos
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     resume_steps = 0
     total_steps = resume_steps
     if hps.resume_from == '':
-        policy = TransformerPolicy8(hps, obs_config).to(device)
+        policy = TransformerPolicy8NoSharedRelpos(hps, obs_config).to(device)
         optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
         adr = ADR(
             hstepsize=hps.adr_hstepsize,
@@ -772,6 +773,8 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         policy = TransformerPolicy7(**kwargs)
     elif version == 'transformer_v8':
         policy = TransformerPolicy8(**kwargs)
+    elif version == 'transformer_v8_no_shared_relpos':
+        policy = TransformerPolicy8NoSharedRelpos(**kwargs)
     else:
         raise Exception(f"Unknown policy version {version}")
 
