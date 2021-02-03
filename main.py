@@ -211,7 +211,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        loss_penalty=hps.loss_penalty,
                                        partial_score=hps.partial_score)
             env.rng_ruleset = adr.ruleset
-            env.hardness = adr.hardness
+            #env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()
 
         if total_steps >= next_eval and not hps.verify:
@@ -252,8 +252,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
         if not hps.verify:
             if hps.adr:
                 env.rng_ruleset = adr.ruleset
-            if hps.adr or hps.linear_hardness:
-                env.hardness = adr.hardness
+            #if hps.adr or hps.linear_hardness:
+            #    env.hardness = adr.hardness
             if hps.symmetry_increase > 0:
                 env.symmetric = min(total_steps * hps.symmetry_increase, 1.0)
             with torch.no_grad():
@@ -458,7 +458,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'rewmean': rewmean,
                 'rewstd': rewstd,
                 'average_cost_modifier': average_cost_modifier,
-                'hardness': adr.hardness,
+                'hardness': hps.task_hardness,
                 'lr': hps.lr if lr_scheduler is None else float(lr_scheduler.get_last_lr()[0]),
                 'entropy_bonus': hps.entropy_bonus,
                 'mothership_damage_scale': env.mothership_damage_scale,

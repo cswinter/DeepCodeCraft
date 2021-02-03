@@ -119,7 +119,7 @@ class HyperParams:
         self.objective = envs.Objective.ARENA_TINY_2V2
         self.action_delay = 0
         self.use_action_masks = True
-        self.task_hardness = 0.0
+        self.task_hardness = 5
         self.max_game_length = 0       # Max length of games, or default game length for map if 0.
         self.max_hardness = 150        # Maxiumum map area
         self.hardness_offset = 1e6     # Number of timesteps steps after which hardness starts to increase
