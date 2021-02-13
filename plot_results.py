@@ -146,19 +146,23 @@ plot2dt('i17gv7pw', 'sidk0gu4')
 
 baseline = Experiment(descriptor="f2034f-hpsetstandard", label="baseline")
 adr_ablations = [
-    #Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "module cost, mothership damage, map randomization"),  # TODO: rerun, only 6/8 runs completed
+    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage"),
+    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, module cost"),
     Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard", "mothership damage, map curriculum"),
     Experiment("f2034f-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, map curriculum"),
     Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "map curriculum"),
     Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "map randomization"),
     Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "module cost, map randomization"),
     Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage"),
+
+    Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "fixed map"),
 ]
 ablations = [
     Experiment("f2034f-hpsetstandard-partial_score0.0", "sparse reward"),
     Experiment("f2034f-hpsetstandard-use_privilegedFalse",  "vf hidden information"),
     Experiment("f2034f-d_agent128-d_item64-hpsetstandard", "smaller network"),
     Experiment("f2034f-batches_per_update64-bs256-hpsetstandard-rotational_invarianceFalse", "no rotational invariance"),
+    Experiment("7a9d92-hpsetstandard", "no shared spatial embeddings"),
     *adr_ablations,
 ]
 eval_metrics = {
