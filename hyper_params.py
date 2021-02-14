@@ -136,6 +136,8 @@ class HyperParams:
         self.mothership_damage_scale_schedule = 'lin 50e6:1.0,150e6:0.0'
         self.adr_average_cost_target = 1.0  # Target value for average module cost
         self.adr_avg_cost_schedule = ''
+        self.adr_cost_variance = 0.5
+        self.adr_cost_variance_schedule = 'lin 0:0.5,140e6:0.1'
 
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
@@ -235,6 +237,7 @@ class HyperParams:
     @staticmethod
     def enhanced():
         hps = HyperParams.standard()
+        hps.max_hardness = 200
         hps.objective = envs.Objective.ENHANCED
         return hps
 
@@ -250,6 +253,7 @@ class HyperParams:
     @staticmethod
     def enhanced_2dataparallel():
         hps = HyperParams.standard_2dataparallel()
+        hps.max_hardness = 200
         hps.objective = envs.Objective.ENHANCED
         return hps
 

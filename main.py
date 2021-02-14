@@ -152,6 +152,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale, hps.steps)
     gamma_schedule = parse_schedule(hps.gamma_schedule, hps.gamma, hps.steps)
     adr_avg_cost_schedule = parse_schedule(hps.adr_avg_cost_schedule, hps.adr_average_cost_target, hps.steps)
+    adr_cost_variance_schedule = parse_schedule(hps.adr_cost_variance_schedule, hps.adr_cost_variance, hps.steps)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -172,6 +173,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         hps.entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
         if env is not None:
             env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(total_steps)
+            env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
         if len(variety_schedule) > 0:
             w = (total_steps - variety_schedule_last_step) / (variety_schedule[-1][0] - variety_schedule_last_value)
             adr.variety = variety_schedule_last_value * (1 - w) + variety_schedule[-1][1] * w
@@ -462,6 +464,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'mothership_damage_scale': env.mothership_damage_scale,
                 'gamma': gamma_schedule.value_at(total_steps),
                 'iteration': iteration,
+                'adr_cost_variance': env.adr_cost_variance,
             }
             for action, count in buildmean.items():
                 metrics[f'build_{spec_key(action)}'] = count
@@ -551,7 +554,7 @@ def eval(policy,
         elif objective == envs.Objective.ENHANCED:
             opponents = {}
             scripted_opponents = ['destroyer', 'aggressive_replicator']
-            hardness = 100
+            hardness = 150
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},

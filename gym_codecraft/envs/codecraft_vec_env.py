@@ -38,7 +38,7 @@ def random_drone():
     return drone
 
 
-def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
+def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules, adr_cost_variance: float) -> Rules:
     def rnd(target):
         if target > 1:
             return 2 ** np.random.uniform(0.0, np.log2(target))
@@ -46,7 +46,7 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
             return 2 ** np.random.uniform(np.log2(target), 0.0)
     return Rules(
         mothership_damage_multiplier=rnd(rnd_msdm),
-        cost_modifiers={spec: rnd(modifier) for spec, modifier in targets.cost_modifiers.items()},
+        cost_modifiers={spec: 2 ** (modifier + np.random.normal(0.0, adr_cost_variance)) for spec, modifier in targets.cost_modifiers.items()},
     )
 
 
@@ -278,50 +278,36 @@ def standard_starting_drones(map_height, map_width, randomize):
 def enhanced_starting_drones(map_height, map_width, randomize):
     drones = []
     starting_resources = np.random.randint(0, 8) if randomize else 7
-    if randomize and np.random.uniform(0, 1) < 0.3:
-        for i in range(2):
-            if i == 0:
-                mstype = np.random.randint(0, 4)
-            else:
-                mstype = np.random.randint(0, 6)
-            if mstype == 0:
-                drones.append(dict(
-                    constructors=1,
-                    storage_modules=2,
-                    shield_generators=1,
-                    resources=2 * starting_resources
-                ))
-            elif mstype == 1:
-                drones.append(dict(
-                    constructors=1,
-                    storage_modules=2,
-                    engines=1,
-                    resources=2 * starting_resources
-                ))
-            elif mstype == 2:
-                drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-            elif mstype == 3:
-                drones.append(
-                    dict(constructors=2,
-                        storage_modules=2,
-                        missile_batteries=3,
-                        shield_generators=1,
-                        engines=2,
-                        resources=2 * starting_resources)
-                )
-            elif mstype == 4:
-                drones.append(dict(storage_modules=1, resources=starting_resources))
-            elif mstype == 5:
-                drones.append(dict(storage_modules=2, resources=2 * starting_resources))
-    else:
-        drones.append(
-            dict(constructors=2,
-                 storage_modules=2,
-                 missile_batteries=3,
-                 shield_generators=1,
-                 engines=2,
-                 resources=2 * starting_resources)
-        )
+    drones.append(
+        dict(constructors=2,
+                storage_modules=2,
+                missile_batteries=3,
+                shield_generators=1,
+                engines=2,
+                resources=2 * starting_resources)
+    )
+    if randomize and np.random.uniform(0, 1) < 0.5:
+        mstype = np.random.randint(0, 7)
+        if mstype == 0:
+            drones.append(dict(
+                constructors=1,
+                storage_modules=2,
+                engines=1,
+                resources=2 * starting_resources
+            ))
+        elif mstype == 1:
+            drones.append(dict(
+                constructors=1,
+                storage_modules=2,
+                shield_generators=1,
+                resources=2 * starting_resources
+            ))
+        elif mstype == 2:
+            drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
+        elif mstype == 3 or mstype == 4:
+            drones.append(dict(storage_modules=1, resources=starting_resources))
+        elif mstype == 5 or mstype == 6:
+            drones.append(dict(storage_modules=2, resources=2 * starting_resources))
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
@@ -625,6 +611,7 @@ class CodeCraftVecEnv(object):
         self.force_harvesting = False
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
         self.mothership_damage_scale = mothership_damage_scale
+        self.adr_cost_variance = 0.0
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -685,7 +672,7 @@ class CodeCraftVecEnv(object):
 
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
-            return random_rules(2 ** self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset)
+            return random_rules(2 ** self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset, self.adr_cost_variance)
         else:
             return Rules(
                 mothership_damage_multiplier=self.mothership_damage_scale,
