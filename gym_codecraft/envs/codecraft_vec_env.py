@@ -281,13 +281,14 @@ def enhanced_starting_drones(map_height, map_width, randomize):
     if randomize and np.random.uniform(0, 1) < 0.3:
         for i in range(2):
             if i == 0:
-                mstype = np.random.randint(0, 3)
+                mstype = np.random.randint(0, 4)
             else:
-                mstype = np.random.randint(0, 5)
+                mstype = np.random.randint(0, 6)
             if mstype == 0:
                 drones.append(dict(
                     constructors=1,
-                    storage_modules=3,
+                    storage_modules=2,
+                    shield_generators=1,
                     resources=2 * starting_resources
                 ))
             elif mstype == 1:
@@ -300,28 +301,45 @@ def enhanced_starting_drones(map_height, map_width, randomize):
             elif mstype == 2:
                 drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
             elif mstype == 3:
-                drones.append(dict(storage_modules=1, resources=starting_resources))
+                drones.append(
+                    dict(constructors=2,
+                        storage_modules=2,
+                        missile_batteries=3,
+                        shield_generators=1,
+                        engines=2,
+                        resources=2 * starting_resources)
+                )
             elif mstype == 4:
-                drones.append(dict(storage_modules=2, resources=starting_resources))
+                drones.append(dict(storage_modules=1, resources=starting_resources))
+            elif mstype == 5:
+                drones.append(dict(storage_modules=2, resources=2 * starting_resources))
     else:
         drones.append(
             dict(constructors=2,
-                 storage_modules=4,
+                 storage_modules=2,
                  missile_batteries=3,
                  shield_generators=1,
-                 resources=10)
+                 engines=2,
+                 resources=2 * starting_resources)
         )
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
     spawn_y = (map_height // 2 - 100) * np.cos(angle)
     dcount = len(drones)
-    spawn_offsets = [(
-        40 * np.sin(2 * math.pi * i / dcount),
-        40 * np.cos(2 * math.pi * i / dcount),
-    ) for i in range(dcount)]
-    player1 = [drone_dict(spawn_x + x, spawn_y + y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
-    player2 = [drone_dict(-spawn_x - x, -spawn_y - y, **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    if dcount == 1:
+        spawn_offsets = [(0.0, 0.0)]
+    else:
+        spawn_offsets = [(
+            (np.random.uniform(5, 30) ** 2) * np.sin(2 * math.pi * i / dcount),
+            (np.random.uniform(5, 30) ** 2) * np.cos(2 * math.pi * i / dcount),
+        ) for i in range(dcount)]
+    def clip_x(x):
+        return min(max(x, -map_width // 2), map_width // 2)
+    def clip_y(y):
+        return min(max(y, -map_height // 2), map_height // 2)
+    player1 = [drone_dict(clip_x(spawn_x + x), clip_y(spawn_y + y), **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
+    player2 = [drone_dict(clip_x(-spawn_x - x), clip_y(-spawn_y - y), **ms) for ms, (x, y) in zip(drones, spawn_offsets)]
     return player1, player2
 
 def map_smol_standard(randomize: bool, hardness: int, require_default_mothership: bool):
@@ -1077,7 +1095,7 @@ class Objective(Enum):
                 (0, 2, 0, 0, 2),  # 2m2p
                 (0, 2, 0, 2, 0),  # 2m2e
                 (0, 2, 0, 1, 1),  # 2m1e1p
-                (3, 0, 1, 0, 0),  # 3s1c
+                (3, 0, 0, 0, 1),  # 2s1c1p
                 (2, 0, 1, 1, 0),  # 2s1c1e
             ]
         else:
