@@ -7,7 +7,7 @@ from typing import List
 class ADR:
     def __init__(self,
                  hstepsize,
-                 stepsize=0.02,
+                 stepsize=0.002,
                  warmup=10,
                  initial_hardness=0.0,
                  ruleset: Rules = None,

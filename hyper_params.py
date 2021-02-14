@@ -210,9 +210,12 @@ class HyperParams:
         hps.gamma = 0.999
         hps.entropy_bonus = 0.2
         hps.entropy_bonus_schedule = 'lin 15e6:0.1,60e6:0.0'
-        hps.mothership_damage_scale = 4.0
-        hps.mothership_damage_scale_schedule = 'lin 50e6:0.0'
+        hps.mothership_damage_scale = 0.0
+        hps.mothership_damage_scale_schedule = ''
         hps.adr_hstepsize = 3.0e-6
+        hps.adr_variety = 0.4
+        hps.adr_variety_schedule = '60e6:0.3,120e6:0.2,140e6:0.1'
+
 
         hps.batches_per_update = 32
         hps.bs = 512
@@ -243,6 +246,13 @@ class HyperParams:
         hps.num_envs //= 2
         hps.num_self_play //= 2
         return hps
+
+    @staticmethod
+    def enhanced_2dataparallel():
+        hps = HyperParams.standard_2dataparallel()
+        hps.objective = envs.Objective.ENHANCED
+        return hps
+
 
     @staticmethod
     def standard_dataparallel():
