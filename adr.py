@@ -47,7 +47,7 @@ class ADR:
         else:
             return 600
 
-    def adjust(self, counts, elimination_rate, eplenmean, step) -> float:
+    def adjust(self, counts, average_modifier, elimination_rate, eplenmean, step) -> float:
         self.step += 1
         stepsize = self.stepsize * min(1.0, self.step / self.warmup)
         for build, bfraction in counts.items():
@@ -65,10 +65,6 @@ class ADR:
         modifier_decay = 1 - self.variety
         for spec, modifier in self.ruleset.cost_modifiers.items():
             gradient[spec] += modifier_decay * math.log(self.target_modifier / modifier)
-
-        size_weighted_counts = normalize({build: count * size(build) for build, count in self.counts.items()})
-        average_modifier = sum([self.ruleset.cost_modifiers[build] * bfraction
-                                for build, bfraction in size_weighted_counts.items()])
 
         if average_modifier == 0:
             return 0

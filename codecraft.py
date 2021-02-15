@@ -106,7 +106,7 @@ class ObsConfig:
 @dataclass
 class Rules:
     mothership_damage_multiplier: float
-    cost_modifiers: Dict[(Tuple[int, int, int, int, int], float)]
+    cost_modifiers: Dict[Tuple[int, int, int, int, int], float]
 
 
 def create_game(game_length: int = None,

@@ -46,7 +46,7 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules, adr_cost_vari
             return 2 ** np.random.uniform(np.log2(target), 0.0)
     return Rules(
         mothership_damage_multiplier=rnd(rnd_msdm),
-        cost_modifiers={spec: 2 ** (modifier + np.random.normal(0.0, adr_cost_variance)) for spec, modifier in targets.cost_modifiers.items()},
+        cost_modifiers={spec: 2.0 ** (np.log2(modifier) + np.random.normal(0.0, adr_cost_variance)) for spec, modifier in targets.cost_modifiers.items()},
     )
 
 
@@ -669,6 +669,7 @@ class CodeCraftVecEnv(object):
         self.eprew = []
         self.score = []
         self.performed_builds = []
+        self.rulesets = []
 
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
@@ -697,18 +698,20 @@ class CodeCraftVecEnv(object):
         self.eplen = []
         self.score = []
         self.performed_builds = []
+        self.rulesets = []
         for i in range(self.num_envs - self.num_self_play):
             # spread out initial game lengths to stagger start times
             self_play = i < self.num_self_play
             game_length = int(self.game_length * (i + 1 - self.stagger_offset) // (self.num_envs - self.num_self_play)) if self.stagger else self.game_length
             opponent = 'none' if self_play else self.next_opponent()
+            ruleset = self.rules()
             game_id = codecraft.create_game(
                 game_length,
                 self.action_delay,
                 self_play,
                 self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
                 opponent,
-                self.rules(),
+                ruleset,
                 self.allow_harvesting,
                 self.force_harvesting,
                 self.randomize_idle)
@@ -719,12 +722,14 @@ class CodeCraftVecEnv(object):
             self.eprew.append(0)
             self.score.append(None)
             self.performed_builds.append(defaultdict(lambda: 0))
+            self.rulesets.append(ruleset)
             if self_play:
                 self.games.append((game_id, 1, opponent))
                 self.eplen.append(1)
                 self.eprew.append(0)
                 self.score.append(None)
                 self.performed_builds.append(defaultdict(lambda: 0))
+                self.rulesets.append(ruleset)
 
         if partitioned_obs_config:
             for envs, obs_config in partitioned_obs_config:
@@ -891,9 +896,11 @@ class CodeCraftVecEnv(object):
 
             if winner > 0:
                 (game_id, pid, opponent_was) = games[i]
+                previous_ruleset = self.rulesets[game]
                 if pid == 0:
                     self_play = game // 2 < self.num_self_play
                     opponent = 'none' if self_play else self.next_opponent()
+                    ruleset = self.rules()
                     if self.mp_game_count < self.game_count * self.mix_mp:
                         m = map_mp(self.randomize, self.hardness)
                         m['symmetric'] = np.random.rand() <= self.symmetric
@@ -902,7 +909,7 @@ class CodeCraftVecEnv(object):
                                                         self_play,
                                                         m,
                                                         opponent,
-                                                        self.rules(),
+                                                        ruleset,
                                                         self.allow_harvesting,
                                                         self.force_harvesting,
                                                         self.randomize_idle)
@@ -913,13 +920,14 @@ class CodeCraftVecEnv(object):
                                                         self_play,
                                                         self.next_map(require_default_mothership=opponent not in ['none', 'idle']),
                                                         opponent,
-                                                        self.rules(),
+                                                        ruleset,
                                                         self.allow_harvesting,
                                                         self.force_harvesting,
                                                         self.randomize_idle)
                     self.game_count += 1
                 else:
                     game_id, _, opponent = self.games[game - 1]
+                    ruleset = self.rulesets[game - 1]
                 # print(f"COMPLETED {i} {game} {games[i]} == {self.games[game]} new={game_id}")
                 self.games[game] = (game_id, pid, opponent)
                 observation = codecraft.observe(game_id, pid)
@@ -938,11 +946,13 @@ class CodeCraftVecEnv(object):
                     'builds': self.performed_builds[game],
                     'outcome': outcome,
                     'opponent': opponent_was,
+                    'ruleset': previous_ruleset,
                 }})
                 self.eplen[game] = 1
                 self.eprew[game] = 0
                 self.score[game] = None
                 self.performed_builds[game] = defaultdict(lambda: 0)
+                self.rulesets[game] = ruleset
             else:
                 self.eplen[game] += 1
                 dones.append(0.0)

@@ -258,6 +258,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
             if hps.symmetry_increase > 0:
                 env.symmetric = min(total_steps * hps.symmetry_increase, 1.0)
             with torch.no_grad():
+                cost_sum = 0.0
+                cost_weight = 0.0
                 # Rollout
                 for step in range(hps.seq_rosteps):
                     obs_tensor = torch.tensor(obs).to(device)
@@ -298,52 +300,55 @@ def train(hps: HyperParams, out_dir: str) -> None:
                             count = builds[build]
                             buildmean[build] = buildmean[build] * ema + (1 - ema) * count
                             buildtotal[build] += count
+                            cost = info['episode']['ruleset'].cost_modifiers[build]
+                            cost_sum += cost * sum(build) * count
+                            cost_weight += sum(build) * count
                         completed_episodes += 1
+                average_cost_modifier = cost_sum / cost_weight if cost_weight > 0 else 1.0
+                elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
+                adr.adjust(buildtotal, average_cost_modifier, elimination_rate, eplenmean, total_steps)
 
-            elimination_rate = np.array(eliminations).mean() if len(eliminations) > 0 else None
-            average_cost_modifier = adr.adjust(buildtotal, elimination_rate, eplenmean, total_steps)
+                obs_tensor = torch.tensor(obs).to(device)
+                action_masks_tensor = torch.tensor(action_masks).to(device)
+                privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+                _, _, _, final_values, final_probs =\
+                    policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
 
-            obs_tensor = torch.tensor(obs).to(device)
-            action_masks_tensor = torch.tensor(action_masks).to(device)
-            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-            _, _, _, final_values, final_probs =\
-                policy.evaluate(obs_tensor, action_masks_tensor, privileged_obs_tensor)
+                all_rewards = np.array(all_rewards) * hps.rewscale
+                w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
+                rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+                rewstd = all_rewards.std() * (1 - w) + rewstd * w
+                if hps.rewnorm:
+                    all_rewards = all_rewards / rewstd - rewmean
 
-            all_rewards = np.array(all_rewards) * hps.rewscale
-            w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
-            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
-            rewstd = all_rewards.std() * (1 - w) + rewstd * w
-            if hps.rewnorm:
-                all_rewards = all_rewards / rewstd - rewmean
+                all_returns = np.zeros(len(all_rewards), dtype=np.float32)
+                all_values = np.array(all_values)
+                last_gae = np.zeros(hps.num_envs)
+                gamma = gamma_schedule.value_at(total_steps)
+                for t in reversed(range(hps.seq_rosteps)):
+                    for i in range(hps.num_envs):
+                        ti = t * hps.num_envs + i
+                        tnext_i = (t + 1) * hps.num_envs + i
+                        nextnonterminal = 1.0 - all_dones[ti]
+                        if t == hps.seq_rosteps - 1:
+                            next_value = final_values[i]
+                        else:
+                            next_value = all_values[tnext_i]
+                        td_error = all_rewards[ti] + gamma * next_value * nextnonterminal - all_values[ti]
+                        last_gae[i] = td_error + gamma * hps.lamb * last_gae[i] * nextnonterminal
+                        all_returns[ti] = last_gae[i] + all_values[ti]
 
-            all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-            all_values = np.array(all_values)
-            last_gae = np.zeros(hps.num_envs)
-            gamma = gamma_schedule.value_at(total_steps)
-            for t in reversed(range(hps.seq_rosteps)):
-                for i in range(hps.num_envs):
-                    ti = t * hps.num_envs + i
-                    tnext_i = (t + 1) * hps.num_envs + i
-                    nextnonterminal = 1.0 - all_dones[ti]
-                    if t == hps.seq_rosteps - 1:
-                        next_value = final_values[i]
-                    else:
-                        next_value = all_values[tnext_i]
-                    td_error = all_rewards[ti] + gamma * next_value * nextnonterminal - all_values[ti]
-                    last_gae[i] = td_error + gamma * hps.lamb * last_gae[i] * nextnonterminal
-                    all_returns[ti] = last_gae[i] + all_values[ti]
+                advantages = all_returns - all_values
+                if hps.norm_advs:
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                explained_var = explained_variance(all_values, all_returns)
 
-            advantages = all_returns - all_values
-            if hps.norm_advs:
-                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-            explained_var = explained_variance(all_values, all_returns)
-
-            all_actions = np.array(all_actions)
-            all_logprobs = np.array(all_logprobs)
-            all_obs = np.array(all_obs)
-            all_privileged_obs = np.array(all_privileged_obs)
-            all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
-            all_probs = np.array(all_probs)
+                all_actions = np.array(all_actions)
+                all_logprobs = np.array(all_logprobs)
+                all_obs = np.array(all_obs)
+                all_privileged_obs = np.array(all_privileged_obs)
+                all_action_masks = np.array(all_action_masks)[:, :hps.agents, :]
+                all_probs = np.array(all_probs)
 
         if hps.verify_create_golden and total_steps == 0:
             write_samples_to_disk(
@@ -552,8 +557,10 @@ def eval(policy,
             scripted_opponents = ['destroyer', 'replicator']
             hardness = 5
         elif objective == envs.Objective.ENHANCED:
-            opponents = {}
-            scripted_opponents = ['destroyer', 'aggressive_replicator']
+            opponents = {
+                'drawn-firebrand-125': {'model_file': 'enhanced/drawn-firebrand-125m.pt'},
+            }
+            scripted_opponents = ['aggressive_replicator']
             hardness = 150
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {

@@ -33,7 +33,7 @@ class HyperParams:
         self.nhead = 8
         self.item_item_attn_layers = 0
         self.dropout = 0.0             # Try 0.1?
-        self.nearby_map = True         # Construct map of nearby objects populated with scatter connections
+        self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
         self.nm_ring_width = 60        # Width of circles on nearby map
         self.nm_nrays = 8              # Number of rays on nearby map
         self.nm_nrings = 8             # Number of rings on nearby map
@@ -137,7 +137,7 @@ class HyperParams:
         self.adr_average_cost_target = 1.0  # Target value for average module cost
         self.adr_avg_cost_schedule = ''
         self.adr_cost_variance = 0.5
-        self.adr_cost_variance_schedule = 'lin 0:0.5,140e6:0.1'
+        self.adr_cost_variance_schedule = 'lin 0:1.0,140e6:0.1'
 
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
@@ -211,12 +211,12 @@ class HyperParams:
         hps.adr = True
         hps.gamma = 0.999
         hps.entropy_bonus = 0.2
-        hps.entropy_bonus_schedule = 'lin 15e6:0.1,60e6:0.0'
+        hps.entropy_bonus_schedule = 'lin 15e6:0.1,90e6:0.0'
         hps.mothership_damage_scale = 0.0
         hps.mothership_damage_scale_schedule = ''
-        hps.adr_hstepsize = 3.0e-6
-        hps.adr_variety = 0.4
-        hps.adr_variety_schedule = '60e6:0.3,120e6:0.2,140e6:0.1'
+        hps.adr_hstepsize = 4.0e-6
+        hps.adr_variety = 0.3
+        hps.adr_variety_schedule = '60e6:0.2,120e6:0.1,140e6:0.01'
 
 
         hps.batches_per_update = 32
