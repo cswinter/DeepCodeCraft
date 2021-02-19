@@ -576,7 +576,7 @@ class CodeCraftVecEnv(object):
                  rule_cost_rng=0.0,
                  max_game_length=None,
                  stagger_offset: float = 0.0,
-                 mothership_damage_scale: float = 3.0,
+                 mothership_damage_scale: float = 0.0,
                  loss_penalty: float = 0.0,
                  partial_score: float = 1.0):
         assert(num_envs >= 2 * num_self_play)
@@ -676,7 +676,7 @@ class CodeCraftVecEnv(object):
             return random_rules(2 ** self.mothership_damage_scale, self.rule_cost_rng, self.rng_ruleset, self.adr_cost_variance)
         else:
             return Rules(
-                mothership_damage_multiplier=self.mothership_damage_scale,
+                mothership_damage_multiplier=2 ** self.mothership_damage_scale,
                 cost_modifiers={build: 1.0 for build in self.objective.builds()},
             )
 

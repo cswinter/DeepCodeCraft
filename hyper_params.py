@@ -185,16 +185,16 @@ class HyperParams:
 
         hps.steps = 150e6
 
-        hps.agents = 15
-        hps.nenemy = 15
-        hps.nally = 15
+        hps.agents = 20
+        hps.nenemy = 20
+        hps.nally = 20
         hps.nmineral = 5
         hps.ntile = 5
 
         hps.obs_minerals = 5
-        hps.obs_allies = 15
+        hps.obs_allies = 20
         hps.obs_map_tiles = 5
-        hps.obs_enemies = 15
+        hps.obs_enemies = 20
         hps.feat_last_seen = True
         hps.feat_mineral_claims = True
         hps.harvest_action = True
@@ -214,9 +214,9 @@ class HyperParams:
         hps.entropy_bonus_schedule = 'lin 15e6:0.1,90e6:0.0'
         hps.mothership_damage_scale = 0.0
         hps.mothership_damage_scale_schedule = ''
-        hps.adr_hstepsize = 4.0e-6
+        hps.adr_hstepsize = 3.0e-6
         hps.adr_variety = 0.3
-        hps.adr_variety_schedule = '60e6:0.2,120e6:0.1,140e6:0.01'
+        hps.adr_variety_schedule = 'lin 120e6:0.15,140e6:0.1,150e6:0.01'
 
 
         hps.batches_per_update = 32
@@ -520,9 +520,6 @@ class HyperParams:
 
     def get_batches_per_update_schedule(self):
         return parse_int_schedule(self.batches_per_update_schedule)
-
-    def get_variety_schedule(self) -> List[Tuple[float, float]]:
-        return parse_float_schedule(self.adr_variety_schedule)
 
     def args_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser()
