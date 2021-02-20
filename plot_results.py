@@ -4,10 +4,16 @@ import math
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Union
 from functools import lru_cache
 from dataclasses import dataclass
 
+EVAL_METRICS = {
+    "Replicator": "eval_mean_score_vs_replicator",
+    "Destroyer": "eval_mean_score_vs_destroyer",
+    "Curious Galaxy 40M": "eval_mean_score_vs_curious-galaxy-40",
+    "Graceful Frog 100M": "eval_mean_score_vs_graceful-frog-100",
+}
 
 @dataclass
 class Experiment:
@@ -15,7 +21,11 @@ class Experiment:
     label: str
 
 @lru_cache(maxsize=None)
-def fetch_run_data(descriptor: str, metric: str) -> List[Tuple[np.array, np.array]]:
+def fetch_run_data(descriptor: str, metrics: Union[List[str], str]) -> List[Tuple[np.array, np.array]]:
+    if isinstance(metrics, str):
+        metrics = [metrics]
+    else:
+        metrics = list(metrics)
     api = wandb.Api()
     runs = api.runs("cswinter/deep-codecraft-ablations", {"config.descriptor": descriptor})
     
@@ -23,28 +33,29 @@ def fetch_run_data(descriptor: str, metric: str) -> List[Tuple[np.array, np.arra
     for run in runs:
         step = []
         value = []
-        vals = run.history(keys=[metric], samples=100, pandas=False)
+        vals = run.history(keys=metrics, samples=100, pandas=False)
         for entry in vals:
-            if metric in entry:
+            if metrics[0] in entry:
                 step.append(entry['_step'] * 1e-6)
-                value.append(entry[metric])
+                meanvalue = np.array([entry[metric] for metric in metrics]).mean()
+                value.append(meanvalue)
         curves.append((np.array(step), np.array(value)))
     return curves
 
 def final_score(descriptor: str) -> Tuple[float, float]:
-    runs = fetch_run_data(descriptor, 'eval_mean_score')
+    runs = fetch_run_data(descriptor, tuple(EVAL_METRICS.values()))
     runs = [run for run in runs if len(run[0]) == 26]
     if len(runs) < 8:
         print(f"Only {len(runs)} for {descriptor}")
     values = np.array([[run[1][i] for run in runs] for i in range(len(runs[0][0]))])
     return values.mean(axis=1)[-1], (values.std(axis=1, ddof=1)/math.sqrt(len(runs)))[-1]
 
-def errplot3(ax, xps: List[Experiment], metric: str, title: str):
+def errplot3(ax, xps: List[Experiment], metrics: Union[List[str], str], title: str):
     colors = ['tab:blue', 'tab:orange']
     markers = ['x', '+']
   
     for i, xp in enumerate(xps):
-        curves = fetch_run_data(xp.descriptor, metric)
+        curves = fetch_run_data(xp.descriptor, metrics)
         curves = [curve for curve in curves if len(curve[0]) == 26]
 
         samples = curves[0][0]
@@ -116,9 +127,9 @@ def plot2dt(runid1: str, runid2: str):
     plt.show()
 
 
-def plot(xps: List[Experiment], metric: str, name: str):
+def plot(xps: List[Experiment], metrics: List[str], name: str):
     fig, ax = plt.subplots(figsize=(12, 9))
-    errplot3(ax, xps, metric, name)
+    errplot3(ax, xps, metrics, name)
     fig.savefig(f"plots/{name}.svg")
     fig.savefig(f"plotspng/{name}.png")
     plt.show()
@@ -146,15 +157,17 @@ plot2dt('i17gv7pw', 'sidk0gu4')
 
 baseline = Experiment(descriptor="f2034f-hpsetstandard", label="baseline")
 adr_ablations = [
-    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage"),
-    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, module cost"),
-    Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard", "mothership damage, map curriculum"),
     Experiment("f2034f-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, map curriculum"),
+    Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard", "mothership damage, map curriculum"),
     Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "map curriculum"),
-    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "map randomization"),
-    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "module cost, map randomization"),
-    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage"),
 
+    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, module cost, map randomization"),
+    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "module cost, map randomization"),
+    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, map randomization"),
+    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "map randomization"),
+
+    Experiment("049430-batches_per_update64-bs256-hpsetstandard", "mothership damage, module cost, fixed map"),
+    Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard", "mothership damage, fixed map"),
     Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "fixed map"),
 ]
 ablations = [
@@ -165,12 +178,6 @@ ablations = [
     Experiment("7a9d92-hpsetstandard", "no shared spatial embeddings"),
     *adr_ablations,
 ]
-eval_metrics = {
-    "Replicator": "eval_mean_score_vs_replicator",
-    "Destroyer": "eval_mean_score_vs_destroyer",
-    "Curious Galaxy 40M": "eval_mean_score_vs_curious-galaxy-40",
-    "Graceful Frog 100M": "eval_mean_score_vs_graceful-frog-100",
-}
 
 
 for xp in [baseline] + adr_ablations:
@@ -178,13 +185,13 @@ for xp in [baseline] + adr_ablations:
     score_mean, score_sem = final_score(xp.descriptor)
     print(f"{label} {score_mean} {score_sem}")
 
-plot([baseline], "eval_mean_score", "baseline")
-plot4([baseline], eval_metrics, "breakdown")
-plot4([baseline, ablations[3]], eval_metrics, "breakdown cost adr")
+plot([baseline], tuple(EVAL_METRICS.values()), "baseline")
+plot4([baseline], EVAL_METRICS, "breakdown")
+plot4([baseline, ablations[3]], EVAL_METRICS, "breakdown cost adr")
 
 
 for xp in ablations:
     print(f"plotting {xp.label}")
-    plot([baseline, xp], "eval_mean_score", xp.label)
-    plot4([baseline, xp], eval_metrics, f"breakdown {xp.label}")
+    plot([baseline, xp], tuple(EVAL_METRICS.values()), xp.label)
+    plot4([baseline, xp], EVAL_METRICS, f"breakdown {xp.label}")
 
