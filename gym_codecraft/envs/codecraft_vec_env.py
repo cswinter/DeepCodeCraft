@@ -578,7 +578,8 @@ class CodeCraftVecEnv(object):
                  stagger_offset: float = 0.0,
                  mothership_damage_scale: float = 0.0,
                  loss_penalty: float = 0.0,
-                 partial_score: float = 1.0):
+                 partial_score: float = 1.0,
+                 enforce_unit_cap: bool = False):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -612,6 +613,7 @@ class CodeCraftVecEnv(object):
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
         self.mothership_damage_scale = mothership_damage_scale
         self.adr_cost_variance = 0.0
+        self.enforce_unit_cap = enforce_unit_cap
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -647,7 +649,7 @@ class CodeCraftVecEnv(object):
             self.game_length = 5 * 60 * 60
             self.custom_map = map_standard
         elif objective == Objective.ENHANCED:
-            self.game_length = 5 * 60 * 60
+            self.game_length = 3 * 60 * 60
             self.custom_map = map_enhanced
         elif objective == Objective.MICRO_PRACTICE:
             self.game_length = 20 * 60
@@ -818,7 +820,8 @@ class CodeCraftVecEnv(object):
                                           is_visible=obs_config.feat_is_visible,
                                           abstime=obs_config.feat_abstime,
                                           rule_msdm=obs_config.feat_rule_msdm,
-                                          rule_costs=obs_config.feat_rule_costs)
+                                          rule_costs=obs_config.feat_rule_costs,
+                                          enforce_unit_cap=self.enforce_unit_cap)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i

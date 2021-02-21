@@ -32,6 +32,7 @@ class ObsConfig:
     harvest_action: bool = False
     lock_build_action: bool = False
     feat_dist_to_wall: bool = False
+    unit_count: bool = False
 
     def global_features(self):
         gf = 2
@@ -43,6 +44,8 @@ class ObsConfig:
             gf += 1
         if self.feat_rule_costs:
             gf += self.num_builds
+        if self.unit_count:
+            gf += 1
         return gf
 
     def dstride(self):
@@ -231,7 +234,8 @@ def observe_batch_raw(obs_config: ObsConfig,
                       is_visible: bool = False,
                       abstime: bool = False,
                       rule_msdm: bool = False,
-                      rule_costs: bool = False) -> object:
+                      rule_costs: bool = False,
+                      enforce_unit_cap: bool = False) -> object:
     retries = RETRIES
     ebcstr = ''
     url = f'http://localhost:9000/batch-observation?' \
@@ -252,7 +256,9 @@ def observe_batch_raw(obs_config: ObsConfig,
         f'ruleMsdm={scalabool(rule_msdm)}&' \
         f'ruleCosts={scalabool(rule_costs)}&' \
         f'lockBuildAction={scalabool(obs_config.lock_build_action)}&' \
-        f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}' + ebcstr
+        f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}&' \
+        f'unitCount={scalabool(obs_config.unit_count)}&' \
+        f'enforceUnitCap={scalabool(enforce_unit_cap)}' + ebcstr
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:

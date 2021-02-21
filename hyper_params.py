@@ -74,6 +74,7 @@ class HyperParams:
         self.harvest_action = False     # Harvest action that will freeze drone until one resource has been harvested
         self.lock_build_action = False  # Pair of actions to disable/enable all build actions
         self.feat_dist_to_wall = False  # Five features giving distance to closest wall in movement direction, and in movement direction offset by +-pi/2 and +-pi/4
+        self.feat_unit_count = True
 
         # Eval
         self.eval_envs = 256
@@ -141,6 +142,8 @@ class HyperParams:
 
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
+
+        self.enforce_unit_cap = True
 
         # Testing
         self.verify_create_golden = False

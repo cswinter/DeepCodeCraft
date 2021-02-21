@@ -725,6 +725,7 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
             harvest_action=hps.harvest_action,
             lock_build_action=hps.lock_build_action,
             feat_dist_to_wall=hps.feat_dist_to_wall,
+            unit_count=hps.feat_unit_count,
         )
 
 
