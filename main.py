@@ -154,6 +154,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     adr_avg_cost_schedule = parse_schedule(hps.adr_avg_cost_schedule, hps.adr_average_cost_target, hps.steps)
     adr_cost_variance_schedule = parse_schedule(hps.adr_cost_variance_schedule, hps.adr_cost_variance, hps.steps)
     adr_variety_schedule = parse_schedule(hps.adr_variety_schedule, hps.adr_variety, hps.steps)
+    unit_cap_schedule = parse_schedule(hps.unit_cap_schedule, hps.unit_cap, hps.steps)
     extra_checkpoint_steps = [step for step in hps.extra_checkpoint_steps if step > total_steps]
     rewmean = 0.0
     rewstd = 1.0
@@ -169,9 +170,6 @@ def train(hps: HyperParams, out_dir: str) -> None:
             hps.batches_per_update = batches_per_update
             assert(hps.rosteps % (hps.bs * hps.batches_per_update) == 0)
         hps.entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
-        if env is not None:
-            env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(total_steps)
-            env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
         adr.variety = adr_variety_schedule.value_at(total_steps)
         adr.target_modifier = adr_avg_cost_schedule.value_at(total_steps)
 
@@ -204,10 +202,16 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        stagger_offset=hps.rank / hps.parallelism,
                                        mothership_damage_scale=hps.mothership_damage_scale,
                                        loss_penalty=hps.loss_penalty,
-                                       partial_score=hps.partial_score)
+                                       partial_score=hps.partial_score,
+                                       enforce_unit_cap=hps.enforce_unit_cap)
             env.rng_ruleset = adr.ruleset
             env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()
+
+        if env is not None:
+            env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(total_steps)
+            env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
+            env.unit_cap_override = int(unit_cap_schedule.value_at(total_steps))
 
         if total_steps >= next_eval and not hps.verify:
             if hps.eval_envs > 0:
@@ -464,6 +468,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'iteration': iteration,
                 'adr_cost_variance': env.adr_cost_variance,
                 'adr_variety': adr.variety,
+                'unit_cap': env.unit_cap_override,
             }
             for action, count in buildmean.items():
                 metrics[f'build_{spec_key(action)}'] = count

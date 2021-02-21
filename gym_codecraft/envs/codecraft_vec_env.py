@@ -579,7 +579,8 @@ class CodeCraftVecEnv(object):
                  mothership_damage_scale: float = 0.0,
                  loss_penalty: float = 0.0,
                  partial_score: float = 1.0,
-                 enforce_unit_cap: bool = False):
+                 enforce_unit_cap: bool = False,
+                 unit_cap_override: int = 0):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -614,6 +615,7 @@ class CodeCraftVecEnv(object):
         self.mothership_damage_scale = mothership_damage_scale
         self.adr_cost_variance = 0.0
         self.enforce_unit_cap = enforce_unit_cap
+        self.unit_cap_override = unit_cap_override
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -821,7 +823,8 @@ class CodeCraftVecEnv(object):
                                           abstime=obs_config.feat_abstime,
                                           rule_msdm=obs_config.feat_rule_msdm,
                                           rule_costs=obs_config.feat_rule_costs,
-                                          enforce_unit_cap=self.enforce_unit_cap)
+                                          enforce_unit_cap=self.enforce_unit_cap,
+                                          unit_cap_override=self.unit_cap_override)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i

@@ -235,7 +235,8 @@ def observe_batch_raw(obs_config: ObsConfig,
                       abstime: bool = False,
                       rule_msdm: bool = False,
                       rule_costs: bool = False,
-                      enforce_unit_cap: bool = False) -> object:
+                      enforce_unit_cap: bool = False,
+                      unit_cap_override: int = 0) -> object:
     retries = RETRIES
     ebcstr = ''
     url = f'http://localhost:9000/batch-observation?' \
@@ -258,7 +259,8 @@ def observe_batch_raw(obs_config: ObsConfig,
         f'lockBuildAction={scalabool(obs_config.lock_build_action)}&' \
         f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}&' \
         f'unitCount={scalabool(obs_config.unit_count)}&' \
-        f'enforceUnitCap={scalabool(enforce_unit_cap)}' + ebcstr
+        f'enforceUnitCap={scalabool(enforce_unit_cap)}&' \
+        f'unitCapOverride={unit_cap_override}' + ebcstr
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:

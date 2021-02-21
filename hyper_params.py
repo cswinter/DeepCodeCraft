@@ -143,7 +143,9 @@ class HyperParams:
         self.adr_variety = 0.8
         self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
 
-        self.enforce_unit_cap = True
+        self.enforce_unit_cap = False
+        self.unit_cap = 0
+        self.unit_cap_schedule = ''
 
         # Testing
         self.verify_create_golden = False
@@ -242,6 +244,11 @@ class HyperParams:
         hps = HyperParams.standard()
         hps.max_hardness = 200
         hps.objective = envs.Objective.ENHANCED
+
+        hps.enforce_unit_cap = True
+        hps.unit_cap = 6
+        hps.unit_cap_schedule = 'lin 50e6:20'
+
         return hps
 
     # Equivalent to `standard` config when run dataparallel across 2 processes.
@@ -255,9 +262,10 @@ class HyperParams:
 
     @staticmethod
     def enhanced_2dataparallel():
-        hps = HyperParams.standard_2dataparallel()
-        hps.max_hardness = 200
-        hps.objective = envs.Objective.ENHANCED
+        hps = HyperParams.enhanced()
+        hps.batches_per_update //= 2
+        hps.num_envs //= 2
+        hps.num_self_play //= 2
         return hps
 
 
