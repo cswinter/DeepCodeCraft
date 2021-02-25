@@ -242,8 +242,18 @@ class HyperParams:
     @staticmethod
     def enhanced():
         hps = HyperParams.standard()
+        hps.steps = 250e6
         hps.max_hardness = 200
         hps.objective = envs.Objective.ENHANCED
+
+        hps.eval_frequency = 10e6
+        hps.entropy_bonus = 0.3
+        hps.entropy_bonus_schedule = 'lin 15e6:0.2,150e6:0.05,200e6:0.0'
+        hps.adr_variety = 0.3
+        hps.adr_variety_schedule = 'lin 150e6:0.15,200e6:0.1,250e6:0.01'
+        hps.adr_cost_variance = 1.0
+        hps.adr_cost_variance_schedule = 'lin 0:1.0,200e6:0.1'
+        hps.adr_hstepsize = 4.0e-6
 
         hps.enforce_unit_cap = True
         hps.unit_cap = 6
