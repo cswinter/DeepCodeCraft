@@ -278,6 +278,23 @@ class HyperParams:
         hps.num_self_play //= 2
         return hps
 
+    @staticmethod
+    def enhanced_4dataparallel():
+        hps = HyperParams.enhanced()
+        hps.steps = 500e6
+        hps.batches_per_update = 16
+        hps.num_envs = 64
+        hps.num_self_play = 32
+        hps.entropy_bonus_schedule = 'lin 20e6:0.15,150e6:0.03,400e6:0.0'
+        hps.adr_hstepsize = 3.0e-6
+        hps.adr_variety_schedule = 'lin 200e6:0.1,350e6:0.01'
+        hps.adr_cost_variance_schedule = 'lin 0:1.0,200e6:0.2,400e6:0.1'
+        hps.max_hardness = 220
+        hps.max_game_length = 18000
+        hps.d_agent = 512
+        hps.eval_envs = 256
+        hps.eval_timesteps = 2500
+        return hps
 
     @staticmethod
     def standard_dataparallel():

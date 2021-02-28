@@ -1034,6 +1034,8 @@ def main():
         hps = HyperParams.standard_2dataparallel()
     elif args.hpset == 'enhanced_2dataparallel':
         hps = HyperParams.enhanced_2dataparallel()
+    elif args.hpset == 'enhanced_4dataparallel':
+        hps = HyperParams.enhanced_4dataparallel()
     elif args.hpset == 'standard_dataparallel':
         hps = HyperParams.standard_dataparallel()
     elif args.hpset == 'micro_practice':
