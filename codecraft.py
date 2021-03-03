@@ -49,7 +49,7 @@ class ObsConfig:
         return gf
 
     def dstride(self):
-        ds = 15
+        ds = 17
         if self.feat_last_seen:
             ds += 2
         if self.feat_is_visible:

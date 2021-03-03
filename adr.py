@@ -94,7 +94,7 @@ class ADR:
 
 def spec_key(module_counts: List[int]):
     key = ''
-    [s, m, c, e, p] = module_counts
+    [s, m, c, e, p, l] = module_counts
     if s > 0:
         key += f"{s}s"
     if m > 0:
@@ -105,6 +105,8 @@ def spec_key(module_counts: List[int]):
         key += f"{e}e"
     if p > 0:
         key += f"{p}p"
+    if l > 0:
+        key += f"{l}l"
     return key
 
 

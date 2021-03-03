@@ -3,3 +3,4 @@ __pycache__
 params*.yaml
 wandb
 verify
+.vscode

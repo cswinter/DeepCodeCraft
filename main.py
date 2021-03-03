@@ -556,11 +556,9 @@ def eval(policy,
             scripted_opponents = ['destroyer', 'replicator']
             hardness = 5
         elif objective == envs.Objective.ENHANCED:
-            opponents = {
-                'enticing-chocolate-150m': {'model_file': 'enhanced/enticing-chocolate-150m.pt'},
-                'stellar-frog-150m': {'model_file': 'enhanced/stellar-frog-150m.pt'},
-            }
-            hardness = 200
+            opponents = {}
+            scripted_opponents = ['destroyer', 'replicator']
+            hardness = 150
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},

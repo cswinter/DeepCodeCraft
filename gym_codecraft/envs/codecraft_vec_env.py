@@ -16,6 +16,7 @@ def drone_dict(x, y,
                constructors=0,
                engines=0,
                shield_generators=0,
+               long_range_missiles=0,
                resources=0):
     return {
         'xPos': x,
@@ -26,6 +27,7 @@ def drone_dict(x, y,
         'constructors': constructors,
         'engines': engines,
         'shieldGenerators': shield_generators,
+        'longRangeMissiles': long_range_missiles,
     }
 
 
@@ -277,17 +279,19 @@ def standard_starting_drones(map_height, map_width, randomize):
 
 def enhanced_starting_drones(map_height, map_width, randomize):
     drones = []
-    starting_resources = np.random.randint(0, 8) if randomize else 7
+    starting_resources = np.random.randint(4, 8) if randomize else 7
     drones.append(
         dict(constructors=2,
                 storage_modules=2,
-                missile_batteries=3,
+                missile_batteries=2,
                 shield_generators=1,
                 engines=2,
-                resources=2 * starting_resources)
+                long_range_missiles=1,
+                resources=2 * starting_resources
+            )
     )
-    if randomize and np.random.uniform(0, 1) < 0.5:
-        mstype = np.random.randint(0, 7)
+    if randomize and np.random.uniform(0, 1) < 0.3:
+        mstype = np.random.randint(0, 3)
         if mstype == 0:
             drones.append(dict(
                 constructors=1,
@@ -296,17 +300,8 @@ def enhanced_starting_drones(map_height, map_width, randomize):
                 resources=2 * starting_resources
             ))
         elif mstype == 1:
-            drones.append(dict(
-                constructors=1,
-                storage_modules=2,
-                shield_generators=1,
-                resources=2 * starting_resources
-            ))
-        elif mstype == 2:
             drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-        elif mstype == 3 or mstype == 4:
-            drones.append(dict(storage_modules=1, resources=starting_resources))
-        elif mstype == 5 or mstype == 6:
+        elif mstype == 2:
             drones.append(dict(storage_modules=2, resources=2 * starting_resources))
 
     angle = 2 * np.pi * np.random.rand()
@@ -438,8 +433,8 @@ def map_enhanced(randomize: bool, hardness: Union[int, float], require_default_m
                 for x in range(y, y * 2 + 1)
                 if area // 2 <= x * y <= area]
     x, y = eligible[np.random.randint(0, len(eligible))]
-    map_width = 500 * x
-    map_height = 500 * y
+    map_width = 750 * x
+    map_height = 750 * y
     mineral_count = 2 + np.random.randint(0, math.ceil(math.sqrt(x * y) / 5) + 2)
     minerals = [(1, np.random.randint(100, 1000)) for _ in range(mineral_count)]
 
@@ -778,20 +773,17 @@ class CodeCraftVecEnv(object):
                 if action == 2 or action == 5:
                     turn = 1
                 if action == 6:
-                    build = [(0, 1, 0, 0, 0)]
+                    build = [(0, 1, 0, 0, 0, 0)]
                 if action == 7:
                     harvest = True
-                if action >= 8 + len(self.builds) and self.obs_config.lock_build_action:
-                    if action == 8 + len(self.builds):
-                        lockBuildAction = True
-                    elif action == 8 + len(self.builds) + 1:
-                        unlockBuildAction = True
+                elif action == 8 + len(self.builds) + 1:
+                    unlockBuildAction = True
                 elif action >= 8:
                     b = action - 8
                     if b < len(self.builds):
                         build = [self.builds[b]]
                     else:
-                        build = [(0, 1, 0, 0, 0)]
+                        build = [(0, 1, 0, 0, 0, 0)]
                 if len(build) > 0 and action_masks is not None and action_masks_drone[action] == 1.0:
                     self.performed_builds[i][build[0]] += 1
                 player_actions2.append((move, turn, build, harvest, lockBuildAction, unlockBuildAction))
@@ -1061,7 +1053,7 @@ class Objective(Enum):
 
     def builds(self):
         b = self.extra_builds()
-        b.append((0, 1, 0, 0, 0))
+        b.append((0, 1, 0, 0, 0, 0))
         return b
 
     def extra_builds(self):
@@ -1087,19 +1079,19 @@ class Objective(Enum):
             ]
         elif self == Objective.ENHANCED:
             return [
-                # [s, m, c, e, p]
-                (1, 0, 0, 0, 0),  # 1s
-                (1, 0, 1, 0, 0),  # 1s1c
-                (2, 0, 0, 0, 0),  # 2s
-                (0, 2, 0, 0, 0),  # 2m
-                (0, 1, 0, 0, 1),  # 1m1p
-                (0, 4, 0, 0, 0),  # 4m
-                (0, 3, 0, 0, 1),  # 3m1p
-                (0, 2, 0, 0, 2),  # 2m2p
-                (0, 2, 0, 2, 0),  # 2m2e
-                (0, 2, 0, 1, 1),  # 2m1e1p
-                (2, 0, 1, 0, 1),  # 2s1c1p
-                (2, 0, 1, 1, 0),  # 2s1c1e
+                # [s, m, c, e, p, l]
+                (1, 0, 0, 0, 0, 0),  # 1s
+                (0, 0, 0, 0, 0, 1),  # 1l
+                (1, 0, 1, 0, 0, 0),  # 1s1c
+                (2, 0, 0, 0, 0, 0),  # 2s
+                (0, 2, 0, 0, 0, 0),  # 2m
+                (0, 1, 0, 0, 1, 0),  # 1m1p
+                (0, 3, 0, 0, 1, 0),  # 3m1p
+                (0, 0, 0, 1, 0, 1),  # 1l1e
+                (0, 2, 0, 2, 0, 0),  # 2m2e
+                (0, 2, 0, 1, 1, 0),  # 2m1e1p
+                (0, 0, 0, 1, 0, 3),  # 3l1e
+                (2, 0, 1, 1, 0, 0),  # 2s1c1e
             ]
         else:
             return []

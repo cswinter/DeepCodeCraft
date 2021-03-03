@@ -243,7 +243,7 @@ class HyperParams:
     def enhanced():
         hps = HyperParams.standard()
         hps.steps = 250e6
-        hps.max_hardness = 200
+        hps.max_hardness = 150
         hps.objective = envs.Objective.ENHANCED
 
         hps.eval_frequency = 10e6
@@ -289,7 +289,7 @@ class HyperParams:
         hps.adr_hstepsize = 3.0e-6
         hps.adr_variety_schedule = 'lin 200e6:0.1,350e6:0.01'
         hps.adr_cost_variance_schedule = 'lin 0:1.0,200e6:0.2,400e6:0.1'
-        hps.max_hardness = 220
+        hps.max_hardness = 150
         hps.max_game_length = 18000
         hps.d_agent = 512
         hps.eval_envs = 256
