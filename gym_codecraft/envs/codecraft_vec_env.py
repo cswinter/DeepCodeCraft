@@ -283,10 +283,10 @@ def enhanced_starting_drones(map_height, map_width, randomize):
     drones.append(
         dict(constructors=2,
                 storage_modules=2,
-                missile_batteries=2,
+                missile_batteries=1,
                 shield_generators=1,
                 engines=2,
-                long_range_missiles=1,
+                long_range_missiles=2,
                 resources=2 * starting_resources
             )
     )
@@ -302,7 +302,7 @@ def enhanced_starting_drones(map_height, map_width, randomize):
         elif mstype == 1:
             drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
         elif mstype == 2:
-            drones.append(dict(storage_modules=2, resources=2 * starting_resources))
+            drones.append(dict(storage_modules=1, resources=1 * starting_resources))
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
@@ -1079,19 +1079,18 @@ class Objective(Enum):
             ]
         elif self == Objective.ENHANCED:
             return [
-                # [s, m, c, e, p, l]
+              # [s, m, c, e, p, l]
                 (1, 0, 0, 0, 0, 0),  # 1s
-                (0, 0, 0, 0, 0, 1),  # 1l
                 (1, 0, 1, 0, 0, 0),  # 1s1c
-                (2, 0, 0, 0, 0, 0),  # 2s
-                (0, 2, 0, 0, 0, 0),  # 2m
                 (0, 1, 0, 0, 1, 0),  # 1m1p
-                (0, 3, 0, 0, 1, 0),  # 3m1p
-                (0, 0, 0, 1, 0, 1),  # 1l1e
+                (0, 0, 0, 0, 0, 2),  # 2l
                 (0, 2, 0, 2, 0, 0),  # 2m2e
+                (0, 1, 0, 2, 1, 0),  # 1m1p2e
                 (0, 2, 0, 1, 1, 0),  # 2m1e1p
-                (0, 0, 0, 1, 0, 3),  # 3l1e
+                (0, 0, 0, 1, 0, 3),  # 1e3l
                 (2, 0, 1, 1, 0, 0),  # 2s1c1e
+                (0, 4, 0, 3, 3, 0),  # 4m3e3p
+                (0, 0, 0, 4, 0, 6),  # 4e6l
             ]
         else:
             return []
