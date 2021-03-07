@@ -290,8 +290,8 @@ def enhanced_starting_drones(map_height, map_width, randomize):
                 resources=2 * starting_resources
             )
     )
-    if randomize and np.random.uniform(0, 1) < 0.3:
-        mstype = np.random.randint(0, 3)
+    if randomize and np.random.uniform(0, 1) < 0.5:
+        mstype = np.random.randint(0, 4)
         if mstype == 0:
             drones.append(dict(
                 constructors=1,
@@ -301,8 +301,8 @@ def enhanced_starting_drones(map_height, map_width, randomize):
             ))
         elif mstype == 1:
             drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
-        elif mstype == 2:
-            drones.append(dict(storage_modules=1, resources=1 * starting_resources))
+        elif mstype == 2 or mstype == 3:
+            drones.append(dict(storage_modules=1, resources=starting_resources))
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)

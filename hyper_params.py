@@ -248,7 +248,7 @@ class HyperParams:
 
         hps.eval_frequency = 10e6
         hps.entropy_bonus = 0.3
-        hps.entropy_bonus_schedule = 'lin 30e6:0.1,150e6:0.05,200e6:0.0'
+        hps.entropy_bonus_schedule = 'lin 20e6:0.15,200e6:0.0'
         hps.adr_variety = 0.3
         hps.adr_variety_schedule = 'lin 150e6:0.15,200e6:0.1,250e6:0.01'
         hps.adr_cost_variance = 1.0
