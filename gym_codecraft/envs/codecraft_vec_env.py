@@ -290,8 +290,8 @@ def enhanced_starting_drones(map_height, map_width, randomize):
                 resources=2 * starting_resources
             )
     )
-    if randomize and np.random.uniform(0, 1) < 0.5:
-        mstype = np.random.randint(0, 4)
+    if randomize and np.random.uniform(0, 1) < 0.6:
+        mstype = np.random.randint(0, 6)
         if mstype == 0:
             drones.append(dict(
                 constructors=1,
@@ -303,6 +303,8 @@ def enhanced_starting_drones(map_height, map_width, randomize):
             drones.append(dict(constructors=1, storage_modules=1, resources=starting_resources))
         elif mstype == 2 or mstype == 3:
             drones.append(dict(storage_modules=1, resources=starting_resources))
+        elif mstype == 4 or mstype == 5:
+            drones.append(dict(storage_modules=2, resources=2*starting_resources))
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
@@ -1090,7 +1092,7 @@ class Objective(Enum):
                 (0, 0, 0, 1, 0, 3),  # 1e3l
                 (2, 0, 1, 1, 0, 0),  # 2s1c1e
                 (0, 4, 0, 3, 3, 0),  # 4m3e3p
-                (0, 0, 0, 4, 0, 6),  # 4e6l
+                (0, 0, 0, 4, 1, 5),  # 4e1p5l
             ]
         else:
             return []
