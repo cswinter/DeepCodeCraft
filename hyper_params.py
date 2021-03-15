@@ -75,6 +75,7 @@ class HyperParams:
         self.lock_build_action = False  # Pair of actions to disable/enable all build actions
         self.feat_dist_to_wall = False  # Five features giving distance to closest wall in movement direction, and in movement direction offset by +-pi/2 and +-pi/4
         self.feat_unit_count = True
+        self.feat_construction_progress = True
 
         # Eval
         self.eval_envs = 256

@@ -33,6 +33,7 @@ class ObsConfig:
     lock_build_action: bool = False
     feat_dist_to_wall: bool = False
     unit_count: bool = False
+    construction_progress: bool = False
 
     def global_features(self):
         gf = 2
@@ -58,6 +59,8 @@ class ObsConfig:
             ds += 1
         if self.feat_dist_to_wall:
             ds += 5
+        if self.construction_progress:
+            ds += self.num_builds + 2
         return ds
 
     def mstride(self):
@@ -238,7 +241,6 @@ def observe_batch_raw(obs_config: ObsConfig,
                       enforce_unit_cap: bool = False,
                       unit_cap_override: int = 0) -> object:
     retries = RETRIES
-    ebcstr = ''
     url = f'http://localhost:9000/batch-observation?' \
         f'json=false&' \
         f'allies={allies}&' \
@@ -260,7 +262,8 @@ def observe_batch_raw(obs_config: ObsConfig,
         f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}&' \
         f'unitCount={scalabool(obs_config.unit_count)}&' \
         f'enforceUnitCap={scalabool(enforce_unit_cap)}&' \
-        f'unitCapOverride={unit_cap_override}' + ebcstr
+        f'unitCapOverride={unit_cap_override}&' \
+        f'constructionProgress={scalabool(obs_config.construction_progress)}'
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:
