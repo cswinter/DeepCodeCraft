@@ -127,9 +127,9 @@ def plot2dt(runid1: str, runid2: str):
     plt.show()
 
 
-def plot(xps: List[Experiment], metrics: List[str], name: str):
+def plot(xps: List[Experiment], metrics: List[str], title: str, name: str):
     fig, ax = plt.subplots(figsize=(12, 9))
-    errplot3(ax, xps, metrics, name)
+    errplot3(ax, xps, metrics, title)
     fig.savefig(f"plots/{name}.svg")
     fig.savefig(f"plotspng/{name}.png")
     plt.show()
@@ -173,7 +173,7 @@ adr_ablations = [
 ]
 ablations = [
     Experiment("f2034f-hpsetstandard-partial_score0.0", "sparse reward"),
-    Experiment("f2034f-hpsetstandard-use_privilegedFalse",  "vf hidden information"),
+    Experiment("f2034f-hpsetstandard-use_privilegedFalse",  "non-omniscient value function"),
     Experiment("f2034f-d_agent128-d_item64-hpsetstandard", "smaller network"),
     Experiment("f2034f-batches_per_update64-bs256-hpsetstandard-rotational_invarianceFalse", "no rotational invariance"),
     Experiment("7a9d92-hpsetstandard", "no shared spatial embeddings"),
@@ -186,13 +186,13 @@ for xp in [baseline] + adr_ablations:
     score_mean, score_sem = final_score(xp.descriptor)
     print(f"{label} {score_mean} {score_sem}")
 
-plot([baseline], tuple(EVAL_METRICS.values()), "baseline")
+plot([baseline], tuple(EVAL_METRICS.values()), "Mean score against all opponents", "baseline")
 plot4([baseline], EVAL_METRICS, "breakdown")
 plot4([baseline, ablations[3]], EVAL_METRICS, "breakdown cost adr")
 
 
 for xp in ablations:
     print(f"plotting {xp.label}")
-    plot([baseline, xp], tuple(EVAL_METRICS.values()), xp.label)
+    plot([baseline, xp], tuple(EVAL_METRICS.values()), "Mean score against all opponents", xp.label)
     plot4([baseline, xp], EVAL_METRICS, f"breakdown {xp.label}")
 
