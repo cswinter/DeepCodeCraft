@@ -556,8 +556,10 @@ def eval(policy,
             scripted_opponents = ['destroyer', 'replicator']
             hardness = 5
         elif objective == envs.Objective.ENHANCED:
-            opponents = {}
-            scripted_opponents = ['destroyer', 'replicator']
+            opponents = {
+                'logical-dust-250': {'model_file': 'enhanced/logical-dust-250m.pt'},
+            }
+            scripted_opponents = ['replicator']
             hardness = 150
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
