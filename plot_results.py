@@ -148,51 +148,52 @@ def plot4(descriptors: List[str], metrics: Dict[str, str], name: str):
     plt.show()
 
 
-if not os.path.exists('plots'):
-    os.makedirs('plots')
-if not os.path.exists('plotspng'):
-    os.makedirs('plotspng')
+if __name__ == '__main__':
+    if not os.path.exists('plots'):
+        os.makedirs('plots')
+    if not os.path.exists('plotspng'):
+        os.makedirs('plotspng')
 
-plot2dt('i17gv7pw', 'sidk0gu4')
+    plot2dt('i17gv7pw', 'sidk0gu4')
 
-baseline = Experiment(descriptor="f2034f-hpsetstandard", label="baseline")
-adr_ablations = [
-    Experiment("f2034f-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, map curriculum"),
-    Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard", "mothership damage, map curriculum"),
-    Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "map curriculum"),
+    baseline = Experiment(descriptor="f2034f-hpsetstandard", label="baseline")
+    adr_ablations = [
+        Experiment("f2034f-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, map curriculum"),
+        Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard", "mothership damage, map curriculum"),
+        Experiment("f2034f-adr_variety0.0-adr_variety_schedule-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "map curriculum"),
 
-    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, module cost, map randomization"),
-    Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "module cost, map randomization"),
-    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, map randomization"),
-    Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "map randomization"),
+        Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, module cost, map randomization"),
+        Experiment("f2034f-adr_hstepsize0.0-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "module cost, map randomization"),
+        Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-task_hardness150", "mothership damage, map randomization"),
+        Experiment("f2034f-adr_hstepsize0.0-adr_variety0.0-adr_variety_schedule-hpsetstandard-linear_hardnessFalse-mothership_damage_scale0.0-mothership_damage_scale_schedule-task_hardness150", "map randomization"),
 
-    Experiment("049430-batches_per_update64-bs256-hpsetstandard", "mothership damage, module cost, fixed map"),
-    Experiment("049430-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, fixed map"),
-    Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard", "mothership damage, fixed map"),
-    Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "fixed map"),
-]
-ablations = [
-    Experiment("f2034f-hpsetstandard-partial_score0.0", "sparse reward"),
-    Experiment("f2034f-hpsetstandard-use_privilegedFalse",  "non-omniscient value function"),
-    Experiment("f2034f-d_agent128-d_item64-hpsetstandard", "smaller network"),
-    Experiment("f2034f-batches_per_update64-bs256-hpsetstandard-rotational_invarianceFalse", "no rotational invariance"),
-    Experiment("7a9d92-hpsetstandard", "no shared spatial embeddings"),
-    *adr_ablations,
-]
-
-
-for xp in [baseline] + adr_ablations:
-    label = xp.label
-    score_mean, score_sem = final_score(xp.descriptor)
-    print(f"{label} {score_mean} {score_sem}")
-
-plot([baseline], tuple(EVAL_METRICS.values()), "Mean score against all opponents", "baseline")
-plot4([baseline], EVAL_METRICS, "breakdown")
-plot4([baseline, ablations[3]], EVAL_METRICS, "breakdown cost adr")
+        Experiment("049430-batches_per_update64-bs256-hpsetstandard", "mothership damage, module cost, fixed map"),
+        Experiment("049430-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, fixed map"),
+        Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard", "mothership damage, fixed map"),
+        Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "fixed map"),
+    ]
+    ablations = [
+        Experiment("f2034f-hpsetstandard-partial_score0.0", "sparse reward"),
+        Experiment("f2034f-hpsetstandard-use_privilegedFalse",  "non-omniscient value function"),
+        Experiment("f2034f-d_agent128-d_item64-hpsetstandard", "smaller network"),
+        Experiment("f2034f-batches_per_update64-bs256-hpsetstandard-rotational_invarianceFalse", "no rotational invariance"),
+        Experiment("7a9d92-hpsetstandard", "no shared spatial embeddings"),
+        *adr_ablations,
+    ]
 
 
-for xp in ablations:
-    print(f"plotting {xp.label}")
-    plot([baseline, xp], tuple(EVAL_METRICS.values()), "Mean score against all opponents", xp.label)
-    plot4([baseline, xp], EVAL_METRICS, f"breakdown {xp.label}")
+    for xp in [baseline] + adr_ablations:
+        label = xp.label
+        score_mean, score_sem = final_score(xp.descriptor)
+        print(f"{label} {score_mean} {score_sem}")
+
+    plot([baseline], tuple(EVAL_METRICS.values()), "Mean score against all opponents", "baseline")
+    plot4([baseline], EVAL_METRICS, "breakdown")
+    plot4([baseline, ablations[3]], EVAL_METRICS, "breakdown cost adr")
+
+
+    for xp in ablations:
+        print(f"plotting {xp.label}")
+        plot([baseline, xp], tuple(EVAL_METRICS.values()), "Mean score against all opponents", xp.label)
+        plot4([baseline, xp], EVAL_METRICS, f"breakdown {xp.label}")
 
