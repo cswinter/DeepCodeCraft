@@ -45,14 +45,16 @@ def random_rules(rnd_msdm: float, rnd_cost: float, targets: Rules) -> Rules:
                 return 2 ** np.random.uniform(0.0, np.log2(target))
             else:
                 return 2 ** np.random.uniform(np.log2(target), 0.0)
+        def rcost():
+            return np.exp(np.random.normal(loc=0.0, scale=rnd_cost))
         return Rules(
             mothership_damage_multiplier=rnd(rnd_msdm),
-            cost_modifier_size=list(map(rnd, targets.cost_modifier_size)),
-            cost_modifier_constructor=rnd(targets.cost_modifier_constructor),
-            cost_modifier_missiles=rnd(targets.cost_modifier_missiles),
-            cost_modifier_shields=rnd(targets.cost_modifier_shields),
-            cost_modifier_engines=rnd(targets.cost_modifier_engines),
-            cost_modifier_storage=rnd(targets.cost_modifier_storage),
+            cost_modifier_size=[rcost() for _ in range(4)],
+            cost_modifier_constructor=rcost(),
+            cost_modifier_missiles=rcost(),
+            cost_modifier_shields=rcost(),
+            cost_modifier_engines=rcost(),
+            cost_modifier_storage=rcost(),
         )
     else:
         return Rules(
@@ -314,7 +316,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
         if is_eval:
             hardness = np.random.randint(0, hardness+1)
         else:
-            area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
+            area = math.sqrt(np.random.uniform(2, (3 + hardness) ** 2))
     minerals = None
 
     if randomize and not is_eval:
@@ -504,12 +506,13 @@ class CodeCraftVecEnv(object):
                  max_enemy_army_size_score=999999,
                  rule_rng_fraction=0.0,
                  rule_rng_amount=0.0,
-                 rule_cost_rng=0.0,
+                 rule_cost_rng=1.0,
                  max_game_length=None,
                  stagger_offset: float = 0.0,
                  mothership_damage_scale: float = 3.0,
                  loss_penalty: float = 0.0,
-                 partial_score: float = 1.0):
+                 partial_score: float = 1.0,
+                 enforce_unit_cap: bool = False):
         assert(num_envs >= 2 * num_self_play)
         self.num_envs = num_envs
         self.objective = objective
@@ -543,6 +546,7 @@ class CodeCraftVecEnv(object):
         self.force_harvesting = objective != Objective.ALLIED_WEALTH
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
         self.mothership_damage_scale = mothership_damage_scale
+        self.enforce_unit_cap = enforce_unit_cap
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -779,7 +783,8 @@ class CodeCraftVecEnv(object):
                                           is_visible=obs_config.feat_is_visible,
                                           abstime=obs_config.feat_abstime,
                                           rule_msdm=obs_config.feat_rule_msdm,
-                                          rule_costs=obs_config.feat_rule_costs)
+                                          rule_costs=obs_config.feat_rule_costs,
+                                          enforce_unit_cap=self.enforce_unit_cap)
         stride = obs_config.stride()
         for i in range(num_envs):
             game = env_subset[i] if env_subset else i

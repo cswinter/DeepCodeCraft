@@ -129,7 +129,8 @@ class HyperParams:
         self.mix_mp = 0.0              # Fraction of maps that use MICRO_PRACTICE instead of the main objective
         self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
         self.rule_rng_amount = 1.0     # Amount of rule randomization
-        self.rule_cost_rng = 0.0
+        self.rule_cost_rng = 1.0
+        self.rule_cost_rng_schedule = 'lin 125e6:0.0'
         self.adr = False               # Automatically adjust environment rules
         self.adr_hstepsize = 2.0e-6    # Amount by which task difficulty/map size is increased for each processed frame
         self.linear_hardness = True    # Linearly increase task difficulty/map size

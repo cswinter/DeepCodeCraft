@@ -151,6 +151,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     mothership_damage_scale_schedule = parse_schedule(hps.mothership_damage_scale_schedule, hps.mothership_damage_scale, hps.steps)
     gamma_schedule = parse_schedule(hps.gamma_schedule, hps.gamma, hps.steps)
     adr_avg_cost_schedule = parse_schedule(hps.adr_avg_cost_schedule, hps.adr_average_cost_target, hps.steps)
+    rule_cost_rng_schedule = parse_schedule(hps.rule_cost_rng_schedule, hps.rule_cost_rng, hps.steps)
     variety_schedule = hps.get_variety_schedule()
     variety_schedule_last_step = 0.0
     variety_schedule_last_value = hps.adr_variety
@@ -209,7 +210,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                                        stagger_offset=hps.rank / hps.parallelism,
                                        mothership_damage_scale=hps.mothership_damage_scale,
                                        loss_penalty=hps.loss_penalty,
-                                       partial_score=hps.partial_score)
+                                       partial_score=hps.partial_score,
+                                       enforce_unit_cap=True)
             env.rng_ruleset = adr.ruleset
             env.hardness = adr.hardness
             obs, action_masks, privileged_obs = env.reset()
@@ -250,6 +252,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
         buildtotal = defaultdict(lambda: 0)
         eliminations = []
         if not hps.verify:
+            env.rule_cost_rng = rule_cost_rng_schedule.value_at(total_steps)
             if hps.adr:
                 env.rng_ruleset = adr.ruleset
             if hps.adr or hps.linear_hardness:
@@ -464,6 +467,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 'mothership_damage_scale': env.mothership_damage_scale,
                 'gamma': gamma_schedule.value_at(total_steps),
                 'iteration': iteration,
+                'rule_cost_rng': env.rule_cost_rng,
             }
             for action, count in buildmean.items():
                 metrics[f'build_{action}'] = count
