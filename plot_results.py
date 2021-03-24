@@ -126,6 +126,15 @@ def plot2dt(runid1: str, runid2: str):
     fig.savefig(f"plotspng/dronetypes.png")
     plt.show()
 
+def plot3dt(runid1: str, runid2: str, runid3: str):
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    plot_drone_types(axs[0], runid1)
+    plot_drone_types(axs[1], runid2)
+    plot_drone_types(axs[2], runid3)
+    fig.savefig(f"plots/dronetypes3.svg")
+    fig.savefig(f"plotspng/dronetypes3.png")
+    plt.show()
+
 
 def plot(xps: List[Experiment], metrics: List[str], title: str, name: str):
     fig, ax = plt.subplots(figsize=(12, 9))
@@ -155,6 +164,7 @@ if __name__ == '__main__':
         os.makedirs('plotspng')
 
     plot2dt('i17gv7pw', 'sidk0gu4')
+    plot3dt('lbspx7ok', 'i17gv7pw', 'sidk0gu4')
 
     baseline = Experiment(descriptor="f2034f-hpsetstandard", label="baseline")
     adr_ablations = [
@@ -171,6 +181,8 @@ if __name__ == '__main__':
         Experiment("049430-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "module cost, fixed map"),
         Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard", "mothership damage, fixed map"),
         Experiment("049430-adr_variety0.0-adr_variety_schedule-batches_per_update64-bs256-hpsetstandard-mothership_damage_scale0.0-mothership_damage_scale_schedule", "fixed map"),
+
+        Experiment("d06bdd-hpsetstandard", "mothership damage, random module cost, map curriculum"),
     ]
     ablations = [
         Experiment("f2034f-hpsetstandard-partial_score0.0", "sparse reward"),
