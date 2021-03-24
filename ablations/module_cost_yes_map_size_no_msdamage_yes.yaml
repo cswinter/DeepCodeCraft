@@ -1,0 +1,5 @@
+- hpset: standard
+  repeat: 8
+  task_hardness: 150
+  linear_hardness: False
+  adr_hstepsize: 0.0

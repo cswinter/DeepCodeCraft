@@ -1,0 +1,10 @@
+# No mothership damage modifier curriculum, map curriculum, or cost automatic domain randomization
+- hpset: standard
+  repeat: 8
+  mothership_damage_scale: 0.0
+  mothership_damage_scale_schedule: ''
+  adr_variety: 0.0
+  adr_variety_schedule: ''
+  task_hardness: 150
+  linear_hardness: False
+  adr_hstepsize: 0.0

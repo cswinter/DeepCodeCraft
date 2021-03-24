@@ -1,0 +1,6 @@
+# No rotational invariance
+- hpset: standard
+  repeat: 8
+  rotational_invariance: False
+  batches_per_update: 64
+  bs: 256

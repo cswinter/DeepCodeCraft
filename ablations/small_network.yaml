@@ -1,0 +1,5 @@
+# Smaller network
+- hpset: standard
+  repeat: 8
+  d_agent: 128
+  d_item: 64

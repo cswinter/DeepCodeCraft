@@ -1,0 +1,4 @@
+# Value function can only see objects visible to the player
+- hpset: standard
+  repeat: 8
+  use_privileged: False

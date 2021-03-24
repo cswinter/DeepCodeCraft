@@ -1,0 +1,4 @@
+# Only reward is +2 when winning match
+- hpset: standard
+  partial_score: 0.0
+  repeat: 8
