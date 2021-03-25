@@ -2,6 +2,8 @@
 
 Hacky research code that trains policies for the [CodeCraft](http://codecraftgame.org/) real-time strategy game with proximal policy optimization.
 
+Blog post: [Mastering Real-Time Strategy Games with Deep Reinforcement Learning: Mere Mortal Edition](https://clemenswinter.com/2021/03/24/mastering-real-time-strategy-games-with-deep-reinforcement-learning-mere-mortal-edition/)
+
 ## Requirements
 
 - Python >= 3.7, pip
