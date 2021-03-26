@@ -558,8 +558,8 @@ def eval(policy,
         elif objective == envs.Objective.ENHANCED:
             opponents = {
                 'logical-dust-250': {'model_file': 'enhanced/logical-dust-250m.pt'},
+                'youthful-vortex-500': {'model_file': 'enhanced/youthful-vortex-500m.pt'},
             }
-            scripted_opponents = ['replicator']
             hardness = 150
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
