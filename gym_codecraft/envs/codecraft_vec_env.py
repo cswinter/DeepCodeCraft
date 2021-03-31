@@ -269,10 +269,10 @@ def standard_starting_drones(map_height, map_width, randomize):
                  storage_modules=3,
                  missile_batteries=3,
                  shield_generators=1,
-                 resources=10)
+                 resources=21)
         )
 
-    angle = 2 * np.pi * np.random.rand()
+    angle = 2
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
     spawn_y = (map_height // 2 - 100) * np.cos(angle)
     dcount = len(drones)
@@ -342,7 +342,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
             # AREA: 24, density: 1/4
             map_width = 3000
             map_height = 2000
-            mineral_count = 6
+            minerals = [(6, 75), (2, 125)]
         elif hardness == 3:
             # AREA: 40, density: 1/5
             map_width = 4000
@@ -372,7 +372,7 @@ def map_standard(randomize: bool, hardness: Union[int, float], require_default_m
                 (5, 100),
             ]
     if minerals is None:
-        minerals = mineral_count * [(1, 50)]
+        minerals = mineral_count * [(1, 100)]
 
     player1, player2 = standard_starting_drones(map_height, map_width, randomize and not require_default_mothership)
     return {

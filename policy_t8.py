@@ -6,6 +6,8 @@ from torch_scatter import scatter_add, scatter_max
 
 import spatial
 
+STEP = 0
+
 
 class TransformerPolicy8(nn.Module):
     def __init__(self, hps, obs_config):
@@ -257,7 +259,7 @@ class TransformerPolicy8(nn.Module):
 
     def forward(self, x, x_privileged, action_masks):
         batch_size = x.size()[0]
-        x, active_agents, (pitems, pmask) = self.latents(x, action_masks)
+        x, active_agents, (pitems, pmask), prnt = self.latents(x, action_masks)
 
         if x.is_cuda:
             vin = torch.cuda.FloatTensor(batch_size, self.d_agent * self.hps.dff_ratio).fill_(0)
@@ -273,8 +275,20 @@ class TransformerPolicy8(nn.Module):
         values = self.value_head(vin).view(-1)
 
         logits = self.policy_head(x)
+        global STEP
+        if not prnt:
+            if STEP < 10:
+                logits[:, -8] += 15
+            elif STEP < 40:
+                logits[:, 6] += 15
+        STEP += 1
         logits = logits.masked_fill(action_masks.reshape(-1, self.naction)[active_agents.flat_index] == 0, float('-inf'))
         probs = F.softmax(logits, dim=1)
+        if prnt:
+            print(probs[:3])
+            print(values[0])
+            __import__('ipdb').set_trace()
+
         probs = active_agents.pad(probs)
         return probs, values
 
@@ -305,6 +319,12 @@ class TransformerPolicy8(nn.Module):
         origin = xagent[:, 0:2].clone()
         direction = xagent[:, 2:4].clone()
 
+        prnt = False
+        if agent_active.sum(dim=1)[0] == 3 and action_masks[0][0][-2].item() == 1.0 and xagent[1, 9] < 2 and xagent[2, 9] < 2:
+            torch.set_printoptions(precision=2, threshold=10000)
+            print(xagent[:3])
+            prnt = True
+
         pemb_list = []
         pmask_list = []
         emb_list = []
@@ -313,7 +333,7 @@ class TransformerPolicy8(nn.Module):
         relpos_sparsity_list = []
         mask_list = []
         for item_net in self.item_nets:
-            emb, mask = item_net(x)
+            emb, mask = item_net(x, prnt=prnt)
             emb_list.append(emb[active_agents.batch_index])
             mask_list.append(mask[active_agents.batch_index])
 
@@ -323,7 +343,7 @@ class TransformerPolicy8(nn.Module):
             relpos_sparsity_list.append(relpos_sparsity)
 
             if item_net.start_privileged is not None:
-                pemb, pmask = item_net(x, privileged=True)
+                pemb, pmask = item_net(x, privileged=True, prnt=prnt)
                 pemb_list.append(pemb)
                 pmask_list.append(pmask)
             else:
@@ -332,6 +352,12 @@ class TransformerPolicy8(nn.Module):
 
         relpos = torch.cat(relpos_list, dim=1)
         sparse_relpos = torch.cat(sparse_relpos_list, dim=0)
+        if prnt:
+            print(sparse_relpos)
+            for relpos_sparsity in relpos_sparsity_list:
+                print('batch', relpos_sparsity.batch_index)
+                print('seq', relpos_sparsity.seq_index)
+                print('flat', relpos_sparsity.flat_index)
         sparse_relpos_embed = self.relpos_net(sparse_relpos)
         relpos_embed_list = []
         offset = 0
@@ -387,7 +413,7 @@ class TransformerPolicy8(nn.Module):
             x = torch.cat([x, nearby_map], dim=1)
 
         x = self.final_layer(x).squeeze(0)
-        return x, active_agents, (pitems, pmask)
+        return x, active_agents, (pitems, pmask), prnt
 
 
 # Computes a running mean/variance of input features and performs normalization.
@@ -508,7 +534,7 @@ class PosItemBlock(nn.Module):
         self.end_privileged = end_privileged
         self.rotate = rotate
 
-    def forward(self, x, privileged=False):
+    def forward(self, x, privileged=False, prnt=False):
         if privileged:
             x = x[:, self.start_privileged:self.end_privileged].view(-1, self.count, self.d_in)
         else:
@@ -519,6 +545,10 @@ class PosItemBlock(nn.Module):
         active = SparseSequence.from_mask(select)
         x_sparse = x[select]
         mask = select == False
+
+        if prnt:
+            print(f"PRIVILEGED {privileged}")
+            print(x[0][select[0]])
 
         if x_sparse.numel() > 0:
             x_sparse = self.embedding(x_sparse)

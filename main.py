@@ -545,11 +545,11 @@ def eval(policy,
             }
         elif objective == envs.Objective.STANDARD:
             opponents = {
-                'graceful-frog-100': {'model_file': 'standard/graceful-frog-100M.pt'},
-                'curious-galaxy-40': {'model_file': 'standard/curious-galaxy-40M.pt'},
+                #'graceful-frog-100': {'model_file': 'standard/graceful-frog-100M.pt'},
+                #'curious-galaxy-40': {'model_file': 'standard/curious-galaxy-40M.pt'},
             }
-            scripted_opponents = ['destroyer', 'replicator']
-            hardness = 5
+            scripted_opponents = ['aggressive_replicator']
+            hardness = 2
         elif objective == envs.Objective.SMOL_STANDARD:
             opponents = {
                 'alpha': {'model_file': 'standard/curious-dust-35M.pt'},
