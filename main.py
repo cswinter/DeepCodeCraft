@@ -425,7 +425,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                         gradient_allreduce(policy)
                     optimizer.step()
                     for ema in policy_emas:
-                        ema.update(model.parameters())
+                        ema.update(policy.parameters())
                     if lr_scheduler:
                         lr_scheduler.step()
         torch.cuda.empty_cache()
@@ -501,7 +501,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        for policy_ema in ([None] + policy_emas):
+        for policy_ema in [None] + policy_emas:
             eval(policy=policy,
                  num_envs=hps.eval_envs // hps.parallelism,
                  device=device,

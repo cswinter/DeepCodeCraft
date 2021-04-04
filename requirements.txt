@@ -6,6 +6,7 @@ requests==2.22.0
 torch==1.6.0
 torchprof
 wandb==0.10.9
+git+https://github.com/fadel/pytorch_ema@3950a7b5c4b88f46fd14f620277bad21898597a9
 
 # torch-scatter cannot be installed with requirements.txt, see https://github.com/rusty1s/pytorch_scatter for installation instructions
 # torch-scatter==2.0.5
