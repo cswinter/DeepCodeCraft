@@ -143,7 +143,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     total_steps = resume_steps
     iteration = 0
-    next_eval = total_steps
+    next_eval = total_steps + hps.eval_frequency
     epoch = 0
     eprewmean = 0
     eplenmean = 0
