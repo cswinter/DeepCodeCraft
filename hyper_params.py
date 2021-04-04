@@ -25,6 +25,7 @@ class HyperParams:
         self.epochs = 2             # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
+        self.weights_ema = [0.9, 0.97, 0.99, 0.997, 0.999]
 
         # Policy
         self.d_agent = 256
@@ -565,6 +566,8 @@ class HyperParams:
             if isinstance(value, bool):
                 parser.add_argument(f"--no-{name}", action='store_const', const=False, dest=name)
                 parser.add_argument(f"--{name}", action='store_const', const=True, dest=name)
+            elif isinstance(value, list):
+                parser.add_argument(f"--{name}", action='append')
             else:
                 parser.add_argument(f"--{name}", type=type(value))
         return parser

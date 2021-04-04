@@ -12,6 +12,7 @@ import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
+from torch_ema import ExponentialMovingAverage
 
 import wandb
 
@@ -117,6 +118,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
     else:
         policy, optimizer, resume_steps, adr, lr_scheduler =\
             load_policy(hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify)
+    policy_emas = [
+        ExponentialMovingAverage(policy.parameters(), decay=float(decay))
+        for decay in hps.weights_ema
+    ]
 
     if hps.warmup > 0:
         assert False, 'Warmup not implemented'
@@ -215,15 +220,17 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         if total_steps >= next_eval and not hps.verify:
             if hps.eval_envs > 0:
-                eval(policy=policy,
-                     num_envs=hps.eval_envs // hps.parallelism,
-                     device=device,
-                     objective=hps.objective,
-                     eval_steps=hps.eval_timesteps,
-                     curr_step=total_steps,
-                     symmetric=hps.eval_symmetric,
-                     rank=hps.rank,
-                     parallelism=hps.parallelism)
+                for policy_ema in [None] + policy_emas:
+                    eval(policy=policy,
+                        num_envs=hps.eval_envs // hps.parallelism,
+                        device=device,
+                        objective=hps.objective,
+                        eval_steps=hps.eval_timesteps,
+                        curr_step=total_steps,
+                        symmetric=hps.eval_symmetric,
+                        rank=hps.rank,
+                        parallelism=hps.parallelism,
+                        policy_ema=policy_ema)
             next_eval += hps.eval_frequency
             next_model_save -= 1
             if next_model_save == 0 and hps.rank == 0:
@@ -417,6 +424,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     if hps.parallelism > 1:
                         gradient_allreduce(policy)
                     optimizer.step()
+                    for ema in policy_emas:
+                        ema.update(model.parameters())
                     if lr_scheduler:
                         lr_scheduler.step()
         torch.cuda.empty_cache()
@@ -492,16 +501,18 @@ def train(hps: HyperParams, out_dir: str) -> None:
     env.close()
 
     if hps.eval_envs > 0:
-        eval(policy=policy,
-             num_envs=hps.eval_envs // hps.parallelism,
-             device=device,
-             objective=hps.objective,
-             eval_steps=5 * hps.eval_timesteps,
-             curr_step=total_steps,
-             symmetric=hps.eval_symmetric,
-             printerval=hps.eval_timesteps,
-             rank=hps.rank,
-             parallelism=hps.parallelism)
+        for policy_ema in ([None] + policy_emas):
+            eval(policy=policy,
+                 num_envs=hps.eval_envs // hps.parallelism,
+                 device=device,
+                 objective=hps.objective,
+                 eval_steps=5 * hps.eval_timesteps,
+                 curr_step=total_steps,
+                 symmetric=hps.eval_symmetric,
+                 printerval=hps.eval_timesteps,
+                 rank=hps.rank,
+                 parallelism=hps.parallelism,
+                 policy_ema=policy_ema)
     if hps.rank == 0:
         save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
 
@@ -519,7 +530,8 @@ def eval(policy,
          symmetric=True,
          random_rules=0.0,
          rank=0,
-         parallelism=1):
+         parallelism=1,
+         policy_ema=None):
     start_time = time.time()
 
     if printerval is None:
@@ -573,6 +585,13 @@ def eval(policy,
             }
         else:
             raise Exception(f'No eval opponents configured for {objective}')
+
+    if policy_ema is not None:
+        policy_ema.store(policy.parameters())
+        policy_ema.copy_to(policy.parameters())
+        postfix = '-ema' + str(policy_ema.decay).replace(".", "")
+    else:
+        postfix = ''
 
     policy.eval()
 
@@ -674,7 +693,7 @@ def eval(policy,
                         break
 
         if (step + 1) % printerval == 0:
-            print(f'Eval: {np.array(scores).mean():6.3f}  {sum(eliminations)}/{len(scores)}  (total)')
+            print(f'Eval{postfix}: {np.array(scores).mean():6.3f}  {sum(eliminations)}/{len(scores)}  (total)')
             for name, _scores in sorted(scores_by_opp.items()):
                 print(f'      {np.array(_scores).mean():6.3f}  {sum(eliminations_by_opp[name])}/{len(_scores)}  ({name})')
 
@@ -687,12 +706,12 @@ def eval(policy,
             eliminations = allcat(eliminations, rank, parallelism)
         if rank == 0:
             wandb.log({
-                'eval_mean_score': scores.mean().item(),
-                'eval_max_score': scores.max().item(),
-                'eval_min_score': scores.min().item(),
-                'eval_games': len(scores),
-                'eval_elimination_rate': eliminations.mean().item(),
-                'evalu_duration_secs': time.time() - start_time,
+                f'eval_mean_score{postfix}': scores.mean().item(),
+                f'eval_max_score{postfix}': scores.max().item(),
+                f'eval_min_score{postfix}': scores.min().item(),
+                f'eval_games{postfix}': len(scores),
+                f'eval_elimination_rate{postfix}': eliminations.mean().item(),
+                f'evalu_duration_secs{postfix}': time.time() - start_time,
             }, step=curr_step)
         for opp_name, scores in sorted(scores_by_opp.items()):
             scores = torch.Tensor(scores)
@@ -702,10 +721,13 @@ def eval(policy,
                 eliminations = allcat(eliminations, rank, parallelism)
             if rank == 0:
                 wandb.log({
-                    f'eval_mean_score_vs_{opp_name}': scores.mean().item(),
-                    f'eval_games_vs_{opp_name}': len(scores),
-                    f'eval_elimination_rate_vs_{opp_name}': eliminations.mean().item(),
+                    f'eval_mean_score_vs_{opp_name}{postfix}': scores.mean().item(),
+                    f'eval_games_vs_{opp_name}{postfix}': len(scores),
+                    f'eval_elimination_rate_vs_{opp_name}{postfix}': eliminations.mean().item(),
                 }, step=curr_step)
+
+    if policy_ema is not None:
+        policy_ema.restore(policy.parameters())
 
     env.close()
 
