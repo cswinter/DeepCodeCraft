@@ -238,7 +238,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
         if hps.rank == 0 and len(extra_checkpoint_steps) > 0 and total_steps >= extra_checkpoint_steps[0]:
             del extra_checkpoint_steps[0]
-            save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
+            save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas)
 
         episode_start = time.time()
         entropies = []
@@ -514,7 +514,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
                  parallelism=hps.parallelism,
                  policy_ema=policy_ema)
     if hps.rank == 0:
-        save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
+        save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas)
 
 
 def eval(policy,
@@ -757,29 +757,37 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
         )
 
 
-def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None, lr_scheduler=None):
-    model_path = os.path.join(out_dir, f'model-{total_steps}.pt')
-    print(f'Saving policy to {model_path}')
-    model = {
-        'model_state_dict': policy.state_dict(),
-        'model_kwargs': policy.kwargs,
-        'total_steps': total_steps,
-        'policy_version': policy.version,
-    }
-    if optimizer:
-        model['optimizer_state_dict'] = optimizer.state_dict()
-    if adr:
-        model['adr_state_dict'] = {
-            'hardness': adr.hardness,
-            'rules': dataclasses.asdict(adr.ruleset),
-            'max_hardness': adr.max_hardness,
-            'linear_hardness': adr.linear_hardness,
-            'hardness_offset': adr.hardness_offset,
-            'step': adr.step,
+def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None, lr_scheduler=None, policy_emas=None):
+    for policy_ema in [None] + policy_emas:
+        postfix = ''
+        if policy_ema is not None:
+            policy_ema.store(policy.parameters())
+            policy_ema.copy_to(policy.parameters())
+            postfix = '-ema' + str(policy_ema.decay).replace(".", "")
+        model_path = os.path.join(out_dir, f'model-{total_steps}{postfix}.pt')
+        print(f'Saving policy to {model_path}')
+        model = {
+            'model_state_dict': policy.state_dict(),
+            'model_kwargs': policy.kwargs,
+            'total_steps': total_steps,
+            'policy_version': policy.version,
         }
-    if lr_scheduler:
-        model['lr_scheduler_state_dict'] = lr_scheduler.state_dict()
-    torch.save(model, model_path)
+        if optimizer:
+            model['optimizer_state_dict'] = optimizer.state_dict()
+        if adr:
+            model['adr_state_dict'] = {
+                'hardness': adr.hardness,
+                'rules': dataclasses.asdict(adr.ruleset),
+                'max_hardness': adr.max_hardness,
+                'linear_hardness': adr.linear_hardness,
+                'hardness_offset': adr.hardness_offset,
+                'step': adr.step,
+            }
+        if lr_scheduler:
+            model['lr_scheduler_state_dict'] = lr_scheduler.state_dict()
+        torch.save(model, model_path)
+        if policy_ema is not None:
+            policy_ema.restore(policy.parameters())
 
 
 def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None, rawpath=False):
