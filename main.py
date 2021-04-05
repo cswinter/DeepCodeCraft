@@ -235,7 +235,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
             next_model_save -= 1
             if next_model_save == 0 and hps.rank == 0:
                 next_model_save = hps.model_save_frequency
-                save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler)
+                save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas)
         if hps.rank == 0 and len(extra_checkpoint_steps) > 0 and total_steps >= extra_checkpoint_steps[0]:
             del extra_checkpoint_steps[0]
             save_policy(policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas)
@@ -758,6 +758,8 @@ def obs_config_from(hps: HyperParams) -> ObsConfig:
 
 
 def save_policy(policy, out_dir, total_steps, optimizer=None, adr=None, lr_scheduler=None, policy_emas=None):
+    if policy_emas is None:
+        policy_emas = []
     for policy_ema in [None] + policy_emas:
         postfix = ''
         if policy_ema is not None:
