@@ -873,6 +873,9 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
         )
 
         if hps.lr_schedule == 'cosine':
+            for g in optimizer.param_groups:
+                g['lr'] = hps.lr
+                g['initial_lr'] = hps.lr
             lr_scheduler = CosineAnnealingLR(
                 optimizer,
                 T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
