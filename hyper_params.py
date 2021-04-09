@@ -25,7 +25,7 @@ class HyperParams:
         self.epochs = 2             # Number of optimizer passes over samples collected during rollout
         self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
         self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
-        self.weights_ema = [0.9, 0.97, 0.99, 0.997, 0.999]
+        self.weights_ema = [0.99, 0.997, 0.999, 0.9997, 0.9999]
 
         # Policy
         self.d_agent = 256
@@ -84,6 +84,7 @@ class HyperParams:
         self.eval_frequency = 1e5
         self.model_save_frequency = 10
         self.eval_symmetric = True
+        self.full_eval_frequency = 5
 
         self.extra_checkpoint_steps = []
 

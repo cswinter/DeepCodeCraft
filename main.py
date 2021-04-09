@@ -220,7 +220,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         if total_steps >= next_eval and not hps.verify:
             if hps.eval_envs > 0:
-                for policy_ema in [None] + policy_emas:
+                if total_steps % (hps.eval_frequency * hps.full_eval_frequency) == 0:
+                    emas = [None] + policy_emas
+                else:
+                    emas = [None]
+                for policy_ema in emas:
                     eval(policy=policy,
                         num_envs=hps.eval_envs // hps.parallelism,
                         device=device,
@@ -874,7 +878,7 @@ def load_policy(name, device, optimizer_fn=None, optimizer_kwargs=None, hps=None
                 T_max=hps.steps * hps.epochs * hps.parallelism // (hps.bs * hps.batches_per_update),
                 eta_min=hps.final_lr,
             )
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+            #lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
         else:
             assert hps.lr_schedule == 'none', f'Unexpected lr_schedule: {hps.lr_schedule}'
 

@@ -107,6 +107,8 @@ class JobQueue:
                 out_dir = os.path.join(self.out_dir, f'{time.strftime("%Y-%m-%d~%H:%M:%S")}-{revision}')
                 for name, value in job.params.items():
                     out_dir += f"-{name}{value}"
+                if len(out_dir) > 100:
+                    out_dir = out_dir[:100]
                 pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
                 job_desc = f"{job.repo_path} at {job.revision} with {job.params}"
