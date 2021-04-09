@@ -220,7 +220,7 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         if total_steps >= next_eval and not hps.verify:
             if hps.eval_envs > 0:
-                if total_steps % (hps.eval_frequency * hps.full_eval_frequency) == 0:
+                if total_steps % (hps.eval_frequency * hps.full_eval_frequency) < hps.rosteps * hps.parallelism:
                     emas = [None] + policy_emas
                 else:
                     emas = [None]
