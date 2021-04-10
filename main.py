@@ -143,7 +143,8 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
     total_steps = resume_steps
     iteration = 0
-    next_eval = total_steps + hps.eval_frequency
+    next_eval = total_steps
+    next_full_eval = 1
     epoch = 0
     eprewmean = 0
     eplenmean = 0
@@ -220,8 +221,10 @@ def train(hps: HyperParams, out_dir: str) -> None:
 
         if total_steps >= next_eval and not hps.verify:
             if hps.eval_envs > 0:
-                if total_steps % (hps.eval_frequency * hps.full_eval_frequency) < hps.rosteps * hps.parallelism:
+                next_full_eval -= 1
+                if next_full_eval == 0:
                     emas = [None] + policy_emas
+                    next_full_eval = hps.full_eval_frequency
                 else:
                     emas = [None]
                 for policy_ema in emas:
