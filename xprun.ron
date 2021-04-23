@@ -1,0 +1,16 @@
+XpV0(
+    project: "dcc",
+    containers: {
+        "trainer": (
+            command: ["python", "main.py", "--hpset=enhanced", "--steps=1e6", "--out-dir=out"],
+            dockerfile: "Dockerfile",
+            copy_repo: true,
+            gpus: 1,
+            wandb: true,
+        ),
+        "codecraftserver": (
+            dockerfile: "CodeCraftServer.Dockerfile",
+            tty: true,
+        ),
+    }
+)

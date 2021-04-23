@@ -1,6 +1,7 @@
 import requests
 import logging
 import time
+import os
 
 import orjson
 import numpy as np
@@ -79,10 +80,12 @@ class ObsConfig:
         return 2 * self.drones - self.allies
 
     def stride(self):
-        return self.global_features() \
-               + self.total_drones() * self.dstride() \
-               + self.minerals * self.mstride() \
-               + self.tiles * self.tstride()
+        return (
+            self.global_features()
+            + self.total_drones() * self.dstride()
+            + self.minerals * self.mstride()
+            + self.tiles * self.tstride()
+        )
 
     def endglobals(self):
         return self.global_features()
@@ -115,34 +118,40 @@ class Rules:
     cost_modifiers: Dict[Tuple[int, int, int, int, int], float]
 
 
-def create_game(game_length: int = None,
-                action_delay: int = 0,
-                self_play: bool = False,
-                custom_map=None,
-                scripted_opponent: str = 'none',
-                rules=None,
-                allowHarvesting: bool = True,
-                forceHarvesting: bool = True,
-                randomizeIdle: bool = True) -> int:
+def create_game(
+    game_length: int = None,
+    action_delay: int = 0,
+    self_play: bool = False,
+    custom_map=None,
+    scripted_opponent: str = "none",
+    rules=None,
+    allowHarvesting: bool = True,
+    forceHarvesting: bool = True,
+    randomizeIdle: bool = True,
+) -> int:
     assert rules is not None
     json = {
-        'map': [] if custom_map is None else [custom_map],
-        'costModifiers': list(rules.cost_modifiers.items()),
+        "map": [] if custom_map is None else [custom_map],
+        "costModifiers": list(rules.cost_modifiers.items()),
     }
     try:
         if game_length:
-            response = requests.post(f'http://localhost:9000/start-game'
-                                     f'?maxTicks={game_length}'
-                                     f'&actionDelay={action_delay}'
-                                     f'&scriptedOpponent={scripted_opponent}'
-                                     f'&mothershipDamageMultiplier={rules.mothership_damage_multiplier}'
-                                     f'&allowHarvesting={scalabool(allowHarvesting)}'
-                                     f'&forceHarvesting={scalabool(forceHarvesting)}'
-                                     f'&randomizeIdle={scalabool(randomizeIdle)}' ,
-                                     json=json).json()
+            response = requests.post(
+                f"http://{get_hostname()}:9000/start-game"
+                f"?maxTicks={game_length}"
+                f"&actionDelay={action_delay}"
+                f"&scriptedOpponent={scripted_opponent}"
+                f"&mothershipDamageMultiplier={rules.mothership_damage_multiplier}"
+                f"&allowHarvesting={scalabool(allowHarvesting)}"
+                f"&forceHarvesting={scalabool(forceHarvesting)}"
+                f"&randomizeIdle={scalabool(randomizeIdle)}",
+                json=json,
+            ).json()
         else:
-            response = requests.post(f'http://localhost:9000/start-game?actionDelay={action_delay}').json()
-        return int(response['id'])
+            response = requests.post(
+                f"http://{get_hostname()}:9000/start-game?actionDelay={action_delay}"
+            ).json()
+        return int(response["id"])
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on create_game, retrying")
         time.sleep(1)
@@ -153,7 +162,10 @@ def act(game_id: int, action):
     retries = 100
     while retries > 0:
         try:
-            requests.post(f'http://localhost:9000/act?gameID={game_id}&playerID=0', json=action).raise_for_status()
+            requests.post(
+                f"http://{get_hostname()}:9000/act?gameID={game_id}&playerID=0",
+                json=action,
+            ).raise_for_status()
             return
         except requests.exceptions.ConnectionError:
             # For some reason, a small percentage of requests fails with
@@ -168,25 +180,34 @@ def act_batch(actions):
     payload = {}
     for game_id, player_id, player_actions in actions:
         player_actions_json = []
-        for move, turn, buildSpec, harvest, lockBuildAction, unlockBuildAction in player_actions:
-            player_actions_json.append({
-                "buildDrone": buildSpec,
-                "move": move,
-                "harvest": harvest,
-                "transfer": False,
-                "turn": turn,
-                "lockBuildAction": lockBuildAction,
-                "unlockBuildAction": unlockBuildAction
-            })
-        payload[f'{game_id}.{player_id}'] = player_actions_json
+        for (
+            move,
+            turn,
+            buildSpec,
+            harvest,
+            lockBuildAction,
+            unlockBuildAction,
+        ) in player_actions:
+            player_actions_json.append(
+                {
+                    "buildDrone": buildSpec,
+                    "move": move,
+                    "harvest": harvest,
+                    "transfer": False,
+                    "turn": turn,
+                    "lockBuildAction": lockBuildAction,
+                    "unlockBuildAction": unlockBuildAction,
+                }
+            )
+        payload[f"{game_id}.{player_id}"] = player_actions_json
 
     retries = 100
     while retries > 0:
         try:
             requests.post(
-                f'http://localhost:9000/batch-act',
+                f"http://{get_hostname()}:9000/batch-act",
                 data=orjson.dumps(payload),
-                headers={'Content-Type': 'application/json'},
+                headers={"Content-Type": "application/json"},
             ).raise_for_status()
             return
         except requests.exceptions.ConnectionError:
@@ -200,7 +221,9 @@ def act_batch(actions):
 
 def observe(game_id: int, player_id: int = 0):
     try:
-        return requests.get(f'http://localhost:9000/observation?gameID={game_id}&playerID={player_id}').json()
+        return requests.get(
+            f"http://{get_hostname()}:9000/observation?gameID={game_id}&playerID={player_id}"
+        ).json()
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on observe({game_id}.{player_id}), retrying")
         time.sleep(1)
@@ -211,7 +234,9 @@ def observe_batch(game_ids):
     retries = RETRIES
     while retries > 0:
         try:
-            return requests.get(f'http://localhost:9000/batch-observation', json=[game_ids, []]).json()
+            return requests.get(
+                f"http://{get_hostname()}:9000/batch-observation", json=[game_ids, []]
+            ).json()
         except requests.exceptions.ConnectionError:
             retries -= 1
             logging.info(f"Connection error on observe_batch(), retrying")
@@ -219,57 +244,59 @@ def observe_batch(game_ids):
 
 
 def scalabool(b: bool) -> str:
-    return 'true' if b else 'false'
+    return "true" if b else "false"
 
 
-def observe_batch_raw(obs_config: ObsConfig,
-                      game_ids: List[Tuple[int, int]],
-                      allies: int,
-                      drones: int,
-                      minerals: int,
-                      global_drones: int,
-                      tiles: int,
-                      relative_positions: bool,
-                      v2: bool,
-                      extra_build_actions: List[List[int]],
-                      map_size: bool = False,
-                      last_seen: bool = False,
-                      is_visible: bool = False,
-                      abstime: bool = False,
-                      rule_msdm: bool = False,
-                      rule_costs: bool = False,
-                      enforce_unit_cap: bool = False,
-                      unit_cap_override: int = 0) -> object:
+def observe_batch_raw(
+    obs_config: ObsConfig,
+    game_ids: List[Tuple[int, int]],
+    allies: int,
+    drones: int,
+    minerals: int,
+    global_drones: int,
+    tiles: int,
+    relative_positions: bool,
+    v2: bool,
+    extra_build_actions: List[List[int]],
+    map_size: bool = False,
+    last_seen: bool = False,
+    is_visible: bool = False,
+    abstime: bool = False,
+    rule_msdm: bool = False,
+    rule_costs: bool = False,
+    enforce_unit_cap: bool = False,
+    unit_cap_override: int = 0,
+) -> object:
     retries = RETRIES
-    url = f'http://localhost:9000/batch-observation?' \
-        f'json=false&' \
-        f'allies={allies}&' \
-        f'drones={drones}&' \
-        f'minerals={minerals}&' \
-        f'tiles={tiles}&' \
-        f'globalDrones={global_drones}&' \
-        f'relativePositions={"true" if relative_positions else "false"}&' \
-        f'lastSeen={"true" if last_seen else "false"}&' \
-        f'isVisible={"true" if is_visible else "false"}&' \
-        f'abstime={"true" if abstime else "false"}&' \
-        f'mapSize={"true" if map_size else "false"}&' \
-        f'v2={"true" if v2 else "false"}&' \
-        f'mineralClaims={scalabool(obs_config.feat_mineral_claims)}&' \
-        f'harvestAction={scalabool(obs_config.harvest_action)}&' \
-        f'ruleMsdm={scalabool(rule_msdm)}&' \
-        f'ruleCosts={scalabool(rule_costs)}&' \
-        f'lockBuildAction={scalabool(obs_config.lock_build_action)}&' \
-        f'distanceToWall={scalabool(obs_config.feat_dist_to_wall)}&' \
-        f'unitCount={scalabool(obs_config.unit_count)}&' \
-        f'enforceUnitCap={scalabool(enforce_unit_cap)}&' \
-        f'unitCapOverride={unit_cap_override}&' \
-        f'constructionProgress={scalabool(obs_config.construction_progress)}'
+    url = (
+        f"http://{get_hostname()}:9000/batch-observation?"
+        f"json=false&"
+        f"allies={allies}&"
+        f"drones={drones}&"
+        f"minerals={minerals}&"
+        f"tiles={tiles}&"
+        f"globalDrones={global_drones}&"
+        f'relativePositions={"true" if relative_positions else "false"}&'
+        f'lastSeen={"true" if last_seen else "false"}&'
+        f'isVisible={"true" if is_visible else "false"}&'
+        f'abstime={"true" if abstime else "false"}&'
+        f'mapSize={"true" if map_size else "false"}&'
+        f'v2={"true" if v2 else "false"}&'
+        f"mineralClaims={scalabool(obs_config.feat_mineral_claims)}&"
+        f"harvestAction={scalabool(obs_config.harvest_action)}&"
+        f"ruleMsdm={scalabool(rule_msdm)}&"
+        f"ruleCosts={scalabool(rule_costs)}&"
+        f"lockBuildAction={scalabool(obs_config.lock_build_action)}&"
+        f"distanceToWall={scalabool(obs_config.feat_dist_to_wall)}&"
+        f"unitCount={scalabool(obs_config.unit_count)}&"
+        f"enforceUnitCap={scalabool(enforce_unit_cap)}&"
+        f"unitCapOverride={unit_cap_override}&"
+        f"constructionProgress={scalabool(obs_config.construction_progress)}"
+    )
     while retries > 0:
         json = [game_ids, extra_build_actions]
         try:
-            response = requests.get(url,
-                                    json=json,
-                                    stream=True)
+            response = requests.get(url, json=json, stream=True)
             response.raise_for_status()
             response_bytes = response.content
             return np.frombuffer(response_bytes, dtype=np.float32)
@@ -309,24 +336,26 @@ def one_hot_to_action(action):
 
 def observation_to_np(observation):
     o = []
-    x = float(observation['alliedDrones'][0]['xPos'])
-    y = float(observation['alliedDrones'][0]['yPos'])
+    x = float(observation["alliedDrones"][0]["xPos"])
+    y = float(observation["alliedDrones"][0]["yPos"])
     o.append(x / 1000.0)
     o.append(y / 1000.0)
-    o.append(np.sin(float(observation['alliedDrones'][0]['orientation'])))
-    o.append(np.cos(float(observation['alliedDrones'][0]['orientation'])))
-    o.append(float(observation['alliedDrones'][0]['storedResources']) / 50.0)
-    o.append(1.0 if observation['alliedDrones'][0]['isConstructing'] else -1.0)
-    o.append(1.0 if observation['alliedDrones'][0]['isHarvesting'] else -1.0)
-    minerals = sorted(observation['minerals'], key=lambda m: dist2(m['xPos'], m['yPos'], x, y))
+    o.append(np.sin(float(observation["alliedDrones"][0]["orientation"])))
+    o.append(np.cos(float(observation["alliedDrones"][0]["orientation"])))
+    o.append(float(observation["alliedDrones"][0]["storedResources"]) / 50.0)
+    o.append(1.0 if observation["alliedDrones"][0]["isConstructing"] else -1.0)
+    o.append(1.0 if observation["alliedDrones"][0]["isHarvesting"] else -1.0)
+    minerals = sorted(
+        observation["minerals"], key=lambda m: dist2(m["xPos"], m["yPos"], x, y)
+    )
     for m in range(0, 10):
         if m < len(minerals):
-            mx = float(minerals[m]['xPos'])
-            my = float(minerals[m]['yPos'])
+            mx = float(minerals[m]["xPos"])
+            my = float(minerals[m]["yPos"])
             o.append((mx - x) / 1000.0)
             o.append((my - y) / 1000.0)
             o.append(dist(mx, my, x, y) / 1000.0)
-            o.append(float(minerals[m]['size'] / 100.0))
+            o.append(float(minerals[m]["size"] / 100.0))
         else:
             o.extend([0.0, 0.0, 0.0, 0.0])
     return np.array(o, dtype=np.float32)
@@ -342,3 +371,11 @@ def dist2(x1, y1, x2, y2):
     dx = x1 - x2
     dy = y1 - y2
     return dx * dx + dy * dy
+
+
+def get_hostname() -> str:
+    xprun_id = os.getenv("XPRUN_ID")
+    if xprun_id:
+        return f"xprun.{xprun_id}.codecraftserver"
+    else:
+        return "localhost"
