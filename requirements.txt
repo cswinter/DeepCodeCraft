@@ -3,7 +3,10 @@ matplotlib
 numpy==1.16.3
 orjson==3.0.2
 requests==2.22.0
-torch==1.8.0
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.8.1+cu111
 torchprof
+-f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
+torch-scatter
 wandb==0.10.9
 git+https://github.com/fadel/pytorch_ema@3950a7b5c4b88f46fd14f620277bad21898597a9

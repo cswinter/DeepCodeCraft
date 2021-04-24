@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "trainer": (
-            command: ["python", "main.py", "--hpset=enhanced", "--steps=1e6", "--out-dir=out"],
+            command: ["python", "main.py", "--hpset=enhanced", "--steps=1e6"],
             dockerfile: "Dockerfile",
             copy_repo: true,
             gpus: 1,
