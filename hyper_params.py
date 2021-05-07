@@ -8,24 +8,32 @@ from gym_codecraft import envs
 class HyperParams:
     def __init__(self):
         # Optimizer
-        self.optimizer = 'Adam'  # Optimizer ("SGD" or "RMSProp" or "Adam")
-        self.lr = 0.0003            # Learning rate
-        self.final_lr = 0.0001      # Learning rate floor when using cosine schedule
-        self.lr_schedule = 'none'   # Learning rate schedule ("none" or "cosine")
-        self.momentum = 0.9         # Momentum
+        self.optimizer = "Adam"  # Optimizer ("SGD" or "RMSProp" or "Adam")
+        self.lr = 0.0003  # Learning rate
+        self.final_lr = 0.0001  # Learning rate floor when using cosine schedule
+        self.lr_schedule = "none"  # Learning rate schedule ("none" or "cosine")
+        self.momentum = 0.9  # Momentum
         self.weight_decay = 0.0001
-        self.bs = 2048              # Batch size during optimization
-        self.batches_per_update = 1 # Accumulate gradients over this many batches before applying gradients
-        self.batches_per_update_schedule = ''
-        self.shuffle = True         # Shuffle samples collected during rollout before optimization
-        self.vf_coef = 1.0          # Weighting of value function loss in optimization objective
-        self.entropy_bonus = 0.0    # Weighting of  entropy bonus in loss function
-        self.entropy_bonus_schedule = ''
-        self.max_grad_norm = 20.0   # Maximum gradient norm for gradient clipping
-        self.epochs = 2             # Number of optimizer passes over samples collected during rollout
-        self.lr_ratios = 1.0        # Learning rate multiplier applied to earlier layers
-        self.warmup = 0             # Learning rate is increased linearly from 0 during first n samples
-        self.weights_ema = [0.99, 0.997, 0.999, 0.9997, 0.9999]
+        self.bs = 2048  # Batch size during optimization
+        self.batches_per_update = (
+            1  # Accumulate gradients over this many batches before applying gradients
+        )
+        self.batches_per_update_schedule = ""
+        self.shuffle = (
+            True  # Shuffle samples collected during rollout before optimization
+        )
+        self.vf_coef = 1.0  # Weighting of value function loss in optimization objective
+        self.entropy_bonus = 0.0  # Weighting of  entropy bonus in loss function
+        self.entropy_bonus_schedule = ""
+        self.max_grad_norm = 20.0  # Maximum gradient norm for gradient clipping
+        self.epochs = (
+            2  # Number of optimizer passes over samples collected during rollout
+        )
+        self.lr_ratios = 1.0  # Learning rate multiplier applied to earlier layers
+        self.warmup = (
+            0  # Learning rate is increased linearly from 0 during first n samples
+        )
+        self.weights_ema = []  # [0.99, 0.997, 0.999, 0.9997, 0.9999]
 
         # Policy
         self.d_agent = 256
@@ -33,47 +41,67 @@ class HyperParams:
         self.dff_ratio = 2
         self.nhead = 8
         self.item_item_attn_layers = 0
-        self.dropout = 0.0             # Try 0.1?
-        self.nearby_map = False        # Construct map of nearby objects populated with scatter connections
-        self.nm_ring_width = 60        # Width of circles on nearby map
-        self.nm_nrays = 8              # Number of rays on nearby map
-        self.nm_nrings = 8             # Number of rings on nearby map
-        self.map_conv = False          # Whether to perform convolution on nearby map
-        self.mc_kernel_size = 3        # Size of convolution kernel for nearby map
+        self.dropout = 0.0  # Try 0.1?
+        self.nearby_map = (
+            False  # Construct map of nearby objects populated with scatter connections
+        )
+        self.nm_ring_width = 60  # Width of circles on nearby map
+        self.nm_nrays = 8  # Number of rays on nearby map
+        self.nm_nrings = 8  # Number of rings on nearby map
+        self.map_conv = False  # Whether to perform convolution on nearby map
+        self.mc_kernel_size = 3  # Size of convolution kernel for nearby map
         self.map_embed_offset = False  # Whether the nearby map has 2 channels corresponding to the offset of objects within the tile
-        self.item_ff = True            # Adds itemwise ff resblock after initial embedding before transformer
-        self.agents = 1                # Max number of simultaneously controllable drones
-        self.nally = 1                 # Max number of allies observed by each drone
-        self.nenemy = 0                # Max number of enemies observed by each drone
-        self.nmineral = 10             # Max number of minerals observed by each drone
-        self.ntile = 0                 # Number of map tiles observed by each drone
-        self.nconstant = 0             # Number learnable constant valued items observed by each drone
-        self.ally_enemy_same = False   # Use same weights for processing ally and enemy drones
-        self.norm = 'layernorm'        # Normalization layers ("none", "batchnorm", "layernorm")
-        self.fp16 = False              # Whether to use half-precision floating point
-        self.zero_init_vf = True       # Set all initial weights for value function head to zero
-        self.small_init_pi = False     # Set initial weights for policy head to small values and biases to zero
+        self.item_ff = (
+            True  # Adds itemwise ff resblock after initial embedding before transformer
+        )
+        self.agents = 1  # Max number of simultaneously controllable drones
+        self.nally = 1  # Max number of allies observed by each drone
+        self.nenemy = 0  # Max number of enemies observed by each drone
+        self.nmineral = 10  # Max number of minerals observed by each drone
+        self.ntile = 0  # Number of map tiles observed by each drone
+        self.nconstant = (
+            0  # Number learnable constant valued items observed by each drone
+        )
+        self.ally_enemy_same = (
+            False  # Use same weights for processing ally and enemy drones
+        )
+        self.norm = (
+            "layernorm"  # Normalization layers ("none", "batchnorm", "layernorm")
+        )
+        self.fp16 = False  # Whether to use half-precision floating point
+        self.zero_init_vf = (
+            True  # Set all initial weights for value function head to zero
+        )
+        self.small_init_pi = False  # Set initial weights for policy head to small values and biases to zero
 
-        self.resume_from = ''       # Filepath to saved policy
+        self.resume_from = ""  # Filepath to saved policy
 
         # Data parallel
         self.rank = 0
-        self.parallelism = 1           # Number of data parallel processes. Must be set explicitly when using schedule.py, otherwise runner.py will just spawn a single process.
+        self.parallelism = 1  # Number of data parallel processes. Must be set explicitly when using schedule.py, otherwise runner.py will just spawn a single process.
 
         # Observations
-        self.obs_allies = 10            # Max number of allied drones returned by the env
-        self.obs_enemies = 10           # Max number of enemy drones returned by the env
-        self.obs_minerals = 10          # Max number of minerals returned by the env
-        self.obs_map_tiles = 10         # Max number of map tiles returned by the env
-        self.obs_keep_abspos = False    # Have features for both absolute and relative positions on each object
-        self.use_privileged = True      # Whether value function has access to hidden information
-        self.feat_map_size = True       # Global features for width/height of map
-        self.feat_last_seen = False     # Remember last position/time each enemy was seen + missile cooldown feat
-        self.feat_is_visible = True     # Feature for whether drone is currently visible
-        self.feat_abstime = True        # Global features for absolute remaining/elapsed number of timesteps
-        self.feat_mineral_claims = False  # Feature for whether another drone is currently harvesting a mineral
-        self.harvest_action = False     # Harvest action that will freeze drone until one resource has been harvested
-        self.lock_build_action = False  # Pair of actions to disable/enable all build actions
+        self.obs_allies = 10  # Max number of allied drones returned by the env
+        self.obs_enemies = 10  # Max number of enemy drones returned by the env
+        self.obs_minerals = 10  # Max number of minerals returned by the env
+        self.obs_map_tiles = 10  # Max number of map tiles returned by the env
+        self.obs_keep_abspos = False  # Have features for both absolute and relative positions on each object
+        self.use_privileged = (
+            True  # Whether value function has access to hidden information
+        )
+        self.feat_map_size = True  # Global features for width/height of map
+        self.feat_last_seen = False  # Remember last position/time each enemy was seen + missile cooldown feat
+        self.feat_is_visible = True  # Feature for whether drone is currently visible
+        self.feat_abstime = (
+            True  # Global features for absolute remaining/elapsed number of timesteps
+        )
+        self.feat_mineral_claims = (
+            False  # Feature for whether another drone is currently harvesting a mineral
+        )
+        self.harvest_action = False  # Harvest action that will freeze drone until one resource has been harvested
+        self.lock_build_action = (
+            False  # Pair of actions to disable/enable all build actions
+        )
         self.feat_dist_to_wall = False  # Five features giving distance to closest wall in movement direction, and in movement direction offset by +-pi/2 and +-pi/4
         self.feat_unit_count = True
         self.feat_construction_progress = True
@@ -89,31 +117,45 @@ class HyperParams:
         self.extra_checkpoint_steps = []
 
         # RL
-        self.steps = 10e6           # Total number of timesteps
-        self.num_envs = 64          # Number of environments
-        self.num_self_play = 32     # Number of self-play environments (each provides two environments)
-        self.num_vs_replicator = 0  # Number of environments played vs scripted replicator AI
-        self.num_vs_aggro_replicator = 0  # Number of environments played vs scripted aggressive replicator AI
-        self.num_vs_destroyer = 0   # Number of environments played vs scripted destroyer AI
-        self.num_self_play_schedule = ''
-        self.seq_rosteps = 256      # Number of sequential steps per rollout
-        self.gamma = 0.99           # Discount factor
-        self.gamma_schedule = ''
-        self.lamb = 0.95            # Generalized advantage estimation parameter lambda
-        self.norm_advs = True       # Normalize advantage values
-        self.rewscale = 1.0         # Scaling of reward values
-        self.ppo = True             # Use PPO-clip instead of vanilla policy gradients objective
-        self.cliprange = 0.2        # PPO cliprange
-        self.clip_vf = True         # Use clipped value function objective
-        self.split_reward = False   # Split reward evenly amongst all active agents.
-        self.liveness_penalty = 0.0 # Negative reward applied at each timestep
-        self.build_variety_bonus = 0.0  # Extra reward for building a drone type at least once during episode
-        self.win_bonus = 0.0        # Reward received when winning game by eliminating opponent
-        self.loss_penalty = 0.0     # Negative reward received when losing game by being eliminated
-        self.partial_score = 1.0    # Instantaneous reward received from change in relative amount of resources under allied control
-        self.attac = 0.0            # Fraction of shaped reward awarded for minimum health of enemy mothership during episode
-        self.protec = 0.0           # Fraction of shaped reward awarded for maximum health of allied mothership during episode
-        self.rewnorm = False        # Rescale reward values by ema of mean and variance
+        self.steps = 10e6  # Total number of timesteps
+        self.num_envs = 64  # Number of environments
+        self.num_self_play = (
+            32  # Number of self-play environments (each provides two environments)
+        )
+        self.num_vs_replicator = (
+            0  # Number of environments played vs scripted replicator AI
+        )
+        self.num_vs_aggro_replicator = (
+            0  # Number of environments played vs scripted aggressive replicator AI
+        )
+        self.num_vs_destroyer = (
+            0  # Number of environments played vs scripted destroyer AI
+        )
+        self.num_self_play_schedule = ""
+        self.seq_rosteps = 256  # Number of sequential steps per rollout
+        self.gamma = 0.99  # Discount factor
+        self.gamma_schedule = ""
+        self.lamb = 0.95  # Generalized advantage estimation parameter lambda
+        self.norm_advs = True  # Normalize advantage values
+        self.rewscale = 1.0  # Scaling of reward values
+        self.ppo = True  # Use PPO-clip instead of vanilla policy gradients objective
+        self.cliprange = 0.2  # PPO cliprange
+        self.clip_vf = True  # Use clipped value function objective
+        self.split_reward = False  # Split reward evenly amongst all active agents.
+        self.liveness_penalty = 0.0  # Negative reward applied at each timestep
+        self.build_variety_bonus = (
+            0.0  # Extra reward for building a drone type at least once during episode
+        )
+        self.win_bonus = (
+            0.0  # Reward received when winning game by eliminating opponent
+        )
+        self.loss_penalty = (
+            0.0  # Negative reward received when losing game by being eliminated
+        )
+        self.partial_score = 1.0  # Instantaneous reward received from change in relative amount of resources under allied control
+        self.attac = 0.0  # Fraction of shaped reward awarded for minimum health of enemy mothership during episode
+        self.protec = 0.0  # Fraction of shaped reward awarded for maximum health of allied mothership during episode
+        self.rewnorm = False  # Rescale reward values by ema of mean and variance
         self.rewnorm_emaw = 0.97
         self.max_army_size_score = 9999999
         self.max_enemy_army_size_score = 9999999
@@ -123,37 +165,40 @@ class HyperParams:
         self.action_delay = 0
         self.use_action_masks = True
         self.task_hardness = 0
-        self.max_game_length = 0       # Max length of games, or default game length for map if 0.
-        self.max_hardness = 150        # Maxiumum map area
-        self.hardness_offset = 1e6     # Number of timesteps steps after which hardness starts to increase
+        self.max_game_length = (
+            0  # Max length of games, or default game length for map if 0.
+        )
+        self.max_hardness = 150  # Maxiumum map area
+        self.hardness_offset = (
+            1e6  # Number of timesteps steps after which hardness starts to increase
+        )
         self.task_randomize = True
-        self.symmetric_map = 0.0       # Percentage of maps which are symmetric
+        self.symmetric_map = 0.0  # Percentage of maps which are symmetric
         self.symmetry_increase = 2e-8  # Linearly increase env symmetry parameter with this slope for every step
-        self.mix_mp = 0.0              # Fraction of maps that use MICRO_PRACTICE instead of the main objective
-        self.rule_rng_fraction = 0.0   # Fraction of maps that use randomize ruleset
-        self.rule_rng_amount = 1.0     # Amount of rule randomization
+        self.mix_mp = 0.0  # Fraction of maps that use MICRO_PRACTICE instead of the main objective
+        self.rule_rng_fraction = 0.0  # Fraction of maps that use randomize ruleset
+        self.rule_rng_amount = 1.0  # Amount of rule randomization
         self.rule_cost_rng = 0.0
-        self.adr = False               # Automatically adjust environment rules
-        self.adr_hstepsize = 2.0e-6    # Amount by which task difficulty/map size is increased for each processed frame
-        self.linear_hardness = True    # Linearly increase task difficulty/map size
+        self.adr = False  # Automatically adjust environment rules
+        self.adr_hstepsize = 2.0e-6  # Amount by which task difficulty/map size is increased for each processed frame
+        self.linear_hardness = True  # Linearly increase task difficulty/map size
         self.mothership_damage_scale = 4.0
-        self.mothership_damage_scale_schedule = 'lin 50e6:1.0,150e6:0.0'
+        self.mothership_damage_scale_schedule = "lin 50e6:1.0,150e6:0.0"
         self.adr_average_cost_target = 1.0  # Target value for average module cost
-        self.adr_avg_cost_schedule = ''
+        self.adr_avg_cost_schedule = ""
         self.adr_cost_variance = 0.5
-        self.adr_cost_variance_schedule = 'lin 0:1.0,140e6:0.1'
+        self.adr_cost_variance_schedule = "lin 0:1.0,140e6:0.1"
 
         self.adr_variety = 0.8
-        self.adr_variety_schedule = '60e6:0.5,120e6:0.4,140e6:0.3'
+        self.adr_variety_schedule = "60e6:0.5,120e6:0.4,140e6:0.3"
 
         self.enforce_unit_cap = False
         self.unit_cap = 0
-        self.unit_cap_schedule = ''
+        self.unit_cap_schedule = ""
 
         # Testing
         self.verify_create_golden = False
         self.verify = False
-
 
     @staticmethod
     def micro_practice():
@@ -185,7 +230,6 @@ class HyperParams:
 
         return hps
 
-
     @staticmethod
     def standard():
         hps = HyperParams()
@@ -210,7 +254,7 @@ class HyperParams:
 
         hps.lr = 0.0005
         hps.final_lr = 0.00005
-        hps.lr_schedule = 'cosine'
+        hps.lr_schedule = "cosine"
         hps.win_bonus = 2.0
         hps.partial_score = 1.0
         hps.vf_coef = 1.0
@@ -219,13 +263,12 @@ class HyperParams:
         hps.adr = True
         hps.gamma = 0.999
         hps.entropy_bonus = 0.2
-        hps.entropy_bonus_schedule = 'lin 15e6:0.1,90e6:0.0'
+        hps.entropy_bonus_schedule = "lin 15e6:0.1,90e6:0.0"
         hps.mothership_damage_scale = 0.0
-        hps.mothership_damage_scale_schedule = ''
+        hps.mothership_damage_scale_schedule = ""
         hps.adr_hstepsize = 3.0e-6
         hps.adr_variety = 0.3
-        hps.adr_variety_schedule = 'lin 120e6:0.15,140e6:0.1,150e6:0.01'
-
+        hps.adr_variety_schedule = "lin 120e6:0.15,140e6:0.1,150e6:0.01"
 
         hps.batches_per_update = 32
         hps.bs = 512
@@ -251,16 +294,16 @@ class HyperParams:
 
         hps.eval_frequency = 10e6
         hps.entropy_bonus = 0.5
-        hps.entropy_bonus_schedule = 'lin 20e6:0.15,200e6:0.0'
+        hps.entropy_bonus_schedule = "lin 20e6:0.15,200e6:0.0"
         hps.adr_variety = 0.3
-        hps.adr_variety_schedule = 'lin 150e6:0.15,200e6:0.1,250e6:0.01'
+        hps.adr_variety_schedule = "lin 150e6:0.15,200e6:0.1,250e6:0.01"
         hps.adr_cost_variance = 2.0
-        hps.adr_cost_variance_schedule = 'lin 20e6:1.0,200e6:0.1'
+        hps.adr_cost_variance_schedule = "lin 20e6:1.0,200e6:0.1"
         hps.adr_hstepsize = 2.5e-6
 
         hps.enforce_unit_cap = True
         hps.unit_cap = 6
-        hps.unit_cap_schedule = 'lin 50e6:20'
+        hps.unit_cap_schedule = "lin 50e6:20"
 
         return hps
 
@@ -288,10 +331,10 @@ class HyperParams:
         hps.batches_per_update = 16
         hps.num_envs = 64
         hps.num_self_play = 32
-        hps.entropy_bonus_schedule = 'lin 20e6:0.15,150e6:0.03,400e6:0.0'
+        hps.entropy_bonus_schedule = "lin 20e6:0.15,150e6:0.03,400e6:0.0"
         hps.adr_hstepsize = 2.5e-6
-        hps.adr_variety_schedule = 'lin 200e6:0.1,350e6:0.01'
-        hps.adr_cost_variance_schedule = 'lin 20e6:1.0,200e6:0.2,400e6:0.1'
+        hps.adr_variety_schedule = "lin 200e6:0.1,350e6:0.01"
+        hps.adr_cost_variance_schedule = "lin 20e6:1.0,200e6:0.2,400e6:0.1"
         hps.max_hardness = 150
         hps.d_agent = 512
         hps.eval_envs = 256
@@ -308,12 +351,12 @@ class HyperParams:
         hps.num_envs = 64
         hps.num_self_play = 32
 
-        hps.entropy_bonus_schedule = 'lin 30e6:0.1,120e6:0.0'
-        hps.mothership_damage_scale_schedule = 'lin 100e6:0.0'
+        hps.entropy_bonus_schedule = "lin 30e6:0.1,120e6:0.0"
+        hps.mothership_damage_scale_schedule = "lin 100e6:0.0"
         hps.hardness_offset *= 2.0
         hps.adr_hstepsize *= 0.5
-        hps.mothership_damage_scale_schedule = 'lin 100e6:1.0,300e6:0.0'
-        hps.adr_variety_schedule = '120e6:0.5,240e6:0.4,280e6:0.3'
+        hps.mothership_damage_scale_schedule = "lin 100e6:1.0,300e6:0.0"
+        hps.adr_variety_schedule = "120e6:0.5,240e6:0.4,280e6:0.3"
 
         return hps
 
@@ -347,7 +390,6 @@ class HyperParams:
 
         return hps
 
-
     @staticmethod
     def arena_medium():
         hps = HyperParams()
@@ -361,7 +403,7 @@ class HyperParams:
         hps.nmineral = 5
 
         hps.batches_per_update = 1
-        hps.batches_per_update_schedule = '15e6:2,30e6:4'
+        hps.batches_per_update_schedule = "15e6:2,30e6:4"
         hps.bs = 1024
         hps.seq_rosteps = 256
         hps.num_envs = 64
@@ -374,7 +416,7 @@ class HyperParams:
 
         hps.gamma = 0.997
         hps.entropy_bonus = 0.002
-        hps.entropy_bonus_schedule = '15e6:0.0005,30e6:0.0'
+        hps.entropy_bonus_schedule = "15e6:0.0005,30e6:0.0"
 
         hps.symmetric_map = 1.0
         hps.task_hardness = 0
@@ -397,9 +439,9 @@ class HyperParams:
         hps.nally = 7
         hps.obs_allies = 15
         hps.obs_enemies = 15
-        hps.batches_per_update_schedule = '20e6:2,35e6:4,45e6:8'
+        hps.batches_per_update_schedule = "20e6:2,35e6:4,45e6:8"
         hps.entropy_bonus = 0.01
-        hps.entropy_bonus_schedule = '15e6:0.003,40e6:0.001'
+        hps.entropy_bonus_schedule = "15e6:0.003,40e6:0.001"
         return hps
 
     @staticmethod
@@ -417,7 +459,9 @@ class HyperParams:
         hps.nmineral = 1
         hps.obs_allies = 2
         hps.obs_enemies = 2
-        hps.obs_minerals = 1  # Could be 0, currently incompatible with ally_enemy_same=False
+        hps.obs_minerals = (
+            1  # Could be 0, currently incompatible with ally_enemy_same=False
+        )
 
         hps.eval_envs = 256
         hps.eval_timesteps = 360
@@ -442,7 +486,9 @@ class HyperParams:
         hps.nmineral = 1
         hps.obs_allies = 1
         hps.obs_enemies = 1
-        hps.obs_minerals = 1  # Could be 0, currently incompatible with ally_enemy_same=False
+        hps.obs_minerals = (
+            1  # Could be 0, currently incompatible with ally_enemy_same=False
+        )
 
         hps.eval_envs = 256
         hps.eval_frequency = 1e5
@@ -454,7 +500,6 @@ class HyperParams:
         hps.eval_symmetric = False
 
         return hps
-
 
     @staticmethod
     def scout():
@@ -483,7 +528,6 @@ class HyperParams:
 
         return hps
 
-
     @staticmethod
     def allied_wealth():
         hps = HyperParams()
@@ -496,7 +540,7 @@ class HyperParams:
         hps.lr = 0.0003
         hps.max_grad_norm = 20.0
         hps.momentum = 0.9
-        hps.norm = 'layernorm'
+        hps.norm = "layernorm"
         hps.norm_advs = True
         hps.num_envs = 64
         hps.num_self_play = 0
@@ -507,7 +551,7 @@ class HyperParams:
         hps.obs_map_tiles = 0
         hps.obs_enemies = 0
         hps.obs_global_drones = 0
-        hps.optimizer = 'Adam'
+        hps.optimizer = "Adam"
         hps.epochs = 2
         hps.small_init_pi = False
         hps.transformer_layers = 1
@@ -518,7 +562,6 @@ class HyperParams:
         hps.zero_init_vf = True
 
         return hps
-
 
     @staticmethod
     def distance_to_origin():
@@ -533,7 +576,6 @@ class HyperParams:
 
         return hps
 
-
     @staticmethod
     def distance_to_mineral():
         hps = HyperParams()
@@ -546,7 +588,6 @@ class HyperParams:
         hps.use_privileged = False
 
         return hps
-
 
     @property
     def rosteps(self):
@@ -565,10 +606,14 @@ class HyperParams:
         parser = argparse.ArgumentParser()
         for name, value in vars(self).items():
             if isinstance(value, bool):
-                parser.add_argument(f"--no-{name}", action='store_const', const=False, dest=name)
-                parser.add_argument(f"--{name}", action='store_const', const=True, dest=name)
+                parser.add_argument(
+                    f"--no-{name}", action="store_const", const=False, dest=name
+                )
+                parser.add_argument(
+                    f"--{name}", action="store_const", const=True, dest=name
+                )
             elif isinstance(value, list):
-                parser.add_argument(f"--{name}", action='append')
+                parser.add_argument(f"--{name}", action="append")
             else:
                 parser.add_argument(f"--{name}", type=type(value))
         return parser
@@ -598,8 +643,9 @@ class CosineSchedule(HPSchedule):
         self.steps = steps
 
     def value_at(self, step: int) -> float:
-        return (self.initial_value - self.final_value) * 0.5 * (math.cos(math.pi * step / self.steps) + 1) \
-               + self.final_value
+        return (self.initial_value - self.final_value) * 0.5 * (
+            math.cos(math.pi * step / self.steps) + 1
+        ) + self.final_value
 
 
 class StepHPSchedule(HPSchedule):
@@ -620,19 +666,19 @@ class ConstantSchedule(HPSchedule):
 
 
 def parse_schedule(schedule: str, initial_value: float, steps: int) -> HPSchedule:
-    if schedule == '':
+    if schedule == "":
         return ConstantSchedule(initial_value)
-    elif schedule.startswith('lin '):
+    elif schedule.startswith("lin "):
         segments = [(0, initial_value)]
-        for kv in schedule[len('lin '):].split(","):
+        for kv in schedule[len("lin ") :].split(","):
             [k, v] = kv.split(":")
             segments.append((int(float(k)), float(v)))
         return LinearHPSchedule(segments)
-    elif schedule.startswith('cos'):
-        if schedule == 'cos':
+    elif schedule.startswith("cos"):
+        if schedule == "cos":
             final_value = 0.0
         else:
-            final_value = float(schedule[len('cos '):])
+            final_value = float(schedule[len("cos ") :])
         return CosineSchedule(initial_value, final_value, steps)
     else:
         segments = [(0, initial_value)]
@@ -642,7 +688,9 @@ def parse_schedule(schedule: str, initial_value: float, steps: int) -> HPSchedul
         return StepHPSchedule(segments)
 
 
-def find_adjacent(segments: List[Tuple[int, float]], step: int) -> Tuple[Tuple[int, float], Optional[Tuple[int, float]]]:
+def find_adjacent(
+    segments: List[Tuple[int, float]], step: int
+) -> Tuple[Tuple[int, float], Optional[Tuple[int, float]]]:
     left = None
     right: Optional[Tuple[int, float]] = None
     for s, v in segments:
@@ -651,12 +699,14 @@ def find_adjacent(segments: List[Tuple[int, float]], step: int) -> Tuple[Tuple[i
         if step < s:
             right = (s, v)
             break
-    assert left is not None, f"invalid inputs to find_adjacent: segments={segments}, step={step}"
+    assert (
+        left is not None
+    ), f"invalid inputs to find_adjacent: segments={segments}, step={step}"
     return left, right
 
 
 def parse_int_schedule(schedule):
-    if schedule == '':
+    if schedule == "":
         return []
     else:
         items = []
@@ -667,7 +717,7 @@ def parse_int_schedule(schedule):
 
 
 def parse_float_schedule(schedule) -> List[Tuple[float, float]]:
-    if schedule == '':
+    if schedule == "":
         return []
     else:
         items = []

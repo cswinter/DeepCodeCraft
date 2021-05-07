@@ -8,13 +8,23 @@ import yaml
 
 
 @click.command()
-@click.option("--repo-path", default="git@github.com:cswinter/DeepCodeCraft.git", help="Path to git code repository to execute.")
+@click.option(
+    "--repo-path",
+    default="git@github.com:cswinter/DeepCodeCraft.git",
+    help="Path to git code repository to execute.",
+)
 @click.option("--revision", default="HEAD", help="Git revision to execute.")
 @click.option("--params-file", default=None, help="Path to parameter file.")
-@click.option("--hps", default=None, help="List of hyperparameters in format name1:value1,name2:value2")
+@click.option(
+    "--hps",
+    default=None,
+    help="List of hyperparameters in format name1:value1,name2:value2",
+)
 @click.option("--queue-dir", default="192.168.0.102:/home/clemens/xprun/queue")
 def main(repo_path, revision, params_file, hps, queue_dir):
-    commit = subprocess.check_output(["git", "rev-parse", revision]).decode("UTF-8")[:-1]
+    commit = subprocess.check_output(["git", "rev-parse", revision]).decode("UTF-8")[
+        :-1
+    ]
 
     if params_file:
         with open(params_file, "r") as f:
@@ -34,9 +44,11 @@ def main(repo_path, revision, params_file, hps, queue_dir):
     }
 
     fd, path = tempfile.mkstemp()
-    with open(fd, 'w') as f:
+    with open(fd, "w") as f:
         f.write(yaml.dump(job))
-    subprocess.check_call(["rsync", path, os.path.join(queue_dir, f"{int(time.time())}.yaml")])
+    subprocess.check_call(
+        ["rsync", path, os.path.join(queue_dir, f"{int(time.time())}.yaml")]
+    )
 
 
 if __name__ == "__main__":

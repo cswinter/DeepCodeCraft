@@ -376,6 +376,6 @@ def dist2(x1, y1, x2, y2):
 def get_hostname() -> str:
     xprun_id = os.getenv("XPRUN_ID")
     if xprun_id:
-        return f"xprun.{xprun_id}.codecraftserver"
+        return f"xprun.{xprun_id}.codecraftserver-0"
     else:
         return "localhost"

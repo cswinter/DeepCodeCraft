@@ -1242,6 +1242,17 @@ def profile_fp(hps: HyperParams) -> None:
     print(prof.display(show_events=False))
 
 
+def init_process(backend="gloo"):
+    """ Initialize the distributed environment. """
+    rank = int(os.environ["XPRUN_RANK"])
+    world_size = int(os.environ["XPRUN_REPLICAS"])
+    replica_name = os.environ["XPRUN_REPLICA_NAME"]
+    xprun_id = os.environ["XPRUN_ID"]
+    os.environ["MASTER_ADDR"] = f"xprun.{xprun_id}.{replica_name}-0"
+    os.environ["MASTER_PORT"] = "29500"
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
     # torch.set_printoptions(threshold=25000)
@@ -1297,14 +1308,18 @@ def main():
         ["git", "describe", "--tags", "--always", "--dirty"]
     ).decode("UTF-8")[:-1]
     config["descriptor"] = vars(args)["descriptor"]
+    if "XPRUN_NAME" in os.environ:
+        config["xp_name"] = os.environ["XPRUN_NAME"]
 
     if isinstance(hps.objective, str):
         hps.objective = envs.Objective(hps.objective)
 
     if hps.parallelism > 1:
-        dist.init_process_group(
-            backend="gloo", rank=hps.rank, world_size=hps.parallelism
-        )
+        if "XPRUN_ID" not in os.environ:
+            raise Exception("Data parallel training only supported with xprun")
+        else:
+            init_process()
+            hps.rank = int(os.environ["XPRUN_RANK"])
 
     if hps.rank == 0:
         wandb_project = "deep-codecraft-vs" if hps.objective.vs() else "deep-codecraft"
@@ -1324,7 +1339,7 @@ def main():
                 ["git", "describe", "--tags", "--always", "--dirty"]
             ).decode("UTF-8")[:-1]
             out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
-        Path(out_dir).mkdir(parents=True)
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
     else:
         out_dir = args.out_dir
 

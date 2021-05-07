@@ -2,11 +2,12 @@ XpV0(
     project: "dcc",
     containers: {
         "trainer": (
-            command: ["python", "main.py", "--hpset=enhanced", "--steps=1e6"],
+            command: ["python", "main.py", "--hpset=enhanced", "--steps=1e6", "--parallelism=2"],
             dockerfile: "Dockerfile",
             copy_repo: true,
             wandb: true,
 
+            replicas: 2,
             gpu: 1,
             gpu_mem: "5GB",
         ),
