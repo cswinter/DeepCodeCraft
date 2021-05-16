@@ -1,0 +1,16 @@
+XpV0(
+    project: "dcc",
+    containers: {
+        "showmatch": (
+            command: ["python", "showmatch.py", "--task=ENHANCED", "--num_envs=16", "--hardness=150", "enhanced/helpful-rain-1.75b-ema09997.pt", "enhanced/helpful-rain-2b-ema09999.pt"],
+            dockerfile: "Dockerfile",
+            copy_repo: true,
+            gpu: 1,
+            gpu_mem: "11GB",
+        ),
+        "codecraftserver": (
+            dockerfile: "CodeCraftServer.Dockerfile",
+            tty: true,
+        ),
+    }
+)
