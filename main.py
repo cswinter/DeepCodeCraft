@@ -5,7 +5,8 @@ import os
 from collections import defaultdict
 import dataclasses
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
+from dataclasses import dataclass
 
 import torch.distributed as dist
 import torch
@@ -15,6 +16,9 @@ import numpy as np
 from torch_ema import ExponentialMovingAverage
 
 import wandb
+
+import hyperstate
+from hyperstate import Config, ObsConfig as HSObsConfig, Policy
 
 from adr import ADR, normalize, spec_key
 from gym_codecraft import envs
@@ -27,6 +31,7 @@ from policy_t5 import TransformerPolicy5, InputNorm
 from policy_t6 import TransformerPolicy6, InputNorm
 from policy_t7 import TransformerPolicy7, InputNorm
 from policy_t8 import TransformerPolicy8, InputNorm
+from policy_t8_hs import TransformerPolicy8HS, InputNorm
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +43,18 @@ elif "XPRUN_ID" in os.environ:
     EVAL_MODELS_PATH = "/mnt/xprun/common/DeepCodeCraft/golden-models"
 else:
     EVAL_MODELS_PATH = "/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models"
+
+
+# TODO: Trainer class?
+@dataclass
+class State:
+    policy: Policy
+    optimizer: optim.Optimizer
+    ema: Any
+    adr: ADR
+    step: int = 0
+    iteration: int = 0
+    epoch: int = 0
 
 
 def run_codecraft():
@@ -70,99 +87,101 @@ def warmup_lr_schedule(warmup_steps: int):
     return lr
 
 
-def train(hps: HyperParams, out_dir: str) -> None:
-    assert hps.rosteps % (hps.bs * hps.batches_per_update) == 0
-    assert hps.eval_envs % 4 == 0
-    if (hps.verify_create_golden or hps.verify) and hps.shuffle:
-        print("WARNING: verification mode configured and shuffle is set")
-    if hps.verify:
-        hps.resume_from = "verify/model-0.pt"
+def init_state(config: Config, device: str) -> State:
+    if config.optimizer.optimizer_type == "SGD":
+        optimizer_fn = optim.SGD
+        optimizer_kwargs = dict(
+            lr=config.optimizer.lr,
+            momentum=config.optimizer.momentum,
+            weight_decay=config.optimizer.weight_decay,
+        )
+    elif config.optimizer.optimizer_type == "RMSProp":
+        optimizer_fn = optim.RMSprop
+        optimizer_kwargs = dict(
+            lr=config.optimizer.lr,
+            momentum=config.optimizer.momentum,
+            weight_decay=config.optimizer.weight_decay,
+        )
+    elif config.optimizer.optimizer_type == "Adam":
+        optimizer_fn = optim.Adam
+        optimizer_kwargs = dict(
+            lr=config.optimizer.lr, weight_decay=config.optimizer.weight_decay, eps=1e-5
+        )
+    else:
+        raise Exception(f"Invalid optimizer name `{config.optimizer.optimizer_type}`")
 
-    next_model_save = hps.model_save_frequency
+    policy = TransformerPolicy8HS(
+        config.policy,
+        config.obs,
+        config.task.objective.naction() + config.obs.extra_actions(),
+    ).to(device)
+    optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
+    adr = ADR(
+        config=config.adr,
+        hardness=config.adr.initial_hardness,
+        ruleset=Rules(
+            mothership_damage_multiplier=config.task.mothership_damage_scale,
+            cost_modifiers={build: 1.0 for build in config.task.objective.builds()},
+        ),
+    )
 
-    obs_config = obs_config_from(hps)
+    policy_emas = [
+        ExponentialMovingAverage(policy.parameters(), decay=float(decay))
+        for decay in config.optimizer.weights_ema
+    ]
+
+    # TODO: hyperstate
+    if config.optimizer.lr_schedule == "cosine":
+        lr_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=config.ppo.steps * config.optimizer.epochs
+            # TODO: xprun
+            # // hps.parallelism
+            // (config.optimizer.bs * config.optimizer.batches_per_update),
+            eta_min=config.optimizer.final_lr,
+        )
+    else:
+        assert (
+            config.optimizer.lr_schedule == "none"
+        ), f"Unexpected lr_schedule: {config.optimizer.lr_schedule}"
+        lr_scheduler = None
+
+    return State(policy, optimizer, policy_emas, adr)
+
+
+def train(config: Config, state: Optional[State], out_dir: str) -> None:
+    # TODO: hypersate
+    next_model_save = config.eval.model_save_frequency
+
+    obs_config = obs_config_from(config)
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
     else:
         print("Running on CPU")
         device = "cpu"
 
-    if hps.optimizer == "SGD":
-        optimizer_fn = optim.SGD
-        optimizer_kwargs = dict(
-            lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay
-        )
-    elif hps.optimizer == "RMSProp":
-        optimizer_fn = optim.RMSprop
-        optimizer_kwargs = dict(
-            lr=hps.lr, momentum=hps.momentum, weight_decay=hps.weight_decay
-        )
-    elif hps.optimizer == "Adam":
-        optimizer_fn = optim.Adam
-        optimizer_kwargs = dict(lr=hps.lr, weight_decay=hps.weight_decay, eps=1e-5)
-    else:
-        raise Exception(f"Invalid optimizer name `{hps.optimizer}`")
+    if state is None:
+        state = init_state(config, device)
 
-    resume_steps = 0
-    if hps.resume_from == "":
-        policy = TransformerPolicy8(hps, obs_config).to(device)
-        optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
-        adr = ADR(
-            hstepsize=hps.adr_hstepsize,
-            linear_hardness=hps.linear_hardness,
-            max_hardness=hps.max_hardness,
-            hardness_offset=hps.hardness_offset,
-            variety=hps.adr_variety,
-            average_cost_target=hps.adr_average_cost_target,
-            ruleset=Rules(
-                mothership_damage_multiplier=hps.mothership_damage_scale,
-                cost_modifiers={build: 1.0 for build in hps.objective.builds()},
-            ),
-        )
-        if hps.lr_schedule == "cosine":
-            lr_scheduler = CosineAnnealingLR(
-                optimizer,
-                T_max=hps.steps
-                * hps.epochs
-                // hps.parallelism
-                // (hps.bs * hps.batches_per_update),
-                eta_min=hps.final_lr,
-            )
-        else:
-            assert (
-                hps.lr_schedule == "none"
-            ), f"Unexpected lr_schedule: {hps.lr_schedule}"
-            lr_scheduler = None
-    else:
-        policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
-            hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
-        )
-    policy_emas = [
-        ExponentialMovingAverage(policy.parameters(), decay=float(decay))
-        for decay in hps.weights_ema
-    ]
+    # TODO: hyperstate
+    # if hps.resume_from != "":
+    #    policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
+    #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
+    #    )
 
-    if hps.warmup > 0:
+    if config.optimizer.warmup > 0:
         assert False, "Warmup not implemented"
 
-    if hps.fp16:
-        policy = policy.half()
-        for layer in policy.modules():
-            if isinstance(layer, InputNorm):
-                layer.enable_fp16()
+    # TODO: xprun
+    # if hps.parallelism > 1:
+    #    sync_parameters(policy)
 
-    if hps.parallelism > 1:
-        sync_parameters(policy)
+    # TODO: xprun
+    # if hps.rank == 0:
+    #    wandb.watch(policy)
 
-    if hps.rank == 0:
-        wandb.watch(policy)
-
-    if hps.verify_create_golden:
-        save_policy(policy, "verify", 0)
-
-    total_steps = resume_steps
     iteration = 0
-    next_eval = total_steps
+    next_eval = state.step
     next_full_eval = 1
     epoch = 0
     eprewmean = 0
@@ -171,140 +190,115 @@ def train(hps: HyperParams, out_dir: str) -> None:
     buildmean = defaultdict(lambda: 0)
     completed_episodes = 0
     env = None
-    num_self_play_schedule = hps.get_num_self_play_schedule()
-    batches_per_update_schedule = hps.get_batches_per_update_schedule()
-    entropy_bonus_schedule = parse_schedule(
-        hps.entropy_bonus_schedule, hps.entropy_bonus, hps.steps
-    )
-    mothership_damage_scale_schedule = parse_schedule(
-        hps.mothership_damage_scale_schedule, hps.mothership_damage_scale, hps.steps
-    )
-    gamma_schedule = parse_schedule(hps.gamma_schedule, hps.gamma, hps.steps)
-    adr_avg_cost_schedule = parse_schedule(
-        hps.adr_avg_cost_schedule, hps.adr_average_cost_target, hps.steps
-    )
-    adr_cost_variance_schedule = parse_schedule(
-        hps.adr_cost_variance_schedule, hps.adr_cost_variance, hps.steps
-    )
-    adr_variety_schedule = parse_schedule(
-        hps.adr_variety_schedule, hps.adr_variety, hps.steps
-    )
-    unit_cap_schedule = parse_schedule(hps.unit_cap_schedule, hps.unit_cap, hps.steps)
     extra_checkpoint_steps = [
-        step for step in hps.extra_checkpoint_steps if step > total_steps
+        step for step in config.eval.extra_checkpoint_steps if step > state.step
     ]
     rewmean = 0.0
     rewstd = 1.0
-    while total_steps < hps.steps + resume_steps:
-        if (
-            len(num_self_play_schedule) > 0
-            and num_self_play_schedule[-1][0] <= total_steps
-        ):
-            _, num_self_play = num_self_play_schedule.pop()
-            hps.num_self_play = num_self_play
-            if env is not None:
-                env.close()
-                env = None
-        if (
-            len(batches_per_update_schedule) > 0
-            and batches_per_update_schedule[-1][0] <= total_steps
-        ):
-            _, batches_per_update = batches_per_update_schedule.pop()
-            hps.batches_per_update = batches_per_update
-            assert hps.rosteps % (hps.bs * hps.batches_per_update) == 0
-        hps.entropy_bonus = entropy_bonus_schedule.value_at(total_steps)
-        adr.variety = adr_variety_schedule.value_at(total_steps)
-        adr.target_modifier = adr_avg_cost_schedule.value_at(total_steps)
+    while state.step < config.ppo.steps:
+        assert (
+            config.rosteps % (config.optimizer.bs * config.optimizer.batches_per_update)
+            == 0
+        )
 
-        if env is None and not hps.verify:
+        if env is None:
             env = envs.CodeCraftVecEnv(
-                hps.num_envs,
-                hps.num_self_play,
-                hps.objective,
-                hps.action_delay,
-                randomize=hps.task_randomize,
-                use_action_masks=hps.use_action_masks,
+                config.ppo.num_envs,
+                config.ppo.num_self_play,
+                config.task.objective,
+                config.task.action_delay,
+                randomize=config.task.randomize,
+                use_action_masks=config.task.use_action_masks,
                 obs_config=obs_config,
-                symmetric=hps.symmetric_map,
-                hardness=hps.task_hardness,
-                mix_mp=hps.mix_mp,
-                build_variety_bonus=hps.build_variety_bonus,
-                win_bonus=hps.win_bonus,
-                attac=hps.attac,
-                protec=hps.protec,
-                max_army_size_score=hps.max_army_size_score,
-                max_enemy_army_size_score=hps.max_enemy_army_size_score,
-                rule_rng_fraction=hps.rule_rng_fraction,
-                rule_rng_amount=hps.rule_rng_amount,
-                rule_cost_rng=hps.rule_cost_rng,
+                symmetric=config.task.symmetric_map,
+                hardness=config.task.task_hardness,
+                mix_mp=config.task.mix_mp,
+                build_variety_bonus=config.ppo.build_variety_bonus,
+                win_bonus=config.ppo.win_bonus,
+                attac=config.ppo.attac,
+                protec=config.ppo.protec,
+                max_army_size_score=config.ppo.max_army_size_score,
+                max_enemy_army_size_score=config.ppo.max_enemy_army_size_score,
+                rule_rng_fraction=config.task.rule_rng_fraction,
+                rule_rng_amount=config.task.rule_rng_amount,
+                rule_cost_rng=config.task.rule_cost_rng,
                 scripted_opponents=[
-                    ("destroyer", hps.num_vs_destroyer),
-                    ("replicator", hps.num_vs_replicator),
-                    ("aggressive_replicator", hps.num_vs_aggro_replicator),
+                    ("destroyer", config.ppo.num_vs_destroyer),
+                    ("replicator", config.ppo.num_vs_replicator),
+                    ("aggressive_replicator", config.ppo.num_vs_aggro_replicator),
                 ],
                 max_game_length=None
-                if hps.max_game_length == 0
-                else hps.max_game_length,
-                stagger_offset=hps.rank / hps.parallelism,
-                mothership_damage_scale=hps.mothership_damage_scale,
-                loss_penalty=hps.loss_penalty,
-                partial_score=hps.partial_score,
-                enforce_unit_cap=hps.enforce_unit_cap,
+                if config.task.max_game_length == 0
+                else config.task.max_game_length,
+                # TODO: xprun
+                stagger_offset=0,  # hps.rank / hps.parallelism,
+                mothership_damage_scale=config.task.mothership_damage_scale,
+                loss_penalty=config.ppo.loss_penalty,
+                partial_score=config.ppo.partial_score,
+                enforce_unit_cap=config.task.enforce_unit_cap,
             )
-            env.rng_ruleset = adr.ruleset
-            env.hardness = adr.hardness
+            env.rng_ruleset = state.adr.ruleset
+            env.hardness = state.adr.hardness
             obs, action_masks, privileged_obs = env.reset()
 
-        if env is not None:
-            env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(
-                total_steps
-            )
-            env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
-            env.unit_cap_override = int(unit_cap_schedule.value_at(total_steps))
+        # TODO: pass in config to env to get schedule for mothership_damage_scale etc.
+        # env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(
+        #    total_steps
+        # )
+        # env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
+        # env.unit_cap_override = int(unit_cap_schedule.value_at(total_steps))
 
-        if total_steps >= next_eval and not hps.verify:
-            if hps.eval_envs > 0:
+        if state.step >= next_eval:
+            if config.eval.eval_envs > 0:
                 next_full_eval -= 1
                 if next_full_eval == 0:
-                    emas = [None] + policy_emas
-                    next_full_eval = hps.full_eval_frequency
+                    emas = [None] + state.ema
+                    next_full_eval = config.eval.full_eval_frequency
                 else:
                     emas = [None]
                 for policy_ema in emas:
                     eval(
-                        policy=policy,
-                        num_envs=hps.eval_envs // hps.parallelism,
+                        policy=state.policy,
+                        # TODO: xprun
+                        num_envs=config.eval.eval_envs,  # // hps.parallelism,
                         device=device,
-                        objective=hps.objective,
-                        eval_steps=hps.eval_timesteps,
-                        curr_step=total_steps,
-                        symmetric=hps.eval_symmetric,
-                        rank=hps.rank,
-                        parallelism=hps.parallelism,
+                        objective=config.task.objective,
+                        eval_steps=config.eval.eval_timesteps,
+                        curr_step=state.step,
+                        symmetric=config.eval.eval_symmetric,
+                        # TODO: xprun
+                        rank=0,  # hps.rank,
+                        parallelism=1,  # hps.parallelism,
                         policy_ema=policy_ema,
                     )
-            next_eval += hps.eval_frequency
+            next_eval += config.eval.eval_frequency
             next_model_save -= 1
-            if next_model_save == 0 and hps.rank == 0:
-                next_model_save = hps.model_save_frequency
-                save_policy(
-                    policy,
-                    out_dir,
-                    total_steps,
-                    optimizer,
-                    adr,
-                    lr_scheduler,
-                    policy_emas,
-                )
+            # TODO: xprun
+            if next_model_save == 0:  # and hps.rank == 0:
+                # TODO: hyperstate/xprun
+                # next_model_save = config.eval.model_save_frequency
+                # save_policy(
+                #    state.policy,
+                #    out_dir,
+                #    total_steps,
+                #    optimizer,
+                #    adr,
+                #    lr_scheduler,
+                #    policy_emas,
+                # )
+                pass
         if (
-            hps.rank == 0
-            and len(extra_checkpoint_steps) > 0
-            and total_steps >= extra_checkpoint_steps[0]
+            # TODO: xprun
+            # hps.rank == 0 and
+            len(extra_checkpoint_steps) > 0
+            and state.step >= extra_checkpoint_steps[0]
         ):
-            del extra_checkpoint_steps[0]
-            save_policy(
-                policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-            )
+            pass
+            # TODO: hyperstate
+            # del extra_checkpoint_steps[0]
+            # save_policy(
+            #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
+            # )
 
         episode_start = time.time()
         entropies = []
@@ -318,163 +312,133 @@ def train(hps: HyperParams, out_dir: str) -> None:
         all_action_masks = []
         all_privileged_obs = []
 
-        policy.eval()
+        state.policy.eval()
         buildtotal = defaultdict(lambda: 0)
         eliminations = []
-        if not hps.verify:
-            if hps.adr:
-                env.rng_ruleset = adr.ruleset
-                env.hardness = adr.hardness
-            if hps.symmetry_increase > 0:
-                env.symmetric = min(total_steps * hps.symmetry_increase, 1.0)
-            with torch.no_grad():
-                cost_sum = 0.0
-                cost_weight = 0.0
-                # Rollout
-                for step in range(hps.seq_rosteps):
-                    obs_tensor = torch.tensor(obs).to(device)
-                    privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-                    action_masks_tensor = torch.tensor(action_masks).to(device)
-                    actions, logprobs, entropy, values, probs = policy.evaluate(
-                        obs_tensor, action_masks_tensor, privileged_obs_tensor
-                    )
-                    actions = actions.cpu().numpy()
-
-                    entropies.extend(entropy.detach().cpu().numpy())
-
-                    all_action_masks.extend(action_masks)
-                    all_obs.extend(obs)
-                    all_privileged_obs.extend(privileged_obs)
-                    all_actions.extend(actions)
-                    all_logprobs.extend(logprobs.detach().cpu().numpy())
-                    all_values.extend(values)
-                    all_probs.extend(probs)
-
-                    obs, rews, dones, infos, action_masks, privileged_obs = env.step(
-                        actions, action_masks=action_masks
-                    )
-
-                    rews -= hps.liveness_penalty
-                    all_rewards.extend(rews)
-                    all_dones.extend(dones)
-
-                    for info in infos:
-                        ema = 0.95 * (1 - 1 / (completed_episodes + 1))
-
-                        decided_by_elimination = info["episode"]["elimination"]
-                        eliminations.append(decided_by_elimination)
-                        eliminationmean = (
-                            eliminationmean * ema + (1 - ema) * decided_by_elimination
-                        )
-
-                        eprewmean = eprewmean * ema + (1 - ema) * info["episode"]["r"]
-                        eplenmean = eplenmean * ema + (1 - ema) * info["episode"]["l"]
-
-                        builds = info["episode"]["builds"]
-                        for build in set().union(builds.keys(), buildmean.keys()):
-                            count = builds[build]
-                            buildmean[build] = (
-                                buildmean[build] * ema + (1 - ema) * count
-                            )
-                            buildtotal[build] += count
-                            cost = info["episode"]["ruleset"].cost_modifiers[build]
-                            cost_sum += cost * sum(build) * count
-                            cost_weight += sum(build) * count
-                        completed_episodes += 1
-                average_cost_modifier = (
-                    cost_sum / cost_weight if cost_weight > 0 else 1.0
-                )
-                elimination_rate = (
-                    np.array(eliminations).mean() if len(eliminations) > 0 else None
-                )
-                adr.adjust(
-                    buildtotal,
-                    average_cost_modifier,
-                    elimination_rate,
-                    eplenmean,
-                    total_steps,
-                )
-
+        if config.task.adr:
+            env.rng_ruleset = state.adr.ruleset
+            env.hardness = state.adr.hardness
+        # TODO: hyperstate schedule
+        if config.task.symmetry_increase > 0:
+            env.symmetric = min(state.step * config.task.symmetry_increase, 1.0)
+        with torch.no_grad():
+            cost_sum = 0.0
+            cost_weight = 0.0
+            # Rollout
+            for step in range(config.ppo.seq_rosteps):
                 obs_tensor = torch.tensor(obs).to(device)
-                action_masks_tensor = torch.tensor(action_masks).to(device)
                 privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-                _, _, _, final_values, final_probs = policy.evaluate(
+                action_masks_tensor = torch.tensor(action_masks).to(device)
+                actions, logprobs, entropy, values, probs = state.policy.evaluate(
                     obs_tensor, action_masks_tensor, privileged_obs_tensor
                 )
+                actions = actions.cpu().numpy()
 
-                all_rewards = np.array(all_rewards) * hps.rewscale
-                w = hps.rewnorm_emaw * (1 - 1 / (total_steps + 1))
-                rewmean = all_rewards.mean() * (1 - w) + rewmean * w
-                rewstd = all_rewards.std() * (1 - w) + rewstd * w
-                if hps.rewnorm:
-                    all_rewards = all_rewards / rewstd - rewmean
+                entropies.extend(entropy.detach().cpu().numpy())
 
-                all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-                all_values = np.array(all_values)
-                last_gae = np.zeros(hps.num_envs)
-                gamma = gamma_schedule.value_at(total_steps)
-                for t in reversed(range(hps.seq_rosteps)):
-                    for i in range(hps.num_envs):
-                        ti = t * hps.num_envs + i
-                        tnext_i = (t + 1) * hps.num_envs + i
-                        nextnonterminal = 1.0 - all_dones[ti]
-                        if t == hps.seq_rosteps - 1:
-                            next_value = final_values[i]
-                        else:
-                            next_value = all_values[tnext_i]
-                        td_error = (
-                            all_rewards[ti]
-                            + gamma * next_value * nextnonterminal
-                            - all_values[ti]
-                        )
-                        last_gae[i] = (
-                            td_error + gamma * hps.lamb * last_gae[i] * nextnonterminal
-                        )
-                        all_returns[ti] = last_gae[i] + all_values[ti]
+                all_action_masks.extend(action_masks)
+                all_obs.extend(obs)
+                all_privileged_obs.extend(privileged_obs)
+                all_actions.extend(actions)
+                all_logprobs.extend(logprobs.detach().cpu().numpy())
+                all_values.extend(values)
+                all_probs.extend(probs)
 
-                advantages = all_returns - all_values
-                if hps.norm_advs:
-                    advantages = (advantages - advantages.mean()) / (
-                        advantages.std() + 1e-8
+                obs, rews, dones, infos, action_masks, privileged_obs = env.step(
+                    actions, action_masks=action_masks
+                )
+
+                rews -= config.ppo.liveness_penalty
+                all_rewards.extend(rews)
+                all_dones.extend(dones)
+
+                for info in infos:
+                    ema = 0.95 * (1 - 1 / (completed_episodes + 1))
+
+                    decided_by_elimination = info["episode"]["elimination"]
+                    eliminations.append(decided_by_elimination)
+                    eliminationmean = (
+                        eliminationmean * ema + (1 - ema) * decided_by_elimination
                     )
-                explained_var = explained_variance(all_values, all_returns)
 
-                all_actions = np.array(all_actions)
-                all_logprobs = np.array(all_logprobs)
-                all_obs = np.array(all_obs)
-                all_privileged_obs = np.array(all_privileged_obs)
-                all_action_masks = np.array(all_action_masks)[:, : hps.agents, :]
-                all_probs = np.array(all_probs)
+                    eprewmean = eprewmean * ema + (1 - ema) * info["episode"]["r"]
+                    eplenmean = eplenmean * ema + (1 - ema) * info["episode"]["l"]
 
-        if hps.verify_create_golden and total_steps == 0:
-            write_samples_to_disk(
-                all_obs,
-                all_privileged_obs,
-                all_returns,
-                all_actions,
-                all_logprobs,
-                all_values,
-                advantages,
-                all_action_masks,
-                all_probs,
+                    builds = info["episode"]["builds"]
+                    for build in set().union(builds.keys(), buildmean.keys()):
+                        count = builds[build]
+                        buildmean[build] = buildmean[build] * ema + (1 - ema) * count
+                        buildtotal[build] += count
+                        cost = info["episode"]["ruleset"].cost_modifiers[build]
+                        cost_sum += cost * sum(build) * count
+                        cost_weight += sum(build) * count
+                    completed_episodes += 1
+            average_cost_modifier = cost_sum / cost_weight if cost_weight > 0 else 1.0
+            elimination_rate = (
+                np.array(eliminations).mean() if len(eliminations) > 0 else None
             )
-            print("Wrote samples from first rollout to disk")
-        if hps.verify and total_steps == 0:
-            (
-                all_obs,
-                all_privileged_obs,
-                all_returns,
-                all_actions,
-                all_logprobs,
-                all_values,
-                advantages,
-                all_action_masks,
-                all_probs,
-            ) = load_samples_from_disk()
-            print("Loaded samples for first rollout from disk")
+            state.adr.adjust(
+                buildtotal,
+                average_cost_modifier,
+                elimination_rate,
+                eplenmean,
+                state.step,
+            )
 
-        for epoch in range(hps.epochs):
-            if hps.shuffle:
+            obs_tensor = torch.tensor(obs).to(device)
+            action_masks_tensor = torch.tensor(action_masks).to(device)
+            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+            _, _, _, final_values, final_probs = state.policy.evaluate(
+                obs_tensor, action_masks_tensor, privileged_obs_tensor
+            )
+
+            all_rewards = np.array(all_rewards) * config.ppo.rewscale
+            w = config.ppo.rewnorm_emaw * (1 - 1 / (state.step + 1))
+            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+            rewstd = all_rewards.std() * (1 - w) + rewstd * w
+            if config.ppo.rewnorm:
+                all_rewards = all_rewards / rewstd - rewmean
+
+            all_returns = np.zeros(len(all_rewards), dtype=np.float32)
+            all_values = np.array(all_values)
+            last_gae = np.zeros(config.ppo.num_envs)
+            gamma = config.ppo.gamma
+            for t in reversed(range(config.ppo.seq_rosteps)):
+                for i in range(config.ppo.num_envs):
+                    ti = t * config.ppo.num_envs + i
+                    tnext_i = (t + 1) * config.ppo.num_envs + i
+                    nextnonterminal = 1.0 - all_dones[ti]
+                    if t == config.ppo.seq_rosteps - 1:
+                        next_value = final_values[i]
+                    else:
+                        next_value = all_values[tnext_i]
+                    td_error = (
+                        all_rewards[ti]
+                        + gamma * next_value * nextnonterminal
+                        - all_values[ti]
+                    )
+                    last_gae[i] = (
+                        td_error
+                        + gamma * config.ppo.lamb * last_gae[i] * nextnonterminal
+                    )
+                    all_returns[ti] = last_gae[i] + all_values[ti]
+
+            advantages = all_returns - all_values
+            if config.ppo.norm_advs:
+                advantages = (advantages - advantages.mean()) / (
+                    advantages.std() + 1e-8
+                )
+            explained_var = explained_variance(all_values, all_returns)
+
+            all_actions = np.array(all_actions)
+            all_logprobs = np.array(all_logprobs)
+            all_obs = np.array(all_obs)
+            all_privileged_obs = np.array(all_privileged_obs)
+            all_action_masks = np.array(all_action_masks)[:, : config.policy.agents, :]
+            all_probs = np.array(all_probs)
+
+        for epoch in range(config.optimizer.epochs):
+            if config.optimizer.shuffle:
                 perm = np.random.permutation(len(all_obs))
                 all_obs = all_obs[perm]
                 all_privileged_obs = all_privileged_obs[perm]
@@ -493,15 +457,17 @@ def train(hps: HyperParams, out_dir: str) -> None:
             aproxkl_sum = 0
             entropy_loss_sum = 0
             gradnorm = 0
-            policy.train()
+            state.policy.train()
             torch.enable_grad()
-            num_minibatches = int(hps.rosteps / hps.bs)
+            num_minibatches = int(
+                config.ppo.seq_rosteps * config.ppo.num_envs / config.optimizer.bs
+            )
             for batch in range(num_minibatches):
-                if batch % hps.batches_per_update == 0:
-                    optimizer.zero_grad()
+                if batch % config.optimizer.batches_per_update == 0:
+                    state.optimizer.zero_grad()
 
-                start = hps.bs * batch
-                end = hps.bs * (batch + 1)
+                start = config.optimizer.bs * batch
+                end = config.optimizer.bs * (batch + 1)
 
                 o = torch.tensor(all_obs[start:end]).to(device)
                 op = torch.tensor(all_privileged_obs[start:end]).to(device)
@@ -519,54 +485,55 @@ def train(hps: HyperParams, out_dir: str) -> None:
                     entropy_loss,
                     aproxkl,
                     clipfrac,
-                ) = policy.backprop(
-                    hps,
+                ) = state.policy.backprop(
+                    config,
                     o,
                     actions,
                     probs,
                     returns,
-                    hps.vf_coef,
+                    config.optimizer.vf_coef,
                     advs,
                     vals,
                     amasks,
                     actual_probs,
                     op,
-                    hps.split_reward,
+                    config.ppo.split_reward,
                 )
-                if hps.verify_create_golden and total_steps == 0:
-                    write_gradients_to_disk(policy, epoch, batch)
-                if hps.verify and total_steps == 0:
-                    if verify_gradients(policy, epoch, batch):
-                        return
+
                 policy_loss_sum += policy_loss
                 entropy_loss_sum += entropy_loss
                 value_loss_sum += value_loss
                 aproxkl_sum += aproxkl
                 clipfrac_sum += clipfrac
                 gradnorm += torch.nn.utils.clip_grad_norm_(
-                    policy.parameters(), hps.max_grad_norm
+                    state.policy.parameters(), config.optimizer.max_grad_norm
                 )
 
-                if (batch + 1) % hps.batches_per_update == 0:
-                    if hps.parallelism > 1:
-                        gradient_allreduce(policy)
-                    optimizer.step()
-                    for ema in policy_emas:
-                        ema.update(policy.parameters())
-                    if lr_scheduler:
-                        lr_scheduler.step()
+                if (batch + 1) % config.optimizer.batches_per_update == 0:
+                    # TODO: xprun
+                    # if hps.parallelism > 1:
+                    #    gradient_allreduce(policy)
+                    state.optimizer.step()
+                    for ema in state.ema:
+                        ema.update(state.policy.parameters())
+                    # TODO: hyperstate
+                    # if lr_scheduler:
+                    #    lr_scheduler.step()
         torch.cuda.empty_cache()
 
-        if hps.verify or hps.verify_create_golden:
-            return
-
-        epoch += 1
-        total_steps += hps.rosteps * hps.parallelism
-        iteration += 1
-        throughput = int(hps.rosteps / (time.time() - episode_start)) * hps.parallelism
+        state.epoch += 1
+        # TODO: xprun
+        state.step += config.rosteps  # * hps.parallelism
+        state.iteration += 1
+        # TODO: xprun
+        throughput = int(
+            config.rosteps / (time.time() - episode_start)
+        )  # * hps.parallelism
 
         all_agent_masks = all_action_masks.sum(2) > 1
-        if hps.rank == 0 and hps.epochs > 0:
+        # TODO: xprun if rank == 0
+        if config.optimizer.epochs > 0:
+            # TODO: hyperstate metrics
             metrics = {
                 "policy_loss": policy_loss_sum / num_minibatches,
                 "value_loss": value_loss_sum / num_minibatches,
@@ -576,11 +543,11 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 "throughput": throughput,
                 "eprewmean": eprewmean,
                 "eplenmean": eplenmean,
-                "target_eplenmean": adr.target_eplenmean(),
+                "target_eplenmean": state.adr.target_eplenmean(),
                 "eliminationmean": eliminationmean,
                 "entropy": sum(entropies) / len(entropies) / np.log(2),
                 "explained variance": explained_var,
-                "gradnorm": gradnorm * hps.bs / hps.rosteps,
+                "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
                 "advantages": wandb.Histogram(advantages),
                 "values": wandb.Histogram(all_values),
                 "meanval": all_values.mean(),
@@ -596,16 +563,14 @@ def train(hps: HyperParams, out_dir: str) -> None:
                 "rewmean": rewmean,
                 "rewstd": rewstd,
                 "average_cost_modifier": average_cost_modifier,
-                "hardness": adr.hardness,
-                "lr": hps.lr
-                if lr_scheduler is None
-                else float(lr_scheduler.get_lr()[0]),
-                "entropy_bonus": hps.entropy_bonus,
+                "hardness": state.adr.hardness,
+                "lr": config.optimizer.lr,
+                "entropy_bonus": config.optimizer.entropy_bonus,
                 "mothership_damage_scale": env.mothership_damage_scale,
-                "gamma": gamma_schedule.value_at(total_steps),
+                "gamma": config.ppo.gamma,
                 "iteration": iteration,
                 "adr_cost_variance": env.adr_cost_variance,
-                "adr_variety": adr.variety,
+                "adr_variety": config.adr.variety,
                 "unit_cap": env.unit_cap_override,
             }
             for action, count in buildmean.items():
@@ -613,41 +578,46 @@ def train(hps: HyperParams, out_dir: str) -> None:
             for action, fraction in normalize(buildmean).items():
                 metrics[f"frac_{spec_key(action)}"] = fraction
 
-            metrics.update(adr.metrics())
+            metrics.update(state.adr.metrics())
             total_norm = 0.0
             count = 0
-            for name, param in policy.named_parameters():
+            for name, param in state.policy.named_parameters():
                 norm = param.data.norm()
                 metrics[f"weight_norm[{name}]"] = norm
                 count += 1
                 total_norm += norm
             metrics["mean_weight_norm"] = total_norm / count
 
-            wandb.log(metrics, step=total_steps)
+            # TODO: steps
+            wandb.log(metrics, step=state.step)
 
         print(f"{throughput} samples/s", flush=True)
 
     env.close()
 
-    if hps.eval_envs > 0:
-        for policy_ema in [None] + policy_emas:
+    if config.eval.eval_envs > 0:
+        for policy_ema in [None] + state.ema:
             eval(
-                policy=policy,
-                num_envs=hps.eval_envs // hps.parallelism,
+                policy=state.policy,
+                # TODO: xprun
+                num_envs=config.eval.eval_envs,  # // hps.parallelism,
                 device=device,
-                objective=hps.objective,
-                eval_steps=5 * hps.eval_timesteps,
-                curr_step=total_steps,
-                symmetric=hps.eval_symmetric,
-                printerval=hps.eval_timesteps,
-                rank=hps.rank,
-                parallelism=hps.parallelism,
+                objective=config.task.objective,
+                eval_steps=5 * config.eval.eval_timesteps,
+                curr_step=state.step,
+                symmetric=config.eval.eval_symmetric,
+                printerval=config.eval.eval_timesteps,
+                # TODO: xprun
+                rank=0,  # hps.rank,
+                parallelism=1,  # parallelism,
                 policy_ema=policy_ema,
             )
-    if hps.rank == 0:
-        save_policy(
-            policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-        )
+    # TODO: xprun
+    # if hps.rank == 0:
+    # TODO: hyperstate
+    # save_policy(
+    #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
+    # )
 
 
 def eval(
@@ -891,28 +861,29 @@ def eval(
     env.close()
 
 
-def obs_config_from(hps: HyperParams) -> ObsConfig:
+def obs_config_from(config: Config) -> ObsConfig:
+    oc = config.obs
     return ObsConfig(
-        allies=hps.obs_allies,
-        drones=hps.obs_allies + hps.obs_enemies,
-        minerals=hps.obs_minerals,
-        tiles=hps.obs_map_tiles,
-        num_builds=len(hps.objective.builds()),
-        global_drones=hps.obs_enemies if hps.use_privileged else 0,
+        allies=oc.allies,
+        drones=oc.allies + oc.obs_enemies,
+        minerals=oc.obs_minerals,
+        tiles=oc.obs_map_tiles,
+        num_builds=len(config.task.objective.builds()),
+        global_drones=oc.global_drones,
         relative_positions=False,
-        feat_last_seen=hps.feat_last_seen,
-        feat_is_visible=hps.feat_is_visible,
-        feat_map_size=hps.feat_map_size,
-        feat_abstime=hps.feat_abstime,
+        feat_last_seen=oc.feat_last_seen,
+        feat_is_visible=oc.feat_is_visible,
+        feat_map_size=oc.feat_map_size,
+        feat_abstime=oc.feat_abstime,
         v2=True,
-        feat_rule_msdm=hps.rule_rng_fraction > 0 or hps.adr,
-        feat_rule_costs=hps.rule_cost_rng > 0 or hps.adr,
-        feat_mineral_claims=hps.feat_mineral_claims,
-        harvest_action=hps.harvest_action,
-        lock_build_action=hps.lock_build_action,
-        feat_dist_to_wall=hps.feat_dist_to_wall,
-        unit_count=hps.feat_unit_count,
-        construction_progress=hps.feat_construction_progress,
+        feat_rule_msdm=config.task.rule_rng_fraction > 0 or config.task.adr,
+        feat_rule_costs=config.task.rule_cost_rng > 0 or config.task.adr,
+        feat_mineral_claims=oc.feat_mineral_claims,
+        harvest_action=oc.harvest_action,
+        lock_build_action=oc.lock_build_action,
+        feat_dist_to_wall=oc.feat_dist_to_wall,
+        unit_count=oc.feat_unit_count,
+        construction_progress=oc.feat_construction_progress,
     )
 
 
@@ -1186,7 +1157,7 @@ def allcat(tensor: torch.Tensor, rank: int, parallelism: int) -> Optional[torch.
 
 
 def profile_fp(hps: HyperParams) -> None:
-    import torchprof
+    import torchprof  # type: ignore
 
     start_time = time.time()
     device = torch.device("cuda:0")
@@ -1260,71 +1231,43 @@ def main():
     hps = HyperParams()
     args_parser = hps.args_parser()
     args_parser.add_argument("--out-dir")
+    args_parser.add_argument("--config")
     args_parser.add_argument("--device", default=0)
     args_parser.add_argument("--descriptor", default="none")
     args_parser.add_argument("--hpset", default="default")
     args_parser.add_argument("--profile", action="store_true")
     args = args_parser.parse_args()
-    if args.hpset == "allied_wealth":
-        hps = HyperParams.allied_wealth()
-    elif args.hpset == "arena_tiny":
-        hps = HyperParams.arena_tiny()
-    elif args.hpset == "arena_tiny_2v2":
-        hps = HyperParams.arena_tiny_2v2()
-    elif args.hpset == "arena_medium":
-        hps = HyperParams.arena_medium()
-    elif args.hpset == "arena_medium_large_ms":
-        hps = HyperParams.arena_medium_large_ms()
-    elif args.hpset == "arena":
-        hps = HyperParams.arena()
-    elif args.hpset == "standard":
-        hps = HyperParams.standard()
-    elif args.hpset == "enhanced":
-        hps = HyperParams.enhanced()
-    elif args.hpset == "standard_2dataparallel":
-        hps = HyperParams.standard_2dataparallel()
-    elif args.hpset == "enhanced_2dataparallel":
-        hps = HyperParams.enhanced_2dataparallel()
-    elif args.hpset == "enhanced_4dataparallel":
-        hps = HyperParams.enhanced_4dataparallel()
-    elif args.hpset == "standard_dataparallel":
-        hps = HyperParams.standard_dataparallel()
-    elif args.hpset == "micro_practice":
-        hps = HyperParams.micro_practice()
-    elif args.hpset == "scout":
-        hps = HyperParams.scout()
-    elif args.hpset == "d2o":
-        hps = HyperParams.distance_to_origin()
-    elif args.hpset == "d2m":
-        hps = HyperParams.distance_to_mineral()
-    elif args.hpset != "default":
-        raise Exception(f"Unknown hpset `{args.hpset}`")
-    for key, value in vars(args).items():
-        if value is not None and hasattr(hps, key):
-            setattr(hps, key, value)
 
-    config = vars(hps)
-    config["commit"] = subprocess.check_output(
-        ["git", "describe", "--tags", "--always", "--dirty"]
-    ).decode("UTF-8")[:-1]
-    config["descriptor"] = vars(args)["descriptor"]
-    if "XPRUN_NAME" in os.environ:
-        config["xp_name"] = os.environ["XPRUN_NAME"]
-
-    if isinstance(hps.objective, str):
-        hps.objective = envs.Objective(hps.objective)
-
+    # TODO: xprun
+    """
     if hps.parallelism > 1:
         if "XPRUN_ID" not in os.environ:
             raise Exception("Data parallel training only supported with xprun")
         else:
             init_process()
             hps.rank = int(os.environ["XPRUN_RANK"])
+    """
 
-    if hps.rank == 0:
-        wandb_project = "deep-codecraft-vs" if hps.objective.vs() else "deep-codecraft"
+    config = hyperstate.load_file(Config, args.config)
+    # TODO: hack
+    config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
+    config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
+    config.obs.num_builds = len(config.task.objective.builds())
+
+    # TODO: xprun
+    if True:  # hps.rank == 0:
+        wandb_project = (
+            "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
+        )
         wandb.init(project=wandb_project)
-        wandb.config.update(config)
+        cfg = dataclasses.asdict(config)
+        cfg["commit"] = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"]
+        ).decode("UTF-8")[:-1]
+        cfg["descriptor"] = vars(args)["descriptor"]
+        if "XPRUN_NAME" in os.environ:
+            cfg["xp_name"] = os.environ["XPRUN_NAME"]
+        wandb.config.update(cfg)
 
     if not args.out_dir:
         if "XPRUN_ID" in os.environ:
@@ -1343,10 +1286,7 @@ def main():
     else:
         out_dir = args.out_dir
 
-    if args.profile:
-        profile_fp(hps)
-    else:
-        train(hps, out_dir)
+    train(config, state=None, out_dir=out_dir)
 
 
 if __name__ == "__main__":

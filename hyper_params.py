@@ -1,7 +1,7 @@
 import argparse
 import math
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 from gym_codecraft import envs
 
 

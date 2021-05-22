@@ -1,0 +1,58 @@
+ppo:
+  steps: 250e6
+  win_bonus: 2.0
+  partial_score: 1.0
+  gamma: 0.999
+  #entropy_bonus_schedule = "lin 15e6:0.1,90e6:0.0"
+  seq_rosteps: 128
+  num_envs: 128
+  num_self_play: 64
+task:
+  max_hardness: 150
+  objective: "ENHANCED"
+  enforce_unit_cap: true
+  # hps.unit_cap_schedule = "lin 50e6:20"
+  unit_cap: 6
+  adr: true
+  rule_rng_fraction: 1.0
+  rule_rng_amount: 1.0
+  mothership_damage_scale: 0.0
+eval:
+  eval_frequency: 10e6
+  #TODO: extra_checkpoint_steps: [1e6, 2.5e6]
+  extra_checkpoint_steps: [1000000, 2500000]
+  model_save_frequency: 1
+  eval_envs: 0 #128
+  eval_frequency: 5e6
+  eval_timesteps: 5000
+optimizer:
+  lr: 0.0005
+  final_lr: 0.00005
+  vf_coef: 1.0
+  entropy_bonus: 0.2
+  lr_schedule: "cosine"
+  # entropy_bonus_schedule = "lin 20e6:0.15,200e6:0.0"
+  entropy_bonus: 0.5
+  batches_per_update: 32
+  bs: 512
+adr:
+  # hps.adr_variety_schedule = "lin 150e6:0.15,200e6:0.1,250e6:0.01"
+  variety: 0.3
+  # cost_variance_schedule = "lin 20e6:1.0,200e6:0.1"
+  cost_variance: 2.0
+  hstepsize: 2.5e-6
+obs:
+  allies: 20
+  obs_map_tiles: 5
+  obs_enemies: 20
+  feat_last_seen: true
+  feat_mineral_claims: true
+  harvest_action: true
+  feat_dist_to_wall: true
+  obs_minerals: 5
+policy:
+  agents: 20
+  nenemy: 20
+  nally: 20
+  nmineral: 5
+  ntile: 5

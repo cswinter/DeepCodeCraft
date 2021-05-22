@@ -155,7 +155,17 @@ def create_game(
     except requests.exceptions.ConnectionError:
         logging.info(f"Connection error on create_game, retrying")
         time.sleep(1)
-        return create_game(game_length, action_delay, self_play)
+        return create_game(
+            game_length,
+            action_delay,
+            self_play,
+            custom_map=custom_map,
+            scripted_opponent=scripted_opponent,
+            rules=rules,
+            allowHarvesting=allowHarvesting,
+            forceHarvesting=forceHarvesting,
+            randomizeIdle=randomizeIdle,
+        )
 
 
 def act(game_id: int, action):

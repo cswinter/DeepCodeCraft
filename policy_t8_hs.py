@@ -4,59 +4,58 @@ import torch.nn.functional as F
 import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 
+from hyperstate import PolicyConfig, ObsConfig, Config
+
 import spatial
 
 
-class TransformerPolicy8(nn.Module):
-    def __init__(self, hps, obs_config):
-        super(TransformerPolicy8, self).__init__()
+class TransformerPolicy8HS(nn.Module):
+    def __init__(self, config: PolicyConfig, obs_config: ObsConfig, naction: int):
+        super(TransformerPolicy8HS, self).__init__()
         assert (
             obs_config.drones > 0 or obs_config.minerals > 0
         ), "Must have at least one mineral or drones observation"
         assert obs_config.drones >= obs_config.allies
-        assert not hps.use_privileged or (
-            hps.nmineral > 0
-            and hps.nally > 0
-            and (hps.nenemy > 0 or hps.ally_enemy_same)
+        assert not obs_config.use_privileged or (
+            config.nmineral > 0
+            and config.nally > 0
+            and (config.nenemy > 0 or config.ally_enemy_same)
         )
 
-        assert hps.nally == obs_config.allies
-        assert hps.nenemy == obs_config.drones - obs_config.allies
-        assert hps.nmineral == obs_config.minerals
-        assert hps.ntile == obs_config.tiles
-        assert hps.nconstant == 0
+        assert config.nally == obs_config.allies
+        assert config.nenemy == obs_config.drones - obs_config.allies
+        assert config.nmineral == obs_config.obs_minerals
+        assert config.ntile == obs_config.obs_map_tiles
+        assert config.nconstant == 0
 
         self.version = "transformer_v8"
 
-        self.kwargs = dict(hps=hps, obs_config=obs_config)
-
-        self.hps = hps
+        self.hps = config
         self.obs_config = obs_config
-        self.agents = hps.agents
-        self.nally = hps.nally
-        self.nenemy = hps.nenemy
-        self.nmineral = hps.nmineral
-        self.nconstant = hps.nconstant
-        self.ntile = hps.ntile
-        self.nitem = hps.nally + hps.nenemy + hps.nmineral + hps.ntile
-        self.fp16 = hps.fp16
-        self.d_agent = hps.d_agent
-        self.d_item = hps.d_item
-        self.naction = hps.objective.naction() + obs_config.extra_actions()
+        self.agents = config.agents
+        self.nally = config.nally
+        self.nenemy = config.nenemy
+        self.nmineral = config.nmineral
+        self.nconstant = config.nconstant
+        self.ntile = config.ntile
+        self.nitem = config.nally + config.nenemy + config.nmineral + config.ntile
+        self.d_agent = config.d_agent
+        self.d_item = config.d_item
+        self.naction = naction
 
         if hasattr(obs_config, "global_drones"):
             self.global_drones = obs_config.global_drones
         else:
             self.global_drones = 0
 
-        if hps.norm == "none":
+        if config.norm == "none":
             norm_fn = lambda x: nn.Sequential()
-        elif hps.norm == "batchnorm":
+        elif config.norm == "batchnorm":
             norm_fn = lambda n: nn.BatchNorm2d(n)
-        elif hps.norm == "layernorm":
+        elif config.norm == "layernorm":
             norm_fn = lambda n: nn.LayerNorm(n)
         else:
-            raise Exception(f"Unexpected normalization layer {hps.norm}")
+            raise Exception(f"Unexpected normalization layer {config.norm}")
 
         endglobals = self.obs_config.endglobals()
         endallies = self.obs_config.endallies()
@@ -67,24 +66,28 @@ class TransformerPolicy8(nn.Module):
 
         self.agent_embedding = ItemBlock(
             obs_config.dstride() + obs_config.global_features(),
-            hps.d_agent,
-            hps.d_agent * hps.dff_ratio,
+            config.d_agent,
+            config.d_agent * config.dff_ratio,
             norm_fn,
             True,
         )
         self.relpos_net = ItemBlock(
-            3, hps.d_item // 2, hps.d_item // 2 * hps.dff_ratio, norm_fn, hps.item_ff
+            3,
+            config.d_item // 2,
+            config.d_item // 2 * config.dff_ratio,
+            norm_fn,
+            config.item_ff,
         )
 
         self.item_nets = nn.ModuleList()
-        if hps.ally_enemy_same:
+        if config.ally_enemy_same:
             self.item_nets.append(
                 PosItemBlock(
                     obs_config.dstride(),
-                    hps.d_item // 2,
-                    hps.d_item // 2 * hps.dff_ratio,
+                    config.d_item // 2,
+                    config.d_item // 2 * config.dff_ratio,
                     norm_fn,
-                    hps.item_ff,
+                    config.item_ff,
                     mask_feature=7,  # Feature 7 is hitpoints
                     count=obs_config.drones,
                     start=endglobals,
@@ -96,10 +99,10 @@ class TransformerPolicy8(nn.Module):
                 self.item_nets.append(
                     PosItemBlock(
                         obs_config.dstride(),
-                        hps.d_item // 2,
-                        hps.d_item // 2 * hps.dff_ratio,
+                        config.d_item // 2,
+                        config.d_item // 2 * config.dff_ratio,
                         norm_fn,
-                        hps.item_ff,
+                        config.item_ff,
                         mask_feature=7,  # Feature 7 is hitpoints
                         count=obs_config.allies,
                         start=endglobals,
@@ -110,106 +113,112 @@ class TransformerPolicy8(nn.Module):
                 self.item_nets.append(
                     PosItemBlock(
                         obs_config.dstride(),
-                        hps.d_item // 2,
-                        hps.d_item // 2 * hps.dff_ratio,
+                        config.d_item // 2,
+                        config.d_item // 2 * config.dff_ratio,
                         norm_fn,
-                        hps.item_ff,
+                        config.item_ff,
                         mask_feature=7,  # Feature 7 is hitpoints
                         count=obs_config.drones - self.obs_config.allies,
                         start=endallies,
                         end=endenemies,
-                        start_privileged=endtiles if hps.use_privileged else None,
-                        end_privileged=endallenemies if hps.use_privileged else None,
+                        start_privileged=endtiles
+                        if obs_config.use_privileged
+                        else None,
+                        end_privileged=endallenemies
+                        if obs_config.use_privileged
+                        else None,
                     )
                 )
-        if hps.nmineral > 0:
+        if config.nmineral > 0:
             self.item_nets.append(
                 PosItemBlock(
                     obs_config.mstride(),
-                    hps.d_item // 2,
-                    hps.d_item // 2 * hps.dff_ratio,
+                    config.d_item // 2,
+                    config.d_item // 2 * config.dff_ratio,
                     norm_fn,
-                    hps.item_ff,
+                    config.item_ff,
                     mask_feature=2,  # Feature 2 is size
-                    count=obs_config.minerals,
+                    count=obs_config.obs_minerals,
                     start=endenemies,
                     end=endmins,
                 )
             )
-        if hps.ntile > 0:
+        if config.ntile > 0:
             self.item_nets.append(
                 PosItemBlock(
                     obs_config.tstride(),
-                    hps.d_item // 2,
-                    hps.d_item // 2 * hps.dff_ratio,
+                    config.d_item // 2,
+                    config.d_item // 2 * config.dff_ratio,
                     norm_fn,
-                    hps.item_ff,
+                    config.item_ff,
                     mask_feature=2,  # Feature is elapsed since last visited time
-                    count=obs_config.tiles,
+                    count=obs_config.obs_map_tiles,
                     start=endmins,
                     end=endtiles,
                 )
             )
-        if hps.nconstant > 0:
+        if config.nconstant > 0:
             self.constant_items = nn.Parameter(
-                torch.normal(0, 1, (hps.nconstant, hps.d_item))
+                torch.normal(0, 1, (config.nconstant, config.d_item))
             )
 
-        if hps.item_item_attn_layers > 0:
-            encoder_layer = nn.TransformerEncoderLayer(d_model=hps.d_item, nhead=8)
+        if config.item_item_attn_layers > 0:
+            encoder_layer = nn.TransformerEncoderLayer(d_model=config.d_item, nhead=8)
             self.item_item_attn = nn.TransformerEncoder(
-                encoder_layer, num_layers=hps.item_item_attn_layers
+                encoder_layer, num_layers=config.item_item_attn_layers
             )
         else:
             self.item_item_attn = None
 
         self.multihead_attention = nn.MultiheadAttention(
-            embed_dim=hps.d_agent,
-            kdim=hps.d_item,
-            vdim=hps.d_item,
-            num_heads=hps.nhead,
-            dropout=hps.dropout,
+            embed_dim=config.d_agent,
+            kdim=config.d_item,
+            vdim=config.d_item,
+            num_heads=config.nhead,
+            dropout=config.dropout,
         )
-        self.linear1 = nn.Linear(hps.d_agent, hps.d_agent * hps.dff_ratio)
-        self.linear2 = nn.Linear(hps.d_agent * hps.dff_ratio, hps.d_agent)
-        self.norm1 = nn.LayerNorm(hps.d_agent)
-        self.norm2 = nn.LayerNorm(hps.d_agent)
+        self.linear1 = nn.Linear(config.d_agent, config.d_agent * config.dff_ratio)
+        self.linear2 = nn.Linear(config.d_agent * config.dff_ratio, config.d_agent)
+        self.norm1 = nn.LayerNorm(config.d_agent)
+        self.norm2 = nn.LayerNorm(config.d_agent)
 
-        self.map_channels = hps.d_agent // (hps.nm_nrings * hps.nm_nrays)
+        self.map_channels = config.d_agent // (config.nm_nrings * config.nm_nrays)
         map_item_channels = (
             self.map_channels - 2 if self.hps.map_embed_offset else self.map_channels
         )
-        self.downscale = nn.Linear(hps.d_item, map_item_channels)
+        self.downscale = nn.Linear(config.d_item, map_item_channels)
         self.norm_map = norm_fn(map_item_channels)
         self.conv1 = spatial.ZeroPaddedCylindricalConv2d(
-            self.map_channels, hps.dff_ratio * self.map_channels, kernel_size=3
+            self.map_channels, config.dff_ratio * self.map_channels, kernel_size=3
         )
         self.conv2 = spatial.ZeroPaddedCylindricalConv2d(
-            hps.dff_ratio * self.map_channels, self.map_channels, kernel_size=3
+            config.dff_ratio * self.map_channels, self.map_channels, kernel_size=3
         )
         self.norm_conv = norm_fn(self.map_channels)
 
-        final_width = hps.d_agent
-        if hps.nearby_map:
-            final_width += hps.d_agent
+        final_width = config.d_agent
+        if config.nearby_map:
+            final_width += config.d_agent
         self.final_layer = nn.Sequential(
-            nn.Linear(final_width, hps.d_agent * hps.dff_ratio), nn.ReLU(),
+            nn.Linear(final_width, config.d_agent * config.dff_ratio), nn.ReLU(),
         )
 
-        self.policy_head = nn.Linear(hps.d_agent * hps.dff_ratio, self.naction)
-        if hps.small_init_pi:
+        self.policy_head = nn.Linear(config.d_agent * config.dff_ratio, self.naction)
+        if config.small_init_pi:
             self.policy_head.weight.data *= 0.01
             self.policy_head.bias.data.fill_(0.0)
 
-        if hps.use_privileged:
-            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio + hps.d_item, 1)
+        if obs_config.use_privileged:
+            self.value_head = nn.Linear(
+                config.d_agent * config.dff_ratio + config.d_item, 1
+            )
         else:
-            self.value_head = nn.Linear(hps.d_agent * hps.dff_ratio, 1)
-        if hps.zero_init_vf:
+            self.value_head = nn.Linear(config.d_agent * config.dff_ratio, 1)
+        if config.zero_init_vf:
             self.value_head.weight.data.fill_(0.0)
             self.value_head.bias.data.fill_(0.0)
 
-        self.epsilon = 1e-4 if hps.fp16 else 1e-8
+        self.epsilon = 1e-8
 
     def evaluate(self, observation, action_masks, privileged_obs):
         action_masks = action_masks[:, : self.agents, :]
@@ -236,7 +245,7 @@ class TransformerPolicy8(nn.Module):
 
     def backprop(
         self,
-        hps,
+        hps: Config,
         obs,
         actions,
         old_logprobs,
@@ -274,10 +283,10 @@ class TransformerPolicy8(nn.Module):
         vanilla_policy_loss = advantages * ratios * agent_masks
         clipped_policy_loss = (
             advantages
-            * torch.clamp(ratios, 1 - hps.cliprange, 1 + hps.cliprange)
+            * torch.clamp(ratios, 1 - hps.ppo.cliprange, 1 + hps.ppo.cliprange)
             * agent_masks
         )
-        if hps.ppo:
+        if hps.ppo.ppo:
             policy_loss = (
                 -torch.min(vanilla_policy_loss, clipped_policy_loss).mean(dim=0).sum()
             )
@@ -285,24 +294,24 @@ class TransformerPolicy8(nn.Module):
             policy_loss = -vanilla_policy_loss.mean(dim=0).sum()
 
         approxkl = (old_probs * torch.log(old_probs / probs)).sum(dim=2).mean()
-        clipfrac = ((ratios - 1.0).abs() > hps.cliprange).sum().type(
+        clipfrac = ((ratios - 1.0).abs() > hps.ppo.cliprange).sum().type(
             torch.float32
         ) / ratios.numel()
 
         clipped_values = old_values + torch.clamp(
-            values - old_values, -hps.cliprange, hps.cliprange
+            values - old_values, -hps.ppo.cliprange, hps.ppo.cliprange
         )
         vanilla_value_loss = (values - returns) ** 2
         clipped_value_loss = (clipped_values - returns) ** 2
-        if hps.clip_vf:
+        if hps.ppo.clip_vf:
             value_loss = torch.max(vanilla_value_loss, clipped_value_loss).mean()
         else:
             value_loss = vanilla_value_loss.mean()
 
-        entropy_loss = -hps.entropy_bonus * entropy.mean()
+        entropy_loss = -hps.optimizer.entropy_bonus * entropy.mean()
 
         loss = policy_loss + value_loss_scale * value_loss + entropy_loss
-        loss /= hps.batches_per_update
+        loss /= hps.optimizer.batches_per_update
         loss.backward()
         return (
             policy_loss.data.tolist(),
@@ -323,7 +332,7 @@ class TransformerPolicy8(nn.Module):
         else:
             vin = torch.zeros(batch_size, self.d_agent * self.hps.dff_ratio)
         scatter_max(x, index=active_agents.batch_index, dim=0, out=vin)
-        if self.hps.use_privileged:
+        if self.obs_config.use_privileged:
             mask1k = 1000.0 * pmask.float().unsqueeze(-1)
             pitems_max = (pitems - mask1k).max(dim=1).values
             pitems_max[pitems_max == -1000.0] = 0.0
@@ -476,7 +485,6 @@ class InputNorm(nn.Module):
         self.register_buffer("count", torch.tensor(0.0))
         self.register_buffer("mean", torch.zeros(num_features))
         self.register_buffer("squares_sum", torch.zeros(num_features))
-        self.fp16 = False
         self._stddev = None
         self._dirty = True
 
@@ -509,12 +517,7 @@ class InputNorm(nn.Module):
                 input = (input - self.mean) / self.stddev()
             input = torch.clamp(input, -self.cliprange, self.cliprange)
 
-        return input.half() if self.fp16 else input
-
-    def enable_fp16(self):
-        # Convert buffers back to fp32, fp16 has insufficient precision and runs into overflow on squares_sum
-        self.float()
-        self.fp16 = True
+        return input
 
     def stddev(self):
         if self._dirty:
