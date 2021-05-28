@@ -4,6 +4,7 @@ import math
 from enum import Enum
 from typing import List, Union, Optional, Tuple
 import numpy as np
+from hyperstate import Config, Objective
 
 import codecraft
 from codecraft import Rules, ObsConfig
@@ -704,6 +705,7 @@ class CodeCraftVecEnv(object):
         num_self_play,
         objective,
         action_delay,
+        config: Config,
         stagger=True,
         fair=False,
         randomize=False,
@@ -713,7 +715,6 @@ class CodeCraftVecEnv(object):
         symmetric=0.0,
         scripted_opponents: Optional[List[Tuple[str, int]]] = None,
         mix_mp=0.0,
-        build_variety_bonus=0.0,
         win_bonus=0.0,
         attac=0.0,
         protec=0.0,
@@ -724,11 +725,8 @@ class CodeCraftVecEnv(object):
         rule_cost_rng=0.0,
         max_game_length=None,
         stagger_offset: float = 0.0,
-        mothership_damage_scale: float = 0.0,
         loss_penalty: float = 0.0,
         partial_score: float = 1.0,
-        enforce_unit_cap: bool = False,
-        unit_cap_override: int = 0,
     ):
         assert num_envs >= 2 * num_self_play
         self.num_envs = num_envs
@@ -746,7 +744,6 @@ class CodeCraftVecEnv(object):
         self.obs_config = obs_config
         self.hardness = hardness
         self.symmetric = symmetric
-        self.build_variety_bonus = build_variety_bonus
         self.win_bonus = win_bonus
         self.loss_penalty = loss_penalty
         self.partial_score = partial_score
@@ -761,10 +758,7 @@ class CodeCraftVecEnv(object):
         self.allow_harvesting = objective != Objective.DISTANCE_TO_CRYSTAL
         self.force_harvesting = False
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
-        self.mothership_damage_scale = mothership_damage_scale
-        self.adr_cost_variance = 0.0
-        self.enforce_unit_cap = enforce_unit_cap
-        self.unit_cap_override = unit_cap_override
+        self.config = config
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -827,14 +821,15 @@ class CodeCraftVecEnv(object):
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
             return random_rules(
-                2 ** self.mothership_damage_scale,
+                2 ** self.config.task.mothership_damage_scale,
                 self.rule_cost_rng,
                 self.rng_ruleset,
-                self.adr_cost_variance,
+                self.config.adr.cost_variance,
             )
         else:
             return Rules(
-                mothership_damage_multiplier=2 ** self.mothership_damage_scale,
+                mothership_damage_multiplier=2
+                ** self.config.task.mothership_damage_scale,
                 cost_modifiers={build: 1.0 for build in self.objective.builds()},
             )
 
@@ -997,8 +992,8 @@ class CodeCraftVecEnv(object):
                 abstime=obs_config.feat_abstime,
                 rule_msdm=obs_config.feat_rule_msdm,
                 rule_costs=obs_config.feat_rule_costs,
-                enforce_unit_cap=self.enforce_unit_cap,
-                unit_cap_override=self.unit_cap_override,
+                enforce_unit_cap=self.config.task.enforce_unit_cap,
+                unit_cap_override=self.config.task.unit_cap,
             )
         else:
             obs = codecraft.observe_batch_raw(
@@ -1018,8 +1013,8 @@ class CodeCraftVecEnv(object):
                 abstime=obs_config.feat_abstime,
                 rule_msdm=obs_config.feat_rule_msdm,
                 rule_costs=obs_config.feat_rule_costs,
-                enforce_unit_cap=self.enforce_unit_cap,
-                unit_cap_override=self.unit_cap_override,
+                enforce_unit_cap=self.config.task.enforce_unit_cap,
+                unit_cap_override=self.config.task.unit_cap,
             )
         stride = obs_config.stride()
         for i in range(num_envs):
@@ -1108,7 +1103,9 @@ class CodeCraftVecEnv(object):
                     if count > 0:
                         p = count / s
                         build_entropy -= p * math.log(p)
-                score += self.build_variety_bonus * build_entropy / max_entropy
+                score += (
+                    self.config.ppo.build_variety_bonus * build_entropy / max_entropy
+                )
 
             if self.score[game] is None:
                 self.score[game] = score
@@ -1256,90 +1253,6 @@ class CodeCraftVecEnv(object):
             result["player1Drones"] = result["player2Drones"]
             result["player2Drones"] = p1
             return result
-
-
-class Objective(Enum):
-    ALLIED_WEALTH = "ALLIED_WEALTH"
-    DISTANCE_TO_CRYSTAL = "DISTANCE_TO_CRYSTAL"
-    DISTANCE_TO_ORIGIN = "DISTANCE_TO_ORIGIN"
-    DISTANCE_TO_1000_500 = "DISTANCE_TO_1000_500"
-    ARENA_TINY = "ARENA_TINY"
-    ARENA_TINY_2V2 = "ARENA_TINY_2V2"
-    ARENA_MEDIUM = "ARENA_MEDIUM"
-    ARENA_MEDIUM_LARGE_MS = "ARENA_MEDIUM_LARGE_MS"
-    ARENA = "ARENA"
-    STANDARD = "STANDARD"
-    ENHANCED = "ENHANCED"
-    SMOL_STANDARD = "SMOL_STANDARD"
-    MICRO_PRACTICE = "MICRO_PRACTICE"
-    SCOUT = "SCOUT"
-
-    def vs(self):
-        if (
-            self == Objective.ALLIED_WEALTH
-            or self == Objective.DISTANCE_TO_CRYSTAL
-            or self == Objective.DISTANCE_TO_ORIGIN
-            or self == Objective.DISTANCE_TO_1000_500
-            or self == Objective.SCOUT
-        ):
-            return False
-        elif (
-            self == Objective.ARENA_TINY
-            or self == Objective.ARENA_TINY_2V2
-            or self == Objective.ARENA_MEDIUM
-            or self == Objective.ARENA
-            or self == Objective.STANDARD
-            or self == Objective.ENHANCED
-            or self == Objective.SMOL_STANDARD
-            or self == Objective.MICRO_PRACTICE
-            or self == Objective.ARENA_MEDIUM_LARGE_MS
-        ):
-            return True
-        else:
-            raise Exception(f"Objective.vs not implemented for {self}")
-
-    def naction(self):
-        return 8 + len(self.extra_builds())
-
-    def builds(self):
-        b = self.extra_builds()
-        b.append((0, 1, 0, 0, 0, 0))
-        return b
-
-    def extra_builds(self):
-        # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
-        if self == Objective.ARENA:
-            return [(1, 0, 1, 0, 0), (0, 2, 0, 0, 0), (0, 1, 0, 0, 1)]
-        elif self == Objective.SMOL_STANDARD or self == Objective.STANDARD:
-            return [
-                (1, 0, 1, 0, 0),
-                (0, 2, 0, 0, 0),
-                (0, 1, 0, 0, 1),
-                (0, 3, 0, 0, 1),
-                (0, 2, 0, 0, 2),
-                (2, 1, 1, 0, 0),
-                (2, 0, 2, 0, 0),
-                (2, 0, 1, 1, 0),
-                (0, 2, 0, 1, 1),
-                (1, 0, 0, 0, 0),
-            ]
-        elif self == Objective.ENHANCED:
-            return [
-                # [s, m, c, e, p, l]
-                (1, 0, 0, 0, 0, 0),  # 1s
-                (1, 0, 1, 0, 0, 0),  # 1s1c
-                (0, 1, 0, 0, 1, 0),  # 1m1p
-                (0, 0, 0, 0, 0, 2),  # 2l
-                (0, 2, 0, 2, 0, 0),  # 2m2e
-                (0, 1, 0, 2, 1, 0),  # 1m1p2e
-                (0, 2, 0, 1, 1, 0),  # 2m1e1p
-                (0, 0, 0, 1, 0, 3),  # 1e3l
-                (2, 0, 1, 1, 0, 0),  # 2s1c1e
-                (0, 4, 0, 3, 3, 0),  # 4m3e3p
-                (0, 0, 0, 4, 1, 5),  # 4e1p5l
-            ]
-        else:
-            return []
 
 
 def dist2(x1, y1, x2, y2):

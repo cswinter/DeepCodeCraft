@@ -80,13 +80,6 @@ def run_codecraft():
         frames += nenv
 
 
-def warmup_lr_schedule(warmup_steps: int):
-    def lr(step):
-        return (step + 1) / warmup_steps if step < warmup_steps else 1.0
-
-    return lr
-
-
 def init_state(config: Config, device: str) -> State:
     if config.optimizer.optimizer_type == "SGD":
         optimizer_fn = optim.SGD
@@ -130,22 +123,6 @@ def init_state(config: Config, device: str) -> State:
         for decay in config.optimizer.weights_ema
     ]
 
-    # TODO: hyperstate
-    if config.optimizer.lr_schedule == "cosine":
-        lr_scheduler = CosineAnnealingLR(
-            optimizer,
-            T_max=config.ppo.steps * config.optimizer.epochs
-            # TODO: xprun
-            # // hps.parallelism
-            // (config.optimizer.bs * config.optimizer.batches_per_update),
-            eta_min=config.optimizer.final_lr,
-        )
-    else:
-        assert (
-            config.optimizer.lr_schedule == "none"
-        ), f"Unexpected lr_schedule: {config.optimizer.lr_schedule}"
-        lr_scheduler = None
-
     return State(policy, optimizer, policy_emas, adr)
 
 
@@ -168,9 +145,6 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
     #    policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
     #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
     #    )
-
-    if config.optimizer.warmup > 0:
-        assert False, "Warmup not implemented"
 
     # TODO: xprun
     # if hps.parallelism > 1:
@@ -196,6 +170,9 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
     rewmean = 0.0
     rewstd = 1.0
     while state.step < config.ppo.steps:
+        hyperstate.update(config, state)
+        for g in state.optimizer.param_groups:
+            g["lr"] = config.optimizer.lr
         assert (
             config.rosteps % (config.optimizer.bs * config.optimizer.batches_per_update)
             == 0
@@ -207,13 +184,13 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
                 config.ppo.num_self_play,
                 config.task.objective,
                 config.task.action_delay,
+                config=config,
                 randomize=config.task.randomize,
                 use_action_masks=config.task.use_action_masks,
                 obs_config=obs_config,
                 symmetric=config.task.symmetric_map,
                 hardness=config.task.task_hardness,
                 mix_mp=config.task.mix_mp,
-                build_variety_bonus=config.ppo.build_variety_bonus,
                 win_bonus=config.ppo.win_bonus,
                 attac=config.ppo.attac,
                 protec=config.ppo.protec,
@@ -232,21 +209,12 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
                 else config.task.max_game_length,
                 # TODO: xprun
                 stagger_offset=0,  # hps.rank / hps.parallelism,
-                mothership_damage_scale=config.task.mothership_damage_scale,
                 loss_penalty=config.ppo.loss_penalty,
                 partial_score=config.ppo.partial_score,
-                enforce_unit_cap=config.task.enforce_unit_cap,
             )
             env.rng_ruleset = state.adr.ruleset
             env.hardness = state.adr.hardness
             obs, action_masks, privileged_obs = env.reset()
-
-        # TODO: pass in config to env to get schedule for mothership_damage_scale etc.
-        # env.mothership_damage_scale = mothership_damage_scale_schedule.value_at(
-        #    total_steps
-        # )
-        # env.adr_cost_variance = adr_cost_variance_schedule.value_at(total_steps)
-        # env.unit_cap_override = int(unit_cap_schedule.value_at(total_steps))
 
         if state.step >= next_eval:
             if config.eval.eval_envs > 0:
@@ -516,9 +484,6 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
                     state.optimizer.step()
                     for ema in state.ema:
                         ema.update(state.policy.parameters())
-                    # TODO: hyperstate
-                    # if lr_scheduler:
-                    #    lr_scheduler.step()
         torch.cuda.empty_cache()
 
         state.epoch += 1
@@ -564,15 +529,9 @@ def train(config: Config, state: Optional[State], out_dir: str) -> None:
                 "rewstd": rewstd,
                 "average_cost_modifier": average_cost_modifier,
                 "hardness": state.adr.hardness,
-                "lr": config.optimizer.lr,
-                "entropy_bonus": config.optimizer.entropy_bonus,
-                "mothership_damage_scale": env.mothership_damage_scale,
-                "gamma": config.ppo.gamma,
                 "iteration": iteration,
-                "adr_cost_variance": env.adr_cost_variance,
-                "adr_variety": config.adr.variety,
-                "unit_cap": env.unit_cap_override,
             }
+            metrics.update(hyperstate.asdict(config))
             for action, count in buildmean.items():
                 metrics[f"build_{spec_key(action)}"] = count
             for action, fraction in normalize(buildmean).items():
@@ -888,13 +847,7 @@ def obs_config_from(config: Config) -> ObsConfig:
 
 
 def save_policy(
-    policy,
-    out_dir,
-    total_steps,
-    optimizer=None,
-    adr=None,
-    lr_scheduler=None,
-    policy_emas=None,
+    policy, out_dir, total_steps, optimizer=None, adr=None, policy_emas=None,
 ):
     if policy_emas is None:
         policy_emas = []
@@ -923,8 +876,6 @@ def save_policy(
                 "hardness_offset": adr.hardness_offset,
                 "step": adr.step,
             }
-        if lr_scheduler:
-            model["lr_scheduler_state_dict"] = lr_scheduler.state_dict()
         torch.save(model, model_path)
         if policy_ema is not None:
             policy_ema.restore(policy.parameters())
@@ -981,7 +932,6 @@ def load_policy(
             )
 
     adr = None
-    lr_scheduler = None
     if hps is not None:
         hardness = 0.0
         ruleset = None
@@ -1012,25 +962,7 @@ def load_policy(
             step=step,
         )
 
-        if hps.lr_schedule == "cosine":
-            for g in optimizer.param_groups:
-                g["lr"] = hps.lr
-                g["initial_lr"] = hps.lr
-            lr_scheduler = CosineAnnealingLR(
-                optimizer,
-                T_max=hps.steps
-                * hps.epochs
-                * hps.parallelism
-                // (hps.bs * hps.batches_per_update),
-                eta_min=hps.final_lr,
-            )
-            # lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
-        else:
-            assert (
-                hps.lr_schedule == "none"
-            ), f"Unexpected lr_schedule: {hps.lr_schedule}"
-
-    return policy, optimizer, checkpoint.get("total_steps", 0), adr, lr_scheduler
+    return policy, optimizer, checkpoint.get("total_steps", 0), adr
 
 
 def explained_variance(ypred, y):
@@ -1234,7 +1166,6 @@ def main():
     args_parser.add_argument("--config")
     args_parser.add_argument("--device", default=0)
     args_parser.add_argument("--descriptor", default="none")
-    args_parser.add_argument("--hpset", default="default")
     args_parser.add_argument("--profile", action="store_true")
     args = args_parser.parse_args()
 
@@ -1260,7 +1191,7 @@ def main():
             "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
         )
         wandb.init(project=wandb_project)
-        cfg = dataclasses.asdict(config)
+        cfg = hyperstate.asdict(config)
         cfg["commit"] = subprocess.check_output(
             ["git", "describe", "--tags", "--always", "--dirty"]
         ).decode("UTF-8")[:-1]

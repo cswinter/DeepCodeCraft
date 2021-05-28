@@ -1,11 +1,12 @@
 from abc import ABC, abstractclassmethod, abstractmethod
+
 from enum import Enum, EnumMeta
+import math
 from torch import optim
 from torch.optim.optimizer import Optimizer
 from policy_t8 import TransformerPolicy8
-from typing import Generic, List, Any, Type, TypeVar, Dict, Tuple
+from typing import Callable, Generic, List, Any, Type, TypeVar, Dict, Tuple
 from dataclasses import dataclass, field, is_dataclass
-from gym_codecraft import envs
 import yaml
 
 
@@ -26,6 +27,36 @@ def _typecheck(name, value, typ):
 T = TypeVar("T")
 
 
+# TODO: flatten instead?
+def asdict(x):
+    result = {}
+    for field_name, field_clz in x.__annotations__.items():
+        value = getattr(x, field_name)
+        if is_dataclass(field_clz):
+            result[field_name] = asdict(value)
+        elif field_clz in [int, float, str, bool]:
+            result[field_name] = value
+        elif hasattr(field_clz, "__args__") and (
+            field_clz == List[field_clz.__args__]
+            or field_clz == Dict[field_clz.__args__]
+        ):
+            # TODO: recurse
+            result[field_name] = value
+        elif isinstance(field_clz, EnumMeta):
+            result[field_name] = value.name
+        else:
+            raise TypeError(f"Unexpected type {field_clz}")
+    return result
+
+
+def update(config, state):
+    for schedule in config._schedules:
+        schedule(config, state)
+    for field_name, field_clz in config.__annotations__.items():
+        if is_dataclass(field_clz):
+            update(getattr(config, field_name), state)
+
+
 def load_file(clz: Type[T], path: str) -> T:
     file = open(path)
     values = yaml.safe_load(file)
@@ -35,9 +66,9 @@ def load_file(clz: Type[T], path: str) -> T:
 
 
 def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
-    print(values)
     kwargs = {}
     remaining_fields = set(clz.__annotations__.keys())
+    schedules = []
     for field_name, value in values.items():
         if field_name not in remaining_fields:
             raise TypeError(
@@ -47,14 +78,44 @@ def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
             remaining_fields.remove(field_name)
         field_clz = clz.__annotations__[field_name]
         if field_clz == float:
-            if isinstance(value, float):
-                value = float(value)
+            if isinstance(value, str):
+                if "@" in value:
+                    schedule = _parse_schedule(value)
+
+                    # TODO: surely there's a better way?
+                    def _capture(field_name, schedule):
+                        def update(self, state):
+                            x = getattr(state, schedule.xname)
+                            value = schedule.get_value(x)
+                            setattr(self, field_name, value)
+
+                        return update
+
+                    value = schedule.get_value(0)
+                    schedules.append(_capture(field_name, schedule))
+                else:
+                    if isinstance(value, str):
+                        parsed = float(value)
             _typecheck(field_name, value, float)
         elif field_clz == int:
             if isinstance(value, str):
-                parsed = _parse_int(value)
-                if parsed is not None:
-                    value = parsed
+                if "@" in value:
+                    schedule = _parse_schedule(value)
+
+                    def _capture(field_name, schedule):
+                        def update(self, state):
+                            x = getattr(state, schedule.xname)
+                            value = int(schedule.get_value(x))
+                            setattr(self, field_name, value)
+
+                        return update
+
+                    value = int(schedule.get_value(0))
+                    schedules.append(_capture(field_name, schedule))
+                else:
+                    parsed = _parse_int(value)
+                    if parsed is not None:
+                        value = parsed
             _typecheck(field_name, value, int)
         elif field_clz == bool:
             _typecheck(field_name, value, bool)
@@ -77,9 +138,87 @@ def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
         kwargs[field_name] = value
 
     try:
-        return clz(**kwargs)
+        instance = clz(**kwargs)
+        instance._schedules = schedules
+        return instance
     except TypeError as e:
         raise TypeError(f"Failed to initialize {clz.__module__}.{clz.__name__}: {e}")
+
+
+@dataclass
+class ScheduleSegment:
+    start: float
+    end: float
+    initial_value: float
+    final_value: float
+    interpolator: Callable[[float], float]
+
+
+@dataclass
+class Schedule:
+    segments: List[ScheduleSegment]
+    xname: str
+
+    def get_value(self, x: float) -> float:
+        segment = None
+        for s in self.segments:
+            segment = s
+            if x < s.end:
+                break
+        rescaled = (x - segment.start) / (segment.end - segment.start)
+        if rescaled < 0:
+            rescaled = 0
+        elif rescaled > 1:
+            rescaled = 1
+
+        w = segment.interpolator(rescaled)
+        return w * segment.initial_value + (1 - w) * segment.final_value
+
+
+INTERPOLATORS = {
+    "lin": lambda x: 1 - x,
+    "cos": lambda x: math.cos(x * math.pi / 2),
+    "step": lambda _: 1,
+}
+
+
+def _parse_schedule(schedule: str) -> Callable[[float], float]:
+    # Grammar
+    #
+    # rule := ident ": " point [join point]
+    # join := " " | " " ident " "
+    # point := num "@" num
+    # ident := "lin" | "cos" | "exp" | "step" | "quad" | "poly(" num ")"
+    # num := `float` | `int` | `path`
+    # path := ident [ "." path]
+    #
+    # Example:
+    # "0.3@step=0 lin 0.15@150e6 0.1@200e6 0.01@250e6"
+
+    # TODO: lots of checks and helpful error messages
+    parts = schedule.split(" ")
+    interpolator = INTERPOLATORS["lin"]
+    last_x, last_y = None, None
+    xname = parts[0][:-1]
+    segments = []
+    for part in parts[1:]:
+        if "@" in part:
+            y, x = part.split("@")
+            y, x = float(y), float(x)
+            if last_x is not None:
+                segments.append(
+                    ScheduleSegment(
+                        start=last_x,
+                        initial_value=last_y,
+                        end=x,
+                        final_value=y,
+                        interpolator=interpolator,
+                    )
+                )
+            last_x, last_y = x, y
+        else:
+            interpolator = INTERPOLATORS[part]
+    return Schedule(segments, xname)
 
 
 # TODO: gah
@@ -104,6 +243,90 @@ def _parse_int(s: str):
 # - config, state = State.load(config, overrides)
 
 
+class Objective(Enum):
+    ALLIED_WEALTH = "ALLIED_WEALTH"
+    DISTANCE_TO_CRYSTAL = "DISTANCE_TO_CRYSTAL"
+    DISTANCE_TO_ORIGIN = "DISTANCE_TO_ORIGIN"
+    DISTANCE_TO_1000_500 = "DISTANCE_TO_1000_500"
+    ARENA_TINY = "ARENA_TINY"
+    ARENA_TINY_2V2 = "ARENA_TINY_2V2"
+    ARENA_MEDIUM = "ARENA_MEDIUM"
+    ARENA_MEDIUM_LARGE_MS = "ARENA_MEDIUM_LARGE_MS"
+    ARENA = "ARENA"
+    STANDARD = "STANDARD"
+    ENHANCED = "ENHANCED"
+    SMOL_STANDARD = "SMOL_STANDARD"
+    MICRO_PRACTICE = "MICRO_PRACTICE"
+    SCOUT = "SCOUT"
+
+    def vs(self):
+        if (
+            self == Objective.ALLIED_WEALTH
+            or self == Objective.DISTANCE_TO_CRYSTAL
+            or self == Objective.DISTANCE_TO_ORIGIN
+            or self == Objective.DISTANCE_TO_1000_500
+            or self == Objective.SCOUT
+        ):
+            return False
+        elif (
+            self == Objective.ARENA_TINY
+            or self == Objective.ARENA_TINY_2V2
+            or self == Objective.ARENA_MEDIUM
+            or self == Objective.ARENA
+            or self == Objective.STANDARD
+            or self == Objective.ENHANCED
+            or self == Objective.SMOL_STANDARD
+            or self == Objective.MICRO_PRACTICE
+            or self == Objective.ARENA_MEDIUM_LARGE_MS
+        ):
+            return True
+        else:
+            raise Exception(f"Objective.vs not implemented for {self}")
+
+    def naction(self):
+        return 8 + len(self.extra_builds())
+
+    def builds(self):
+        b = self.extra_builds()
+        b.append((0, 1, 0, 0, 0, 0))
+        return b
+
+    def extra_builds(self):
+        # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
+        if self == Objective.ARENA:
+            return [(1, 0, 1, 0, 0), (0, 2, 0, 0, 0), (0, 1, 0, 0, 1)]
+        elif self == Objective.SMOL_STANDARD or self == Objective.STANDARD:
+            return [
+                (1, 0, 1, 0, 0),
+                (0, 2, 0, 0, 0),
+                (0, 1, 0, 0, 1),
+                (0, 3, 0, 0, 1),
+                (0, 2, 0, 0, 2),
+                (2, 1, 1, 0, 0),
+                (2, 0, 2, 0, 0),
+                (2, 0, 1, 1, 0),
+                (0, 2, 0, 1, 1),
+                (1, 0, 0, 0, 0),
+            ]
+        elif self == Objective.ENHANCED:
+            return [
+                # [s, m, c, e, p, l]
+                (1, 0, 0, 0, 0, 0),  # 1s
+                (1, 0, 1, 0, 0, 0),  # 1s1c
+                (0, 1, 0, 0, 1, 0),  # 1m1p
+                (0, 0, 0, 0, 0, 2),  # 2l
+                (0, 2, 0, 2, 0, 0),  # 2m2e
+                (0, 1, 0, 2, 1, 0),  # 1m1p2e
+                (0, 2, 0, 1, 1, 0),  # 2m1e1p
+                (0, 0, 0, 1, 0, 3),  # 1e3l
+                (2, 0, 1, 1, 0, 0),  # 2s1c1e
+                (0, 4, 0, 3, 3, 0),  # 4m3e3p
+                (0, 0, 0, 4, 1, 5),  # 4e1p5l
+            ]
+        else:
+            return []
+
+
 class Opaque(Generic[T]):
     pass
 
@@ -114,10 +337,6 @@ class OptimizerConfig:
     optimizer_type: str = "Adam"
     # Learning rate
     lr: float = 0.0003
-    # Learning rate floor when using cosine schedule
-    final_lr: float = 0.0001
-    # Learning rate schedule ("none" or "cosine")
-    lr_schedule: str = "none"
     # Momentum
     momentum: float = 0.9
     # Weight decay
@@ -136,8 +355,6 @@ class OptimizerConfig:
     max_grad_norm: float = 20.0
     # Number of optimizer passes over samples collected during rollout
     epochs: int = 2
-    # Learning rate is increased linearly from 0 during first n samples
-    warmup: int = 0
     # Exponentially moving averages of model weights
     weights_ema: List[float] = field(default_factory=list)
     # [0.99, 0.997, 0.999, 0.9997, 0.9999]
@@ -385,7 +602,7 @@ class PPOConfig:
 
 @dataclass
 class TaskConfig:
-    objective: envs.Objective = envs.Objective.ARENA_TINY_2V2
+    objective: Objective = Objective.ARENA_TINY_2V2
     action_delay: int = 0
     use_action_masks: bool = True
     task_hardness: int = 0
