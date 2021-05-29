@@ -57,9 +57,9 @@ class State:
     step: int
     iteration: int
     epoch: int
-    policy: Blob
-    optimizer: Blob
-    ema: List[Blob]
+    policy: Blob[Any]
+    optimizer: Blob[Any]
+    ema: List[Blob[Any]]
     adr: ADRState
 
 
@@ -110,7 +110,6 @@ def create_optimizer(
 
 
 def initial_state(config: Config) -> State:
-    print(f"yo initial {config.task.objective.naction() + config.obs.extra_actions()}")
     policy = TransformerPolicy8HS(
         config.policy,
         config.obs,
@@ -155,9 +154,6 @@ class Trainer:
             print("Running on CPU")
             self.device = "cpu"
 
-        print(
-            f"yo __init__ {config.task.objective.naction() + config.obs.extra_actions()}"
-        )
         self.policy = TransformerPolicy8HS(
             config.policy,
             config.obs,
@@ -169,10 +165,6 @@ class Trainer:
         self.optimizer.load_state_dict(state.optimizer.get())
         self.ema = state.ema
         self.adr = ADR(config.adr, state.adr)
-
-        # update state dicts references after moving to device
-        state.policy.set(self.policy.state_dict())
-        state.optimizer.set(self.optimizer.state_dict())
 
     def train(self, out_dir: str) -> None:
         config = self.config
@@ -216,7 +208,6 @@ class Trainer:
         rewstd = 1.0
         while state.step < config.ppo.steps:
             # TODO: step
-            # hyperstate.update(config, state)
             for g in self.optimizer.param_groups:
                 g["lr"] = config.optimizer.lr
             assert (
@@ -303,18 +294,6 @@ class Trainer:
                     #    policy_emas,
                     # )
                     pass
-            if (
-                # TODO: xprun
-                # hps.rank == 0 and
-                len(extra_checkpoint_steps) > 0
-                and state.step >= extra_checkpoint_steps[0]
-            ):
-                pass
-                # TODO: hyperstate
-                # del extra_checkpoint_steps[0]
-                # save_policy(
-                #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-                # )
 
             episode_start = time.time()
             entropies = []
@@ -552,57 +531,63 @@ class Trainer:
             all_agent_masks = all_action_masks.sum(2) > 1
             # TODO: xprun if rank == 0
             if config.optimizer.epochs > 0:
-                # TODO: hyperstate metrics
-                metrics = {
-                    "policy_loss": policy_loss_sum / num_minibatches,
-                    "value_loss": value_loss_sum / num_minibatches,
-                    "entropy_loss": entropy_loss_sum / num_minibatches,
-                    "clipfrac": clipfrac_sum / num_minibatches,
-                    "aproxkl": aproxkl_sum / num_minibatches,
-                    "throughput": throughput,
-                    "eprewmean": eprewmean,
-                    "eplenmean": eplenmean,
-                    "target_eplenmean": self.adr.target_eplenmean(),
-                    "eliminationmean": eliminationmean,
-                    "entropy": sum(entropies) / len(entropies) / np.log(2),
-                    "explained variance": explained_var,
-                    "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
-                    "advantages": wandb.Histogram(advantages),
-                    "values": wandb.Histogram(all_values),
-                    "meanval": all_values.mean(),
-                    "returns": wandb.Histogram(all_returns),
-                    "meanret": all_returns.mean(),
-                    "actions": wandb.Histogram(np.array(all_actions[all_agent_masks])),
-                    "active_agents": all_agent_masks.sum() / all_agent_masks.size,
-                    "observations": wandb.Histogram(np.array(all_obs)),
-                    "obs_max": all_obs.max(),
-                    "obs_min": all_obs.min(),
-                    "rewards": wandb.Histogram(np.array(all_rewards)),
-                    "masked_actions": 1 - all_action_masks.mean(),
-                    "rewmean": rewmean,
-                    "rewstd": rewstd,
-                    "average_cost_modifier": average_cost_modifier,
-                    "hardness": self.adr.state.hardness,
-                    "iteration": state.iteration,
-                }
-                metrics.update(hyperstate.asdict(config))
-                for action, count in buildmean.items():
-                    metrics[f"build_{spec_key(action)}"] = count
-                for action, fraction in normalize(buildmean).items():
-                    metrics[f"frac_{spec_key(action)}"] = fraction
+                if config.wandb:
+                    # TODO: hyperstate metrics
+                    metrics = {
+                        "policy_loss": policy_loss_sum / num_minibatches,
+                        "value_loss": value_loss_sum / num_minibatches,
+                        "entropy_loss": entropy_loss_sum / num_minibatches,
+                        "clipfrac": clipfrac_sum / num_minibatches,
+                        "aproxkl": aproxkl_sum / num_minibatches,
+                        "throughput": throughput,
+                        "eprewmean": eprewmean,
+                        "eplenmean": eplenmean,
+                        "target_eplenmean": self.adr.target_eplenmean(),
+                        "eliminationmean": eliminationmean,
+                        "entropy": sum(entropies) / len(entropies) / np.log(2),
+                        "explained variance": explained_var,
+                        "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
+                        "advantages": wandb.Histogram(advantages),
+                        "values": wandb.Histogram(all_values),
+                        "meanval": all_values.mean(),
+                        "returns": wandb.Histogram(all_returns),
+                        "meanret": all_returns.mean(),
+                        "actions": wandb.Histogram(np.array(all_actions[all_agent_masks])),
+                        "active_agents": all_agent_masks.sum() / all_agent_masks.size,
+                        "observations": wandb.Histogram(np.array(all_obs)),
+                        "obs_max": all_obs.max(),
+                        "obs_min": all_obs.min(),
+                        "rewards": wandb.Histogram(np.array(all_rewards)),
+                        "masked_actions": 1 - all_action_masks.mean(),
+                        "rewmean": rewmean,
+                        "rewstd": rewstd,
+                        "average_cost_modifier": average_cost_modifier,
+                        "hardness": self.adr.state.hardness,
+                        "iteration": state.iteration,
+                    }
+                    metrics.update(hyperstate.asdict(config))
+                    for action, count in buildmean.items():
+                        metrics[f"build_{spec_key(action)}"] = count
+                    for action, fraction in normalize(buildmean).items():
+                        metrics[f"frac_{spec_key(action)}"] = fraction
 
-                metrics.update(self.adr.metrics())
-                total_norm = 0.0
-                count = 0
-                for name, param in self.policy.named_parameters():
-                    norm = param.data.norm()
-                    metrics[f"weight_norm[{name}]"] = norm
-                    count += 1
-                    total_norm += norm
-                metrics["mean_weight_norm"] = total_norm / count
+                    metrics.update(self.adr.metrics())
+                    total_norm = 0.0
+                    count = 0
+                    for name, param in self.policy.named_parameters():
+                        norm = param.data.norm()
+                        metrics[f"weight_norm[{name}]"] = norm
+                        count += 1
+                        total_norm += norm
+                    metrics["mean_weight_norm"] = total_norm / count
+                    # TODO: steps
+                    wandb.log(metrics, step=state.step)
 
-                # TODO: steps
-                wandb.log(metrics, step=state.step)
+                # TODO: some way to avoid doing this on every iteration?
+                state.policy.set(self.policy.state_dict())
+                state.optimizer.set(self.optimizer.state_dict())
+                self.hyperstate.step()
+
 
             print(f"{throughput} samples/s", flush=True)
 
@@ -1223,34 +1208,6 @@ def main():
     args_parser.add_argument("--profile", action="store_true")
     args = args_parser.parse_args()
 
-    # TODO: xprun
-    """
-    if hps.parallelism > 1:
-        if "XPRUN_ID" not in os.environ:
-            raise Exception("Data parallel training only supported with xprun")
-        else:
-            init_process()
-            hps.rank = int(os.environ["XPRUN_RANK"])
-    """
-
-    hs = HyperState.load(Config, State, initial_state, args.config)
-    config = hs.config
-
-    # TODO: xprun
-    if True:  # hps.rank == 0:
-        wandb_project = (
-            "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
-        )
-        wandb.init(project=wandb_project)
-        cfg = hyperstate.asdict(config)
-        cfg["commit"] = subprocess.check_output(
-            ["git", "describe", "--tags", "--always", "--dirty"]
-        ).decode("UTF-8")[:-1]
-        cfg["descriptor"] = vars(args)["descriptor"]
-        if "XPRUN_NAME" in os.environ:
-            cfg["xp_name"] = os.environ["XPRUN_NAME"]
-        wandb.config.update(cfg)
-
     if not args.out_dir:
         if "XPRUN_ID" in os.environ:
             out_dir = os.path.join(
@@ -1264,9 +1221,49 @@ def main():
                 ["git", "describe", "--tags", "--always", "--dirty"]
             ).decode("UTF-8")[:-1]
             out_dir = os.path.join(LOG_ROOT_DIR, f"{t}-{commit}")
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
     else:
         out_dir = args.out_dir
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    checkpoint_dir = Path(args.out_dir) / "checkpoints"
+    checkpoint = hyperstate.find_latest_checkpoint(checkpoint_dir)
+    if checkpoint is not None:
+        args.config = checkpoint
+
+    # TODO: xprun
+    """
+    if hps.parallelism > 1:
+        if "XPRUN_ID" not in os.environ:
+            raise Exception("Data parallel training only supported with xprun")
+        else:
+            init_process()
+            hps.rank = int(os.environ["XPRUN_RANK"])
+    """
+
+    hs = HyperState.load(
+        Config,
+        State,
+        initial_state,
+        args.config,
+        checkpoint_dir,
+    )
+    config = hs.config
+
+    # TODO: xprun
+    if config.wandb:  # hps.rank == 0:
+        wandb_project = (
+            "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
+        )
+        wandb.init(project=wandb_project)
+        cfg = hyperstate.asdict(config)
+        cfg["commit"] = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"]
+        ).decode("UTF-8")[:-1]
+        cfg["descriptor"] = vars(args)["descriptor"]
+        if "XPRUN_NAME" in os.environ:
+            cfg["xp_name"] = os.environ["XPRUN_NAME"]
+        wandb.config.update(cfg)
+
     trainer = Trainer(hs)
     trainer.train(out_dir=out_dir)
 

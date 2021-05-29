@@ -1,9 +1,11 @@
 from abc import ABC, abstractclassmethod, abstractmethod
 import os
+import shutil
 
 from enum import Enum, EnumMeta
 import math
 from pathlib import Path
+import tempfile
 from torch import optim
 from torch.optim.optimizer import Optimizer
 from torch_ema.ema import ExponentialMovingAverage
@@ -32,6 +34,9 @@ T = TypeVar("T")
 class HyperState(Generic[C, S]):
     config: C
     state: S
+    checkpoint_dir: Optional[Path]
+    checkpoint_key: str
+    last_checkpoint: Optional[Path] = None
 
     @classmethod
     def load(
@@ -40,7 +45,12 @@ class HyperState(Generic[C, S]):
         state_clz: Type[S],
         initial_state: Callable[[C], S],
         path: str,
+        checkpoint_dir: Optional[str] = None,
+        checkpoint_key: Optional[str] = None,
     ) -> "HyperState[C, S]":
+        if checkpoint_key is None:
+            checkpoint_key = "step"
+
         path = Path(path)
         if os.path.isdir(path):
             config_path = path / "config.yaml"
@@ -60,21 +70,48 @@ class HyperState(Generic[C, S]):
         else:
             state = load_file(state_clz, state_path)
 
-        return HyperState(config, state)
+        if checkpoint_dir is not None:
+            checkpoint_dir = Path(checkpoint_dir)
+        hs = HyperState(config, state, checkpoint_dir, checkpoint_key)
+        hs._update_schedules(hs.config)
+        return hs
 
     def checkpoint(self, target_dir: str):
-        # TODO: create in temp dir + atomic move/rename
-        p = Path(target_dir)
-        p.mkdir(parents=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "checkpoint"
+            p.mkdir()
+            with open(p / "config.yaml", "w") as f:
+                yaml.dump(asdict(self.config, retain_schedules=True), f)
+            checkpoint(self.state, p)
+            shutil.move(p, target_dir)
 
-        with open(p / "config.yaml", "w") as f:
-            yaml.dump(asdict(self.config, retain_schedules=True), f)
-        checkpoint(self.state, p)
+    def step(self):
+        self._update_schedules(self.config)
+        if self.checkpoint_dir is not None:
+            val = getattr(self.state, self.checkpoint_key)
+            checkpoint_dir = (
+                self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
+            )
+            self.checkpoint(checkpoint_dir)
+            if self.last_checkpoint is not None:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    shutil.move(str(self.last_checkpoint), tmpdir)
+            self.last_checkpoint = checkpoint_dir
+            # TODO: persistent checkpoints
+
+    def _update_schedules(self, config):
+        for _, (schedule, _) in config._schedules.items():
+            schedule(self.config, self.state)
+        for field_name, field_clz in config.__annotations__.items():
+            if is_dataclass(field_clz):
+                self._update_schedules(getattr(config, field_name))
 
 
 def qualified_name(clz):
     if clz.__module__ == "builtin":
         return clz.__name__
+    elif not hasattr(clz, "__module__") or not hasattr(clz, "__name__"):
+        return repr(clz)
     else:
         return f"{clz.__module__}.{clz.__name__}"
 
@@ -93,6 +130,18 @@ def checkpoint(state, target_path: Path):
     for path, blob in blobs.items():
         with open(target_path / path, "wb") as f:
             f.write(blob)
+
+
+def find_latest_checkpoint(dir: Path) -> Optional[Path]:
+    # TODO: error handling
+    latest = None
+    latest_dir = None
+    for d in dir.iterdir():
+        if d.is_dir() and len(d.name) >= 12:
+            if latest is None or int(d.name[-12:]) > latest:
+                latest = int(d.name[-12:])
+                latest_dir = d
+    return latest_dir
 
 
 def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
@@ -114,11 +163,15 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
             pass
         elif isinstance(field_clz, EnumMeta):
             value = value.name
-        elif field_clz == Blob:
+        elif (
+            hasattr(field_clz, "__args__")
+            and len(field_clz.__args__) == 1
+            and field_clz == Blob[field_clz.__args__]
+        ):
             # TODO: use sane serialization library
             import dill
 
-            data = dill.dumps(value)
+            data = dill.dumps(value._inner)
             blobs[field_name] = data
             value = "<BLOB>"
         else:
@@ -149,14 +202,6 @@ def asdict(x, retain_schedules: bool = False):
         else:
             raise TypeError(f"Unexpected type {field_clz}")
     return result
-
-
-def update(config, state):
-    for _, (schedule, _) in config._schedules:
-        schedule(config, state)
-    for field_name, field_clz in config.__annotations__.items():
-        if is_dataclass(field_clz):
-            update(getattr(config, field_name), state)
 
 
 def load_file(clz: Type[T], path: str) -> T:
@@ -241,7 +286,11 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
         ):
             _typecheck(field_name, value, dict)
             # TODO: recurse
-        elif field_clz == Blob:
+        elif (
+            hasattr(field_clz, "__args__")
+            and len(field_clz.__args__) == 1
+            and field_clz == Blob[field_clz.__args__]
+        ):
             assert value == "<BLOB>", f"{value} != <BLOB>"
             value = Blob(path / field_name)
         elif is_dataclass(field_clz):
@@ -249,6 +298,7 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
         elif isinstance(field_clz, EnumMeta):
             value = field_clz(value)
         else:
+            __import__("ipdb").set_trace()
             raise TypeError(
                 f"Field {clz.__module__}.{clz.__name__}.{field_name} has unsupported type {qualified_name(field_clz)}."
             )
@@ -790,6 +840,7 @@ class Config:
     adr: AdrConfig
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     obs: ObsConfig = field(default_factory=ObsConfig)
+    wandb: bool = True
 
     @property
     def rosteps(self):
@@ -802,58 +853,3 @@ class Config:
             == 0
         )
         assert self.eval.eval_envs % 4 == 0
-
-
-class Serializable(ABC):
-    @abstractmethod
-    def serialize(self) -> Tuple[bytes, str]:
-        raise NotImplementedError("Method `serialize` not implemented.")
-
-    @abstractclassmethod
-    def deserialize(
-        clz: Type[T],
-        serialized: bytes,
-        tag: str,
-        config: Any,
-        partial_state: Dict[str, Any],
-    ) -> T:
-        raise NotImplementedError("Method `deserialize` not implemented.")
-
-
-class Policy:
-    pass
-
-
-# TODO: Trainer class?
-# @dataclass
-# class State:
-#    policy: Policy
-#    optimizer: optim.Optimizer
-#    ema: Any
-#    adr: ADR
-#    step: int = 0
-#    iteration: int = 0
-#    epoch: int = 0
-
-# TODO:
-# - separate state and config
-# - first: load config
-# - second: initialize or load state
-#   - config passed in as param
-#   - sets _state field on config that allows `property` to work
-# - state and config stored in separate files (config.yaml, state.yaml)
-# - support schedules by initializing field with `property` functions that take _state as argument
-#
-# NEW IDEAS:
-# - add `Serializable` class to support arbitrary types (or just duck type `serialize`, `deserialize` methods)
-# - don't need `Opaque` or `Lazy`: when loading, can just get lazy loading with property
-# - for now, keep it simple: require separate load calls for state and config and explicit init call for config (actually, can just be normal constructor). can refactor later.
-# - xprun can call with `config-path` and (optional) `state-path`
-# - on xprun lib (or hyperstate) call "set-checkpoint-path" to save checkpoint, get `state-path` arg on subsequent resume calls
-#
-# QUESTION: how to support choice between different datatypes? e.g. different policies, different optimizers.
-# => abstract base class has a `serialize` class method that also takes a tag, can choose which concrete instance to return
-# => the `deserialize` class method also returns a tag
-# => incorporate tag into filename, so serialized object is still deserializable without hyperstate tag parsing
-# => if no tag supplied, use "default" tag. so then you can decide to add tagging later, still keep old things working.
-# QUESTION: how to handle initialization args/dependencies/extra stuff: e.g. sending to device (determine from config, ez), optimizer initialized from network params
