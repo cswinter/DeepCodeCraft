@@ -1,13 +1,75 @@
 from abc import ABC, abstractclassmethod, abstractmethod
+import os
 
 from enum import Enum, EnumMeta
 import math
+from pathlib import Path
 from torch import optim
 from torch.optim.optimizer import Optimizer
+from torch_ema.ema import ExponentialMovingAverage
 from policy_t8 import TransformerPolicy8
-from typing import Callable, Generic, List, Any, Type, TypeVar, Dict, Tuple
+from typing import (
+    Callable,
+    Generic,
+    List,
+    Any,
+    Optional,
+    Type,
+    TypeVar,
+    Dict,
+    Tuple,
+    Union,
+)
 from dataclasses import dataclass, field, is_dataclass
 import yaml
+
+C = TypeVar("C")
+S = TypeVar("S")
+T = TypeVar("T")
+
+
+@dataclass
+class HyperState(Generic[C, S]):
+    config: C
+    state: S
+
+    @classmethod
+    def load(
+        clz,
+        config_clz: Type[C],
+        state_clz: Type[S],
+        initial_state: Callable[[C], S],
+        path: str,
+    ) -> "HyperState[C, S]":
+        path = Path(path)
+        if os.path.isdir(path):
+            config_path = path / "config.yaml"
+            state_path = path / "state.yaml"
+        else:
+            config_path = path
+            state_path = None
+
+        config = load_file(config_clz, config_path)
+        # TODO: hack
+        config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
+        config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
+        config.obs.num_builds = len(config.task.objective.builds())
+
+        if state_path is None:
+            state = initial_state(config)
+        else:
+            state = load_file(state_clz, state_path)
+
+        return HyperState(config, state)
+
+    def checkpoint(self, target_dir: str):
+        # TODO: create in temp dir + atomic move/rename
+        p = Path(target_dir)
+        p.mkdir(parents=True)
+
+        with open(p / "config.yaml", "w") as f:
+            yaml.dump(asdict(self.config, retain_schedules=True), f)
+        checkpoint(self.state, p)
 
 
 def qualified_name(clz):
@@ -24,16 +86,56 @@ def _typecheck(name, value, typ):
         )
 
 
-T = TypeVar("T")
+def checkpoint(state, target_path: Path):
+    builder, blobs = _checkpoint(state, target_path)
+    with open(target_path / "state.yaml", "w") as f:
+        yaml.dump(builder, f)
+    for path, blob in blobs.items():
+        with open(target_path / path, "wb") as f:
+            f.write(blob)
 
 
-# TODO: flatten instead?
-def asdict(x):
+def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
+    builder = {}
+    blobs = {}
+    for field_name, field_clz in state.__annotations__.items():
+        value = getattr(state, field_name)
+        if is_dataclass(field_clz):
+            value, _blobs = _checkpoint(value, target_path)
+            for path, blob in _blobs:
+                blobs[os.path.join(field_name, path)] = blob
+        elif field_clz in [int, float, str, bool]:
+            pass
+        elif hasattr(field_clz, "__args__") and (
+            (len(field_clz.__args__) == 1 and field_clz == List[field_clz.__args__])
+            or (len(field_clz.__args__) == 2 and field_clz == Dict[field_clz.__args__])
+        ):
+            # TODO: recurse
+            pass
+        elif isinstance(field_clz, EnumMeta):
+            value = value.name
+        elif field_clz == Blob:
+            # TODO: use sane serialization library
+            import dill
+
+            data = dill.dumps(value)
+            blobs[field_name] = data
+            value = "<BLOB>"
+        else:
+            raise TypeError(f"Unexpected type {field_clz}")
+        builder[field_name] = value
+    return builder, blobs
+
+
+def asdict(x, retain_schedules: bool = False):
     result = {}
     for field_name, field_clz in x.__annotations__.items():
+        if retain_schedules and hasattr(x, "_schedules") and field_name in x._schedules:
+            result[field_name] = x._schedules[field_name][1]
+            continue
         value = getattr(x, field_name)
         if is_dataclass(field_clz):
-            result[field_name] = asdict(value)
+            result[field_name] = asdict(value, retain_schedules)
         elif field_clz in [int, float, str, bool]:
             result[field_name] = value
         elif hasattr(field_clz, "__args__") and (
@@ -50,7 +152,7 @@ def asdict(x):
 
 
 def update(config, state):
-    for schedule in config._schedules:
+    for _, (schedule, _) in config._schedules:
         schedule(config, state)
     for field_name, field_clz in config.__annotations__.items():
         if is_dataclass(field_clz):
@@ -58,17 +160,18 @@ def update(config, state):
 
 
 def load_file(clz: Type[T], path: str) -> T:
-    file = open(path)
-    values = yaml.safe_load(file)
+    path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
-    return _parse(clz, values)
+    file = open(path)
+    values = yaml.full_load(file)
+    return _parse(clz, values, path.absolute().parent)
 
 
-def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
+def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
     kwargs = {}
     remaining_fields = set(clz.__annotations__.keys())
-    schedules = []
+    schedules = {}
     for field_name, value in values.items():
         if field_name not in remaining_fields:
             raise TypeError(
@@ -91,11 +194,12 @@ def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
 
                         return update
 
-                    value = schedule.get_value(0)
-                    schedules.append(_capture(field_name, schedule))
+                    schedules[field_name] = (_capture(field_name, schedule), value)
+                    value = schedule.get_value(0.0)
                 else:
-                    if isinstance(value, str):
-                        parsed = float(value)
+                    parsed = float(value)
+            if isinstance(value, int):
+                value = float(value)
             _typecheck(field_name, value, float)
         elif field_clz == int:
             if isinstance(value, str):
@@ -110,8 +214,8 @@ def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
 
                         return update
 
+                    schedules[field_name] = (_capture(field_name, schedule), value)
                     value = int(schedule.get_value(0))
-                    schedules.append(_capture(field_name, schedule))
                 else:
                     parsed = _parse_int(value)
                     if parsed is not None:
@@ -121,19 +225,32 @@ def _parse(clz: Type[T], values: Dict[str, Any]) -> T:
             _typecheck(field_name, value, bool)
         elif field_clz == str:
             _typecheck(field_name, value, str)
-        elif hasattr(field_clz, "__args__") and field_clz == List[field_clz.__args__]:
+        elif (
+            hasattr(field_clz, "__args__")
+            and len(field_clz.__args__) == 1
+            and field_clz == List[field_clz.__args__]
+        ):
             _typecheck(field_name, value, list)
             # TODO: nested types, dataclasses etc.
             for i, item in enumerate(value):
                 _typecheck(f"{field_name}[{i}]", item, field_clz.__args__[0])
+        elif (
+            hasattr(field_clz, "__args__")
+            and len(field_clz.__args__) == 2
+            and field_clz == Dict[field_clz.__args__]
+        ):
+            _typecheck(field_name, value, dict)
+            # TODO: recurse
+        elif field_clz == Blob:
+            assert value == "<BLOB>", f"{value} != <BLOB>"
+            value = Blob(path / field_name)
         elif is_dataclass(field_clz):
-            value = _parse(field_clz, value)
+            value = _parse(field_clz, value, path / field_name)
         elif isinstance(field_clz, EnumMeta):
             value = field_clz(value)
         else:
-            __import__("ipdb").set_trace()
             raise TypeError(
-                f"Field {clz.__module__}.{clz.__name__}.{field_name} has unsupported type {field_clz.__module__}.{field_clz.__name__}."
+                f"Field {clz.__module__}.{clz.__name__}.{field_name} has unsupported type {qualified_name(field_clz)}."
             )
         kwargs[field_name] = value
 
@@ -327,8 +444,20 @@ class Objective(Enum):
             return []
 
 
-class Opaque(Generic[T]):
-    pass
+@dataclass
+class Blob(Generic[T]):
+    _inner: Union[T, Path]
+
+    def get(self) -> T:
+        if isinstance(self._inner, Path):
+            import pickle
+
+            with open(self._inner, "rb") as f:
+                self._inner = pickle.load(f)
+        return self._inner
+
+    def set(self, value: T):
+        self._inner = value
 
 
 @dataclass
@@ -605,13 +734,13 @@ class TaskConfig:
     objective: Objective = Objective.ARENA_TINY_2V2
     action_delay: int = 0
     use_action_masks: bool = True
-    task_hardness: int = 0
+    task_hardness: float = 0
     # Max length of games, or default game length for map if 0.
     max_game_length: int = 0
     # Maxiumum map area
-    max_hardness: int = 150
+    max_hardness: float = 150
     # Number of timesteps steps after which hardness starts to increase
-    hardness_offset: int = 1e6
+    hardness_offset: float = 1e6
     randomize: bool = True
     # Percentage of maps which are symmetric
     symmetric_map: float = 0.0
@@ -647,7 +776,7 @@ class AdrConfig:
     initial_hardness: float = 0.0
     linear_hardness: bool = False
     max_hardness: float = 200
-    hardness_offset: float = 0
+    hardness_offset: int = 0
     variety: float = 0.7
     average_cost_target: float = 0.8
 
@@ -675,41 +804,36 @@ class Config:
         assert self.eval.eval_envs % 4 == 0
 
 
-class Serializer(ABC, Generic[T]):
-    @abstractclassmethod
-    def serialize(t: T) -> Tuple[bytes, str]:
-        raise NotImplementedError("Method `serialize` not implemented.")
-
-    @abstractclassmethod
-    def deserialize(serialized: bytes, tag: str) -> T:
-        raise NotImplementedError("Method `deserialize` not implemented.")
-
-
 class Serializable(ABC):
     @abstractmethod
     def serialize(self) -> Tuple[bytes, str]:
         raise NotImplementedError("Method `serialize` not implemented.")
 
     @abstractclassmethod
-    def deserialize(clz: Type[T], serialized: bytes, tag: str) -> T:
+    def deserialize(
+        clz: Type[T],
+        serialized: bytes,
+        tag: str,
+        config: Any,
+        partial_state: Dict[str, Any],
+    ) -> T:
         raise NotImplementedError("Method `deserialize` not implemented.")
-
-
-TSerializer = TypeVar("TSerializer", bound=Serializer)
-
-
-@dataclass
-class Serializable(Generic[T, TSerializer]):
-    inner: T
-
-
-class OptimizerSerializer(Serializer[Optimizer]):
-    pass
 
 
 class Policy:
     pass
 
+
+# TODO: Trainer class?
+# @dataclass
+# class State:
+#    policy: Policy
+#    optimizer: optim.Optimizer
+#    ema: Any
+#    adr: ADR
+#    step: int = 0
+#    iteration: int = 0
+#    epoch: int = 0
 
 # TODO:
 # - separate state and config

@@ -8,9 +8,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class ADR:
-    config: AdrConfig
-
+class ADRState:
     hardness: float
     ruleset: Rules
     target_elimination_rate: float = 0.97
@@ -18,31 +16,39 @@ class ADR:
     counts: Dict[Tuple[int, int, int, int, int], float] = field(default_factory=dict)
     step: int = 0
 
+
+@dataclass
+class ADR:
+    config: AdrConfig
+    state: ADRState
+
     def target_eplenmean(self):
-        if self.hardness < 25:
-            return 250 + 6 * self.hardness
-        elif self.hardness < 50:
-            return 400 + 4 * (self.hardness - 25)
-        elif self.hardness < 100:
-            return 500 + 2 * (self.hardness - 50)
+        if self.state.hardness < 25:
+            return 250 + 6 * self.state.hardness
+        elif self.state.hardness < 50:
+            return 400 + 4 * (self.state.hardness - 25)
+        elif self.state.hardness < 100:
+            return 500 + 2 * (self.state.hardness - 50)
         else:
             return 600
 
     def adjust(
         self, counts, average_modifier, elimination_rate, eplenmean, step
     ) -> float:
-        self.step += 1
-        stepsize = self.config.stepsize * min(1.0, self.step / self.config.warmup)
-        for build, bfraction in counts.items():
-            if build not in self.counts:
-                self.counts[build] = 0.0
-            self.counts[build] = (
-                1 - self.w_ema
-            ) * bfraction + self.w_ema * self.counts[build]
+        state = self.state
 
-        target_fraction = 1.0 / len(self.counts) if len(self.counts) > 0 else 1
+        state.step += 1
+        stepsize = self.config.stepsize * min(1.0, state.step / self.config.warmup)
+        for build, bfraction in counts.items():
+            if build not in state.counts:
+                state.counts[build] = 0.0
+            state.counts[build] = (
+                1 - state.w_ema
+            ) * bfraction + state.w_ema * state.counts[build]
+
+        target_fraction = 1.0 / len(state.counts) if len(state.counts) > 0 else 1
         gradient = defaultdict(lambda: 0.0)
-        for build, bfraction in normalize(self.counts).items():
+        for build, bfraction in normalize(state.counts).items():
             if bfraction == 0:
                 loss = -100
             else:
@@ -50,7 +56,7 @@ class ADR:
             gradient[build] += loss
 
         modifier_decay = 1 - self.config.variety
-        for spec, modifier in self.ruleset.cost_modifiers.items():
+        for spec, modifier in state.ruleset.cost_modifiers.items():
             gradient[spec] += modifier_decay * math.log(
                 self.config.average_cost_target / modifier
             )
@@ -64,27 +70,27 @@ class ADR:
         for spec, grad in gradient.items():
             exponent = stepsize * min(10.0, max(-10.0, grad + average_cost_grad))
             multiplier = math.exp(exponent)
-            self.ruleset.cost_modifiers[spec] *= multiplier
+            state.ruleset.cost_modifiers[spec] *= multiplier
 
         if step > self.config.hardness_offset:
             if self.config.linear_hardness:
-                self.hardness = min(
+                state.hardness = min(
                     (step - self.config.hardness_offset) * self.config.hstepsize,
                     self.config.max_hardness,
                 )
             else:
                 if eplenmean is not None:
-                    self.hardness += self.config.hstepsize * (
+                    state.hardness += self.config.hstepsize * (
                         self.target_eplenmean() - eplenmean
                     )
-                    self.hardness = max(0.0, self.hardness)
+                    state.hardness = max(0.0, state.hardness)
 
         return average_modifier
 
     def metrics(self):
         return {
             f"adr_{spec_key(spec)}_cost": cost
-            for spec, cost in self.ruleset.cost_modifiers.items()
+            for spec, cost in self.state.ruleset.cost_modifiers.items()
         }
 
 

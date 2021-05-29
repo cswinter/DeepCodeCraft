@@ -5,6 +5,7 @@ import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 
 from hyperstate import PolicyConfig, ObsConfig, Config
+import hyperstate
 
 import spatial
 

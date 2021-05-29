@@ -5,7 +5,7 @@ import os
 from collections import defaultdict
 import dataclasses
 from pathlib import Path
-from typing import Optional, Any
+from typing import List, Optional, Any
 from dataclasses import dataclass
 
 import torch.distributed as dist
@@ -13,14 +13,21 @@ import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
+from torch.optim.optimizer import Optimizer
 from torch_ema import ExponentialMovingAverage
 
 import wandb
 
 import hyperstate
-from hyperstate import Config, ObsConfig as HSObsConfig, Policy
+from hyperstate import (
+    Config,
+    ObsConfig as HSObsConfig,
+    Blob,
+    OptimizerConfig,
+    HyperState,
+)
 
-from adr import ADR, normalize, spec_key
+from adr import ADR, ADRState, normalize, spec_key
 from gym_codecraft import envs
 from gym_codecraft.envs.codecraft_vec_env import ObsConfig, Rules
 from hyper_params import HyperParams, parse_schedule
@@ -45,16 +52,15 @@ else:
     EVAL_MODELS_PATH = "/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models"
 
 
-# TODO: Trainer class?
 @dataclass
 class State:
-    policy: Policy
-    optimizer: optim.Optimizer
-    ema: Any
-    adr: ADR
-    step: int = 0
-    iteration: int = 0
-    epoch: int = 0
+    step: int
+    iteration: int
+    epoch: int
+    policy: Blob
+    optimizer: Blob
+    ema: List[Blob]
+    adr: ADRState
 
 
 def run_codecraft():
@@ -80,503 +86,551 @@ def run_codecraft():
         frames += nenv
 
 
-def init_state(config: Config, device: str) -> State:
-    if config.optimizer.optimizer_type == "SGD":
+def create_optimizer(
+    policy: TransformerPolicy8HS, config: OptimizerConfig
+) -> Optimizer:
+    if config.optimizer_type == "SGD":
         optimizer_fn = optim.SGD
         optimizer_kwargs = dict(
-            lr=config.optimizer.lr,
-            momentum=config.optimizer.momentum,
-            weight_decay=config.optimizer.weight_decay,
+            lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay,
         )
-    elif config.optimizer.optimizer_type == "RMSProp":
+    elif config.optimizer_type == "RMSProp":
         optimizer_fn = optim.RMSprop
         optimizer_kwargs = dict(
-            lr=config.optimizer.lr,
-            momentum=config.optimizer.momentum,
-            weight_decay=config.optimizer.weight_decay,
+            lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay,
         )
-    elif config.optimizer.optimizer_type == "Adam":
+    elif config.optimizer_type == "Adam":
         optimizer_fn = optim.Adam
         optimizer_kwargs = dict(
-            lr=config.optimizer.lr, weight_decay=config.optimizer.weight_decay, eps=1e-5
+            lr=config.lr, weight_decay=config.weight_decay, eps=1e-5
         )
     else:
-        raise Exception(f"Invalid optimizer name `{config.optimizer.optimizer_type}`")
+        raise Exception(f"Invalid optimizer name `{config.optimizer_type}`")
+    return optimizer_fn(policy.parameters(), **optimizer_kwargs)
 
+
+def initial_state(config: Config) -> State:
+    print(f"yo initial {config.task.objective.naction() + config.obs.extra_actions()}")
     policy = TransformerPolicy8HS(
         config.policy,
         config.obs,
         config.task.objective.naction() + config.obs.extra_actions(),
-    ).to(device)
-    optimizer = optimizer_fn(policy.parameters(), **optimizer_kwargs)
-    adr = ADR(
-        config=config.adr,
+    )
+    optimizer = create_optimizer(policy, config.optimizer)
+    adr = ADRState(
         hardness=config.adr.initial_hardness,
         ruleset=Rules(
             mothership_damage_multiplier=config.task.mothership_damage_scale,
             cost_modifiers={build: 1.0 for build in config.task.objective.builds()},
         ),
     )
-
     policy_emas = [
         ExponentialMovingAverage(policy.parameters(), decay=float(decay))
         for decay in config.optimizer.weights_ema
     ]
 
-    return State(policy, optimizer, policy_emas, adr)
+    return State(
+        step=0,
+        iteration=0,
+        epoch=0,
+        policy=Blob(policy.state_dict()),
+        optimizer=Blob(optimizer.state_dict()),
+        ema=policy_emas,
+        adr=adr,
+    )
 
 
-def train(config: Config, state: Optional[State], out_dir: str) -> None:
-    # TODO: hypersate
-    next_model_save = config.eval.model_save_frequency
+class Trainer:
+    def __init__(self, state_manager: HyperState[Config, State]):
+        config = state_manager.config
+        state = state_manager.state
 
-    obs_config = obs_config_from(config)
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-    else:
-        print("Running on CPU")
-        device = "cpu"
+        self.hyperstate = state_manager
+        self.config = config
+        self.state = state
 
-    if state is None:
-        state = init_state(config, device)
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda:0")
+        else:
+            print("Running on CPU")
+            self.device = "cpu"
 
-    # TODO: hyperstate
-    # if hps.resume_from != "":
-    #    policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
-    #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
-    #    )
-
-    # TODO: xprun
-    # if hps.parallelism > 1:
-    #    sync_parameters(policy)
-
-    # TODO: xprun
-    # if hps.rank == 0:
-    #    wandb.watch(policy)
-
-    iteration = 0
-    next_eval = state.step
-    next_full_eval = 1
-    epoch = 0
-    eprewmean = 0
-    eplenmean = 0
-    eliminationmean = 0
-    buildmean = defaultdict(lambda: 0)
-    completed_episodes = 0
-    env = None
-    extra_checkpoint_steps = [
-        step for step in config.eval.extra_checkpoint_steps if step > state.step
-    ]
-    rewmean = 0.0
-    rewstd = 1.0
-    while state.step < config.ppo.steps:
-        hyperstate.update(config, state)
-        for g in state.optimizer.param_groups:
-            g["lr"] = config.optimizer.lr
-        assert (
-            config.rosteps % (config.optimizer.bs * config.optimizer.batches_per_update)
-            == 0
+        print(
+            f"yo __init__ {config.task.objective.naction() + config.obs.extra_actions()}"
         )
+        self.policy = TransformerPolicy8HS(
+            config.policy,
+            config.obs,
+            config.task.objective.naction() + config.obs.extra_actions(),
+        )
+        self.policy.load_state_dict(state.policy.get())
+        self.policy.to(self.device)
+        self.optimizer = create_optimizer(self.policy, config.optimizer)
+        self.optimizer.load_state_dict(state.optimizer.get())
+        self.ema = state.ema
+        self.adr = ADR(config.adr, state.adr)
 
-        if env is None:
-            env = envs.CodeCraftVecEnv(
-                config.ppo.num_envs,
-                config.ppo.num_self_play,
-                config.task.objective,
-                config.task.action_delay,
-                config=config,
-                randomize=config.task.randomize,
-                use_action_masks=config.task.use_action_masks,
-                obs_config=obs_config,
-                symmetric=config.task.symmetric_map,
-                hardness=config.task.task_hardness,
-                mix_mp=config.task.mix_mp,
-                win_bonus=config.ppo.win_bonus,
-                attac=config.ppo.attac,
-                protec=config.ppo.protec,
-                max_army_size_score=config.ppo.max_army_size_score,
-                max_enemy_army_size_score=config.ppo.max_enemy_army_size_score,
-                rule_rng_fraction=config.task.rule_rng_fraction,
-                rule_rng_amount=config.task.rule_rng_amount,
-                rule_cost_rng=config.task.rule_cost_rng,
-                scripted_opponents=[
-                    ("destroyer", config.ppo.num_vs_destroyer),
-                    ("replicator", config.ppo.num_vs_replicator),
-                    ("aggressive_replicator", config.ppo.num_vs_aggro_replicator),
-                ],
-                max_game_length=None
-                if config.task.max_game_length == 0
-                else config.task.max_game_length,
-                # TODO: xprun
-                stagger_offset=0,  # hps.rank / hps.parallelism,
-                loss_penalty=config.ppo.loss_penalty,
-                partial_score=config.ppo.partial_score,
+        # update state dicts references after moving to device
+        state.policy.set(self.policy.state_dict())
+        state.optimizer.set(self.optimizer.state_dict())
+
+    def train(self, out_dir: str) -> None:
+        config = self.config
+        state = self.state
+        device = self.device
+
+        # TODO: hyperstate
+        next_model_save = config.eval.model_save_frequency
+
+        obs_config = obs_config_from(config)
+
+        # self.hyperstate.checkpoint("test")
+        # return
+
+        # TODO: hyperstate
+        # if hps.resume_from != "":
+        #    policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
+        #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
+        #    )
+
+        # TODO: xprun
+        # if hps.parallelism > 1:
+        #    sync_parameters(policy)
+
+        # TODO: xprun
+        # if hps.rank == 0:
+        #    wandb.watch(policy)
+
+        next_eval = state.step
+        next_full_eval = 1
+        eprewmean = 0
+        eplenmean = 0
+        eliminationmean = 0
+        buildmean = defaultdict(lambda: 0)
+        completed_episodes = 0
+        env = None
+        extra_checkpoint_steps = [
+            step for step in config.eval.extra_checkpoint_steps if step > state.step
+        ]
+        rewmean = 0.0
+        rewstd = 1.0
+        while state.step < config.ppo.steps:
+            # TODO: step
+            # hyperstate.update(config, state)
+            for g in self.optimizer.param_groups:
+                g["lr"] = config.optimizer.lr
+            assert (
+                config.rosteps
+                % (config.optimizer.bs * config.optimizer.batches_per_update)
+                == 0
             )
-            env.rng_ruleset = state.adr.ruleset
-            env.hardness = state.adr.hardness
-            obs, action_masks, privileged_obs = env.reset()
 
-        if state.step >= next_eval:
-            if config.eval.eval_envs > 0:
-                next_full_eval -= 1
-                if next_full_eval == 0:
-                    emas = [None] + state.ema
-                    next_full_eval = config.eval.full_eval_frequency
-                else:
-                    emas = [None]
-                for policy_ema in emas:
-                    eval(
-                        policy=state.policy,
-                        # TODO: xprun
-                        num_envs=config.eval.eval_envs,  # // hps.parallelism,
-                        device=device,
-                        objective=config.task.objective,
-                        eval_steps=config.eval.eval_timesteps,
-                        curr_step=state.step,
-                        symmetric=config.eval.eval_symmetric,
-                        # TODO: xprun
-                        rank=0,  # hps.rank,
-                        parallelism=1,  # hps.parallelism,
-                        policy_ema=policy_ema,
-                    )
-            next_eval += config.eval.eval_frequency
-            next_model_save -= 1
-            # TODO: xprun
-            if next_model_save == 0:  # and hps.rank == 0:
-                # TODO: hyperstate/xprun
-                # next_model_save = config.eval.model_save_frequency
-                # save_policy(
-                #    state.policy,
-                #    out_dir,
-                #    total_steps,
-                #    optimizer,
-                #    adr,
-                #    lr_scheduler,
-                #    policy_emas,
-                # )
+            if env is None:
+                env = envs.CodeCraftVecEnv(
+                    config.ppo.num_envs,
+                    config.ppo.num_self_play,
+                    config.task.objective,
+                    config.task.action_delay,
+                    config=config,
+                    randomize=config.task.randomize,
+                    use_action_masks=config.task.use_action_masks,
+                    obs_config=obs_config,
+                    symmetric=config.task.symmetric_map,
+                    hardness=config.task.task_hardness,
+                    mix_mp=config.task.mix_mp,
+                    win_bonus=config.ppo.win_bonus,
+                    attac=config.ppo.attac,
+                    protec=config.ppo.protec,
+                    max_army_size_score=config.ppo.max_army_size_score,
+                    max_enemy_army_size_score=config.ppo.max_enemy_army_size_score,
+                    rule_rng_fraction=config.task.rule_rng_fraction,
+                    rule_rng_amount=config.task.rule_rng_amount,
+                    rule_cost_rng=config.task.rule_cost_rng,
+                    scripted_opponents=[
+                        ("destroyer", config.ppo.num_vs_destroyer),
+                        ("replicator", config.ppo.num_vs_replicator),
+                        ("aggressive_replicator", config.ppo.num_vs_aggro_replicator),
+                    ],
+                    max_game_length=None
+                    if config.task.max_game_length == 0
+                    else config.task.max_game_length,
+                    # TODO: xprun
+                    stagger_offset=0,  # hps.rank / hps.parallelism,
+                    loss_penalty=config.ppo.loss_penalty,
+                    partial_score=config.ppo.partial_score,
+                )
+                env.rng_ruleset = self.adr.state.ruleset
+                env.hardness = self.adr.state.hardness
+                obs, action_masks, privileged_obs = env.reset()
+
+            if state.step >= next_eval:
+                if config.eval.eval_envs > 0:
+                    next_full_eval -= 1
+                    if next_full_eval == 0:
+                        emas = [None] + self.ema
+                        next_full_eval = config.eval.full_eval_frequency
+                    else:
+                        emas = [None]
+                    for policy_ema in emas:
+                        eval(
+                            policy=self.policy,
+                            # TODO: xprun
+                            num_envs=config.eval.eval_envs,  # // hps.parallelism,
+                            device=device,
+                            objective=config.task.objective,
+                            eval_steps=config.eval.eval_timesteps,
+                            curr_step=state.step,
+                            symmetric=config.eval.eval_symmetric,
+                            # TODO: xprun
+                            rank=0,  # hps.rank,
+                            parallelism=1,  # hps.parallelism,
+                            policy_ema=policy_ema,
+                        )
+                next_eval += config.eval.eval_frequency
+                next_model_save -= 1
+                # TODO: xprun
+                if next_model_save == 0:  # and hps.rank == 0:
+                    # TODO: hyperstate
+                    # hyperstate.checkpoint(state)
+                    # next_model_save = config.eval.model_save_frequency
+                    # save_policy(
+                    #    state.policy,
+                    #    out_dir,
+                    #    total_steps,
+                    #    optimizer,
+                    #    adr,
+                    #    lr_scheduler,
+                    #    policy_emas,
+                    # )
+                    pass
+            if (
+                # TODO: xprun
+                # hps.rank == 0 and
+                len(extra_checkpoint_steps) > 0
+                and state.step >= extra_checkpoint_steps[0]
+            ):
                 pass
-        if (
-            # TODO: xprun
-            # hps.rank == 0 and
-            len(extra_checkpoint_steps) > 0
-            and state.step >= extra_checkpoint_steps[0]
-        ):
-            pass
-            # TODO: hyperstate
-            # del extra_checkpoint_steps[0]
-            # save_policy(
-            #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-            # )
+                # TODO: hyperstate
+                # del extra_checkpoint_steps[0]
+                # save_policy(
+                #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
+                # )
 
-        episode_start = time.time()
-        entropies = []
-        all_obs = []
-        all_actions = []
-        all_probs = []
-        all_logprobs = []
-        all_values = []
-        all_rewards = []
-        all_dones = []
-        all_action_masks = []
-        all_privileged_obs = []
+            episode_start = time.time()
+            entropies = []
+            all_obs = []
+            all_actions = []
+            all_probs = []
+            all_logprobs = []
+            all_values = []
+            all_rewards = []
+            all_dones = []
+            all_action_masks = []
+            all_privileged_obs = []
 
-        state.policy.eval()
-        buildtotal = defaultdict(lambda: 0)
-        eliminations = []
-        if config.task.adr:
-            env.rng_ruleset = state.adr.ruleset
-            env.hardness = state.adr.hardness
-        # TODO: hyperstate schedule
-        if config.task.symmetry_increase > 0:
-            env.symmetric = min(state.step * config.task.symmetry_increase, 1.0)
-        with torch.no_grad():
-            cost_sum = 0.0
-            cost_weight = 0.0
-            # Rollout
-            for step in range(config.ppo.seq_rosteps):
+            self.policy.eval()
+            buildtotal = defaultdict(lambda: 0)
+            eliminations = []
+            if config.task.adr:
+                env.rng_ruleset = state.adr.ruleset
+                env.hardness = state.adr.hardness
+            # TODO: hyperstate schedule
+            if config.task.symmetry_increase > 0:
+                env.symmetric = min(state.step * config.task.symmetry_increase, 1.0)
+            with torch.no_grad():
+                cost_sum = 0.0
+                cost_weight = 0.0
+                # Rollout
+                for step in range(config.ppo.seq_rosteps):
+                    obs_tensor = torch.tensor(obs).to(device)
+                    privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+                    action_masks_tensor = torch.tensor(action_masks).to(device)
+                    actions, logprobs, entropy, values, probs = self.policy.evaluate(
+                        obs_tensor, action_masks_tensor, privileged_obs_tensor
+                    )
+                    actions = actions.cpu().numpy()
+
+                    entropies.extend(entropy.detach().cpu().numpy())
+
+                    all_action_masks.extend(action_masks)
+                    all_obs.extend(obs)
+                    all_privileged_obs.extend(privileged_obs)
+                    all_actions.extend(actions)
+                    all_logprobs.extend(logprobs.detach().cpu().numpy())
+                    all_values.extend(values)
+                    all_probs.extend(probs)
+
+                    obs, rews, dones, infos, action_masks, privileged_obs = env.step(
+                        actions, action_masks=action_masks
+                    )
+
+                    rews -= config.ppo.liveness_penalty
+                    all_rewards.extend(rews)
+                    all_dones.extend(dones)
+
+                    for info in infos:
+                        ema = 0.95 * (1 - 1 / (completed_episodes + 1))
+
+                        decided_by_elimination = info["episode"]["elimination"]
+                        eliminations.append(decided_by_elimination)
+                        eliminationmean = (
+                            eliminationmean * ema + (1 - ema) * decided_by_elimination
+                        )
+
+                        eprewmean = eprewmean * ema + (1 - ema) * info["episode"]["r"]
+                        eplenmean = eplenmean * ema + (1 - ema) * info["episode"]["l"]
+
+                        builds = info["episode"]["builds"]
+                        for build in set().union(builds.keys(), buildmean.keys()):
+                            count = builds[build]
+                            buildmean[build] = (
+                                buildmean[build] * ema + (1 - ema) * count
+                            )
+                            buildtotal[build] += count
+                            cost = info["episode"]["ruleset"].cost_modifiers[build]
+                            cost_sum += cost * sum(build) * count
+                            cost_weight += sum(build) * count
+                        completed_episodes += 1
+                average_cost_modifier = (
+                    cost_sum / cost_weight if cost_weight > 0 else 1.0
+                )
+                elimination_rate = (
+                    np.array(eliminations).mean() if len(eliminations) > 0 else None
+                )
+                self.adr.adjust(
+                    buildtotal,
+                    average_cost_modifier,
+                    elimination_rate,
+                    eplenmean,
+                    state.step,
+                )
+
                 obs_tensor = torch.tensor(obs).to(device)
-                privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
                 action_masks_tensor = torch.tensor(action_masks).to(device)
-                actions, logprobs, entropy, values, probs = state.policy.evaluate(
+                privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
+                _, _, _, final_values, final_probs = self.policy.evaluate(
                     obs_tensor, action_masks_tensor, privileged_obs_tensor
                 )
-                actions = actions.cpu().numpy()
 
-                entropies.extend(entropy.detach().cpu().numpy())
+                all_rewards = np.array(all_rewards) * config.ppo.rewscale
+                w = config.ppo.rewnorm_emaw * (1 - 1 / (state.step + 1))
+                rewmean = all_rewards.mean() * (1 - w) + rewmean * w
+                rewstd = all_rewards.std() * (1 - w) + rewstd * w
+                if config.ppo.rewnorm:
+                    all_rewards = all_rewards / rewstd - rewmean
 
-                all_action_masks.extend(action_masks)
-                all_obs.extend(obs)
-                all_privileged_obs.extend(privileged_obs)
-                all_actions.extend(actions)
-                all_logprobs.extend(logprobs.detach().cpu().numpy())
-                all_values.extend(values)
-                all_probs.extend(probs)
+                all_returns = np.zeros(len(all_rewards), dtype=np.float32)
+                all_values = np.array(all_values)
+                last_gae = np.zeros(config.ppo.num_envs)
+                gamma = config.ppo.gamma
+                for t in reversed(range(config.ppo.seq_rosteps)):
+                    for i in range(config.ppo.num_envs):
+                        ti = t * config.ppo.num_envs + i
+                        tnext_i = (t + 1) * config.ppo.num_envs + i
+                        nextnonterminal = 1.0 - all_dones[ti]
+                        if t == config.ppo.seq_rosteps - 1:
+                            next_value = final_values[i]
+                        else:
+                            next_value = all_values[tnext_i]
+                        td_error = (
+                            all_rewards[ti]
+                            + gamma * next_value * nextnonterminal
+                            - all_values[ti]
+                        )
+                        last_gae[i] = (
+                            td_error
+                            + gamma * config.ppo.lamb * last_gae[i] * nextnonterminal
+                        )
+                        all_returns[ti] = last_gae[i] + all_values[ti]
 
-                obs, rews, dones, infos, action_masks, privileged_obs = env.step(
-                    actions, action_masks=action_masks
+                advantages = all_returns - all_values
+                if config.ppo.norm_advs:
+                    advantages = (advantages - advantages.mean()) / (
+                        advantages.std() + 1e-8
+                    )
+                explained_var = explained_variance(all_values, all_returns)
+
+                all_actions = np.array(all_actions)
+                all_logprobs = np.array(all_logprobs)
+                all_obs = np.array(all_obs)
+                all_privileged_obs = np.array(all_privileged_obs)
+                all_action_masks = np.array(all_action_masks)[
+                    :, : config.policy.agents, :
+                ]
+                all_probs = np.array(all_probs)
+
+            for epoch in range(config.optimizer.epochs):
+                if config.optimizer.shuffle:
+                    perm = np.random.permutation(len(all_obs))
+                    all_obs = all_obs[perm]
+                    all_privileged_obs = all_privileged_obs[perm]
+                    all_returns = all_returns[perm]
+                    all_actions = all_actions[perm]
+                    all_logprobs = all_logprobs[perm]
+                    all_values = all_values[perm]
+                    advantages = advantages[perm]
+                    all_action_masks = all_action_masks[perm]
+                    all_probs = all_probs[perm]
+
+                # Policy Update
+                policy_loss_sum = 0
+                value_loss_sum = 0
+                clipfrac_sum = 0
+                aproxkl_sum = 0
+                entropy_loss_sum = 0
+                gradnorm = 0
+                self.policy.train()
+                torch.enable_grad()
+                num_minibatches = int(
+                    config.ppo.seq_rosteps * config.ppo.num_envs / config.optimizer.bs
                 )
+                for batch in range(num_minibatches):
+                    if batch % config.optimizer.batches_per_update == 0:
+                        self.optimizer.zero_grad()
 
-                rews -= config.ppo.liveness_penalty
-                all_rewards.extend(rews)
-                all_dones.extend(dones)
+                    start = config.optimizer.bs * batch
+                    end = config.optimizer.bs * (batch + 1)
 
-                for info in infos:
-                    ema = 0.95 * (1 - 1 / (completed_episodes + 1))
+                    o = torch.tensor(all_obs[start:end]).to(device)
+                    op = torch.tensor(all_privileged_obs[start:end]).to(device)
+                    actions = torch.tensor(all_actions[start:end]).to(device)
+                    probs = torch.tensor(all_logprobs[start:end]).to(device)
+                    returns = torch.tensor(all_returns[start:end]).to(device)
+                    advs = torch.tensor(advantages[start:end]).to(device)
+                    vals = torch.tensor(all_values[start:end]).to(device)
+                    amasks = torch.tensor(all_action_masks[start:end]).to(device)
+                    actual_probs = torch.tensor(all_probs[start:end]).to(device)
 
-                    decided_by_elimination = info["episode"]["elimination"]
-                    eliminations.append(decided_by_elimination)
-                    eliminationmean = (
-                        eliminationmean * ema + (1 - ema) * decided_by_elimination
+                    (
+                        policy_loss,
+                        value_loss,
+                        entropy_loss,
+                        aproxkl,
+                        clipfrac,
+                    ) = self.policy.backprop(
+                        config,
+                        o,
+                        actions,
+                        probs,
+                        returns,
+                        config.optimizer.vf_coef,
+                        advs,
+                        vals,
+                        amasks,
+                        actual_probs,
+                        op,
+                        config.ppo.split_reward,
                     )
 
-                    eprewmean = eprewmean * ema + (1 - ema) * info["episode"]["r"]
-                    eplenmean = eplenmean * ema + (1 - ema) * info["episode"]["l"]
-
-                    builds = info["episode"]["builds"]
-                    for build in set().union(builds.keys(), buildmean.keys()):
-                        count = builds[build]
-                        buildmean[build] = buildmean[build] * ema + (1 - ema) * count
-                        buildtotal[build] += count
-                        cost = info["episode"]["ruleset"].cost_modifiers[build]
-                        cost_sum += cost * sum(build) * count
-                        cost_weight += sum(build) * count
-                    completed_episodes += 1
-            average_cost_modifier = cost_sum / cost_weight if cost_weight > 0 else 1.0
-            elimination_rate = (
-                np.array(eliminations).mean() if len(eliminations) > 0 else None
-            )
-            state.adr.adjust(
-                buildtotal,
-                average_cost_modifier,
-                elimination_rate,
-                eplenmean,
-                state.step,
-            )
-
-            obs_tensor = torch.tensor(obs).to(device)
-            action_masks_tensor = torch.tensor(action_masks).to(device)
-            privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-            _, _, _, final_values, final_probs = state.policy.evaluate(
-                obs_tensor, action_masks_tensor, privileged_obs_tensor
-            )
-
-            all_rewards = np.array(all_rewards) * config.ppo.rewscale
-            w = config.ppo.rewnorm_emaw * (1 - 1 / (state.step + 1))
-            rewmean = all_rewards.mean() * (1 - w) + rewmean * w
-            rewstd = all_rewards.std() * (1 - w) + rewstd * w
-            if config.ppo.rewnorm:
-                all_rewards = all_rewards / rewstd - rewmean
-
-            all_returns = np.zeros(len(all_rewards), dtype=np.float32)
-            all_values = np.array(all_values)
-            last_gae = np.zeros(config.ppo.num_envs)
-            gamma = config.ppo.gamma
-            for t in reversed(range(config.ppo.seq_rosteps)):
-                for i in range(config.ppo.num_envs):
-                    ti = t * config.ppo.num_envs + i
-                    tnext_i = (t + 1) * config.ppo.num_envs + i
-                    nextnonterminal = 1.0 - all_dones[ti]
-                    if t == config.ppo.seq_rosteps - 1:
-                        next_value = final_values[i]
-                    else:
-                        next_value = all_values[tnext_i]
-                    td_error = (
-                        all_rewards[ti]
-                        + gamma * next_value * nextnonterminal
-                        - all_values[ti]
+                    policy_loss_sum += policy_loss
+                    entropy_loss_sum += entropy_loss
+                    value_loss_sum += value_loss
+                    aproxkl_sum += aproxkl
+                    clipfrac_sum += clipfrac
+                    gradnorm += torch.nn.utils.clip_grad_norm_(
+                        self.policy.parameters(), config.optimizer.max_grad_norm
                     )
-                    last_gae[i] = (
-                        td_error
-                        + gamma * config.ppo.lamb * last_gae[i] * nextnonterminal
-                    )
-                    all_returns[ti] = last_gae[i] + all_values[ti]
 
-            advantages = all_returns - all_values
-            if config.ppo.norm_advs:
-                advantages = (advantages - advantages.mean()) / (
-                    advantages.std() + 1e-8
-                )
-            explained_var = explained_variance(all_values, all_returns)
+                    if (batch + 1) % config.optimizer.batches_per_update == 0:
+                        # TODO: xprun
+                        # if hps.parallelism > 1:
+                        #    gradient_allreduce(policy)
+                        self.optimizer.step()
+                        for ema in self.ema:
+                            ema.update(self.policy.parameters())
+            torch.cuda.empty_cache()
 
-            all_actions = np.array(all_actions)
-            all_logprobs = np.array(all_logprobs)
-            all_obs = np.array(all_obs)
-            all_privileged_obs = np.array(all_privileged_obs)
-            all_action_masks = np.array(all_action_masks)[:, : config.policy.agents, :]
-            all_probs = np.array(all_probs)
+            state.epoch += 1
+            # TODO: xprun
+            state.step += config.rosteps  # * hps.parallelism
+            state.iteration += 1
+            # TODO: xprun
+            throughput = int(
+                config.rosteps / (time.time() - episode_start)
+            )  # * hps.parallelism
 
-        for epoch in range(config.optimizer.epochs):
-            if config.optimizer.shuffle:
-                perm = np.random.permutation(len(all_obs))
-                all_obs = all_obs[perm]
-                all_privileged_obs = all_privileged_obs[perm]
-                all_returns = all_returns[perm]
-                all_actions = all_actions[perm]
-                all_logprobs = all_logprobs[perm]
-                all_values = all_values[perm]
-                advantages = advantages[perm]
-                all_action_masks = all_action_masks[perm]
-                all_probs = all_probs[perm]
+            all_agent_masks = all_action_masks.sum(2) > 1
+            # TODO: xprun if rank == 0
+            if config.optimizer.epochs > 0:
+                # TODO: hyperstate metrics
+                metrics = {
+                    "policy_loss": policy_loss_sum / num_minibatches,
+                    "value_loss": value_loss_sum / num_minibatches,
+                    "entropy_loss": entropy_loss_sum / num_minibatches,
+                    "clipfrac": clipfrac_sum / num_minibatches,
+                    "aproxkl": aproxkl_sum / num_minibatches,
+                    "throughput": throughput,
+                    "eprewmean": eprewmean,
+                    "eplenmean": eplenmean,
+                    "target_eplenmean": self.adr.target_eplenmean(),
+                    "eliminationmean": eliminationmean,
+                    "entropy": sum(entropies) / len(entropies) / np.log(2),
+                    "explained variance": explained_var,
+                    "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
+                    "advantages": wandb.Histogram(advantages),
+                    "values": wandb.Histogram(all_values),
+                    "meanval": all_values.mean(),
+                    "returns": wandb.Histogram(all_returns),
+                    "meanret": all_returns.mean(),
+                    "actions": wandb.Histogram(np.array(all_actions[all_agent_masks])),
+                    "active_agents": all_agent_masks.sum() / all_agent_masks.size,
+                    "observations": wandb.Histogram(np.array(all_obs)),
+                    "obs_max": all_obs.max(),
+                    "obs_min": all_obs.min(),
+                    "rewards": wandb.Histogram(np.array(all_rewards)),
+                    "masked_actions": 1 - all_action_masks.mean(),
+                    "rewmean": rewmean,
+                    "rewstd": rewstd,
+                    "average_cost_modifier": average_cost_modifier,
+                    "hardness": self.adr.state.hardness,
+                    "iteration": state.iteration,
+                }
+                metrics.update(hyperstate.asdict(config))
+                for action, count in buildmean.items():
+                    metrics[f"build_{spec_key(action)}"] = count
+                for action, fraction in normalize(buildmean).items():
+                    metrics[f"frac_{spec_key(action)}"] = fraction
 
-            # Policy Update
-            policy_loss_sum = 0
-            value_loss_sum = 0
-            clipfrac_sum = 0
-            aproxkl_sum = 0
-            entropy_loss_sum = 0
-            gradnorm = 0
-            state.policy.train()
-            torch.enable_grad()
-            num_minibatches = int(
-                config.ppo.seq_rosteps * config.ppo.num_envs / config.optimizer.bs
-            )
-            for batch in range(num_minibatches):
-                if batch % config.optimizer.batches_per_update == 0:
-                    state.optimizer.zero_grad()
+                metrics.update(self.adr.metrics())
+                total_norm = 0.0
+                count = 0
+                for name, param in self.policy.named_parameters():
+                    norm = param.data.norm()
+                    metrics[f"weight_norm[{name}]"] = norm
+                    count += 1
+                    total_norm += norm
+                metrics["mean_weight_norm"] = total_norm / count
 
-                start = config.optimizer.bs * batch
-                end = config.optimizer.bs * (batch + 1)
+                # TODO: steps
+                wandb.log(metrics, step=state.step)
 
-                o = torch.tensor(all_obs[start:end]).to(device)
-                op = torch.tensor(all_privileged_obs[start:end]).to(device)
-                actions = torch.tensor(all_actions[start:end]).to(device)
-                probs = torch.tensor(all_logprobs[start:end]).to(device)
-                returns = torch.tensor(all_returns[start:end]).to(device)
-                advs = torch.tensor(advantages[start:end]).to(device)
-                vals = torch.tensor(all_values[start:end]).to(device)
-                amasks = torch.tensor(all_action_masks[start:end]).to(device)
-                actual_probs = torch.tensor(all_probs[start:end]).to(device)
+            print(f"{throughput} samples/s", flush=True)
 
-                (
-                    policy_loss,
-                    value_loss,
-                    entropy_loss,
-                    aproxkl,
-                    clipfrac,
-                ) = state.policy.backprop(
-                    config,
-                    o,
-                    actions,
-                    probs,
-                    returns,
-                    config.optimizer.vf_coef,
-                    advs,
-                    vals,
-                    amasks,
-                    actual_probs,
-                    op,
-                    config.ppo.split_reward,
-                )
+        env.close()
 
-                policy_loss_sum += policy_loss
-                entropy_loss_sum += entropy_loss
-                value_loss_sum += value_loss
-                aproxkl_sum += aproxkl
-                clipfrac_sum += clipfrac
-                gradnorm += torch.nn.utils.clip_grad_norm_(
-                    state.policy.parameters(), config.optimizer.max_grad_norm
-                )
-
-                if (batch + 1) % config.optimizer.batches_per_update == 0:
+        if config.eval.eval_envs > 0:
+            for policy_ema in [None] + self.ema:
+                eval(
+                    policy=self.policy,
                     # TODO: xprun
-                    # if hps.parallelism > 1:
-                    #    gradient_allreduce(policy)
-                    state.optimizer.step()
-                    for ema in state.ema:
-                        ema.update(state.policy.parameters())
-        torch.cuda.empty_cache()
-
-        state.epoch += 1
+                    num_envs=config.eval.eval_envs,  # // hps.parallelism,
+                    device=device,
+                    objective=config.task.objective,
+                    eval_steps=5 * config.eval.eval_timesteps,
+                    curr_step=state.step,
+                    symmetric=config.eval.eval_symmetric,
+                    printerval=config.eval.eval_timesteps,
+                    # TODO: xprun
+                    rank=0,  # hps.rank,
+                    parallelism=1,  # parallelism,
+                    policy_ema=policy_ema,
+                )
         # TODO: xprun
-        state.step += config.rosteps  # * hps.parallelism
-        state.iteration += 1
-        # TODO: xprun
-        throughput = int(
-            config.rosteps / (time.time() - episode_start)
-        )  # * hps.parallelism
-
-        all_agent_masks = all_action_masks.sum(2) > 1
-        # TODO: xprun if rank == 0
-        if config.optimizer.epochs > 0:
-            # TODO: hyperstate metrics
-            metrics = {
-                "policy_loss": policy_loss_sum / num_minibatches,
-                "value_loss": value_loss_sum / num_minibatches,
-                "entropy_loss": entropy_loss_sum / num_minibatches,
-                "clipfrac": clipfrac_sum / num_minibatches,
-                "aproxkl": aproxkl_sum / num_minibatches,
-                "throughput": throughput,
-                "eprewmean": eprewmean,
-                "eplenmean": eplenmean,
-                "target_eplenmean": state.adr.target_eplenmean(),
-                "eliminationmean": eliminationmean,
-                "entropy": sum(entropies) / len(entropies) / np.log(2),
-                "explained variance": explained_var,
-                "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
-                "advantages": wandb.Histogram(advantages),
-                "values": wandb.Histogram(all_values),
-                "meanval": all_values.mean(),
-                "returns": wandb.Histogram(all_returns),
-                "meanret": all_returns.mean(),
-                "actions": wandb.Histogram(np.array(all_actions[all_agent_masks])),
-                "active_agents": all_agent_masks.sum() / all_agent_masks.size,
-                "observations": wandb.Histogram(np.array(all_obs)),
-                "obs_max": all_obs.max(),
-                "obs_min": all_obs.min(),
-                "rewards": wandb.Histogram(np.array(all_rewards)),
-                "masked_actions": 1 - all_action_masks.mean(),
-                "rewmean": rewmean,
-                "rewstd": rewstd,
-                "average_cost_modifier": average_cost_modifier,
-                "hardness": state.adr.hardness,
-                "iteration": iteration,
-            }
-            metrics.update(hyperstate.asdict(config))
-            for action, count in buildmean.items():
-                metrics[f"build_{spec_key(action)}"] = count
-            for action, fraction in normalize(buildmean).items():
-                metrics[f"frac_{spec_key(action)}"] = fraction
-
-            metrics.update(state.adr.metrics())
-            total_norm = 0.0
-            count = 0
-            for name, param in state.policy.named_parameters():
-                norm = param.data.norm()
-                metrics[f"weight_norm[{name}]"] = norm
-                count += 1
-                total_norm += norm
-            metrics["mean_weight_norm"] = total_norm / count
-
-            # TODO: steps
-            wandb.log(metrics, step=state.step)
-
-        print(f"{throughput} samples/s", flush=True)
-
-    env.close()
-
-    if config.eval.eval_envs > 0:
-        for policy_ema in [None] + state.ema:
-            eval(
-                policy=state.policy,
-                # TODO: xprun
-                num_envs=config.eval.eval_envs,  # // hps.parallelism,
-                device=device,
-                objective=config.task.objective,
-                eval_steps=5 * config.eval.eval_timesteps,
-                curr_step=state.step,
-                symmetric=config.eval.eval_symmetric,
-                printerval=config.eval.eval_timesteps,
-                # TODO: xprun
-                rank=0,  # hps.rank,
-                parallelism=1,  # parallelism,
-                policy_ema=policy_ema,
-            )
-    # TODO: xprun
-    # if hps.rank == 0:
-    # TODO: hyperstate
-    # save_policy(
-    #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-    # )
+        # if hps.rank == 0:
+        # TODO: hyperstate
+        # save_policy(
+        #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
+        # )
 
 
 def eval(
@@ -1179,11 +1233,8 @@ def main():
             hps.rank = int(os.environ["XPRUN_RANK"])
     """
 
-    config = hyperstate.load_file(Config, args.config)
-    # TODO: hack
-    config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
-    config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
-    config.obs.num_builds = len(config.task.objective.builds())
+    hs = HyperState.load(Config, State, initial_state, args.config)
+    config = hs.config
 
     # TODO: xprun
     if True:  # hps.rank == 0:
@@ -1216,8 +1267,8 @@ def main():
         Path(out_dir).mkdir(parents=True, exist_ok=True)
     else:
         out_dir = args.out_dir
-
-    train(config, state=None, out_dir=out_dir)
+    trainer = Trainer(hs)
+    trainer.train(out_dir=out_dir)
 
 
 if __name__ == "__main__":
