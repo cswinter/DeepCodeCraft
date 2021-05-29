@@ -552,7 +552,9 @@ class Trainer:
                         "meanval": all_values.mean(),
                         "returns": wandb.Histogram(all_returns),
                         "meanret": all_returns.mean(),
-                        "actions": wandb.Histogram(np.array(all_actions[all_agent_masks])),
+                        "actions": wandb.Histogram(
+                            np.array(all_actions[all_agent_masks])
+                        ),
                         "active_agents": all_agent_masks.sum() / all_agent_masks.size,
                         "observations": wandb.Histogram(np.array(all_obs)),
                         "obs_max": all_obs.max(),
@@ -587,7 +589,6 @@ class Trainer:
                 state.policy.set(self.policy.state_dict())
                 state.optimizer.set(self.optimizer.state_dict())
                 self.hyperstate.step()
-
 
             print(f"{throughput} samples/s", flush=True)
 
@@ -1240,13 +1241,7 @@ def main():
             hps.rank = int(os.environ["XPRUN_RANK"])
     """
 
-    hs = HyperState.load(
-        Config,
-        State,
-        initial_state,
-        args.config,
-        checkpoint_dir,
-    )
+    hs = HyperState.load(Config, State, initial_state, args.config, checkpoint_dir,)
     config = hs.config
 
     # TODO: xprun
@@ -1254,7 +1249,14 @@ def main():
         wandb_project = (
             "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
         )
-        wandb.init(project=wandb_project)
+        if "XPRUN_NAME" in os.environ:
+            wandb.init(
+                project=wandb_project,
+                name=os.environ["XPRUN_NAME"],
+                id=os.environ["XPRUN_ID"],
+            )
+        else:
+            wandb.init(project=wandb_project)
         cfg = hyperstate.asdict(config)
         cfg["commit"] = subprocess.check_output(
             ["git", "describe", "--tags", "--always", "--dirty"]
