@@ -25,6 +25,7 @@ from hyperstate import (
     Blob,
     OptimizerConfig,
     HyperState,
+    TaskConfig,
 )
 
 from adr import ADR, ADRState, normalize, spec_key
@@ -207,6 +208,10 @@ class Trainer:
         rewmean = 0.0
         rewstd = 1.0
         while state.step < config.ppo.steps:
+            # TODO: better solution
+            self.config.task.build_variety_bonus = self.config.ppo.build_variety_bonus
+            self.config.task.cost_variance = self.config.adr.cost_variance
+
             # TODO: step
             for g in self.optimizer.param_groups:
                 g["lr"] = config.optimizer.lr
@@ -222,7 +227,7 @@ class Trainer:
                     config.ppo.num_self_play,
                     config.task.objective,
                     config.task.action_delay,
-                    config=config,
+                    config=config.task,
                     randomize=config.task.randomize,
                     use_action_masks=config.task.use_action_masks,
                     obs_config=obs_config,
@@ -716,6 +721,15 @@ def eval(
         self_play_envs,
         objective,
         action_delay=0,
+        config=TaskConfig(
+            objective=objective,
+            mothership_damage_scale=0.0,
+            rule_rng_amount=random_rules,
+            rule_rng_fraction=1.0 if random_rules > 0 else 0.0,
+            symmetric_map=1.0 if symmetric else 0.0,
+            task_hardness=hardness,
+            randomize=randomize,
+        ),
         stagger=False,
         fair=not symmetric,
         use_action_masks=True,
@@ -740,7 +754,7 @@ def eval(
     partitions = [(policy_envs, policy.obs_config)]
     i = 0
     for name, opp in opponents.items():
-        opp_policy, _, _, _, _ = load_policy(opp["model_file"], device)
+        opp_policy, _, _, _ = load_policy(opp["model_file"], device)
         opp_policy.eval()
         opp["policy"] = opp_policy
         opp["envs"] = odds[

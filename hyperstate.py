@@ -805,10 +805,14 @@ class TaskConfig:
     # Automatically adjust environment rules
     adr: bool = False
     # Amount by which task difficulty/map size is increased for each processed frame
-    adr_hstepsize: float = 2.0e-6
     mothership_damage_scale: float = 4.0
     enforce_unit_cap: bool = False
-    unit_cap: int = 0
+    unit_cap: int = 20
+
+    # Set by ppo
+    build_variety_bonus: float = 0.0
+    # Set by adr
+    cost_variance: float = 0.0
 
 
 @dataclass

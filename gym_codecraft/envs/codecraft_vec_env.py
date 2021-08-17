@@ -4,7 +4,7 @@ import math
 from enum import Enum
 from typing import List, Union, Optional, Tuple
 import numpy as np
-from hyperstate import Config, Objective
+from hyperstate import TaskConfig, Objective
 
 import codecraft
 from codecraft import Rules, ObsConfig
@@ -705,7 +705,7 @@ class CodeCraftVecEnv(object):
         num_self_play,
         objective,
         action_delay,
-        config: Config,
+        config: TaskConfig,
         stagger=True,
         fair=False,
         randomize=False,
@@ -821,15 +821,14 @@ class CodeCraftVecEnv(object):
     def rules(self) -> Rules:
         if np.random.uniform(0, 1) < self.rule_rng_fraction:
             return random_rules(
-                2 ** self.config.task.mothership_damage_scale,
+                2 ** self.config.mothership_damage_scale,
                 self.rule_cost_rng,
                 self.rng_ruleset,
-                self.config.adr.cost_variance,
+                self.config.cost_variance,
             )
         else:
             return Rules(
-                mothership_damage_multiplier=2
-                ** self.config.task.mothership_damage_scale,
+                mothership_damage_multiplier=2 ** self.config.mothership_damage_scale,
                 cost_modifiers={build: 1.0 for build in self.objective.builds()},
             )
 
@@ -992,8 +991,8 @@ class CodeCraftVecEnv(object):
                 abstime=obs_config.feat_abstime,
                 rule_msdm=obs_config.feat_rule_msdm,
                 rule_costs=obs_config.feat_rule_costs,
-                enforce_unit_cap=self.config.task.enforce_unit_cap,
-                unit_cap_override=self.config.task.unit_cap,
+                enforce_unit_cap=self.config.enforce_unit_cap,
+                unit_cap_override=self.config.unit_cap,
             )
         else:
             obs = codecraft.observe_batch_raw(
@@ -1013,8 +1012,8 @@ class CodeCraftVecEnv(object):
                 abstime=obs_config.feat_abstime,
                 rule_msdm=obs_config.feat_rule_msdm,
                 rule_costs=obs_config.feat_rule_costs,
-                enforce_unit_cap=self.config.task.enforce_unit_cap,
-                unit_cap_override=self.config.task.unit_cap,
+                enforce_unit_cap=self.config.enforce_unit_cap,
+                unit_cap_override=self.config.unit_cap,
             )
         stride = obs_config.stride()
         for i in range(num_envs):
@@ -1103,9 +1102,7 @@ class CodeCraftVecEnv(object):
                     if count > 0:
                         p = count / s
                         build_entropy -= p * math.log(p)
-                score += (
-                    self.config.ppo.build_variety_bonus * build_entropy / max_entropy
-                )
+                score += self.config.build_variety_bonus * build_entropy / max_entropy
 
             if self.score[game] is None:
                 self.score[game] = score
