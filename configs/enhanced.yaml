@@ -19,7 +19,7 @@ eval:
   #TODO: extra_checkpoint_steps: [1e6, 2.5e6]
   extra_checkpoint_steps: [1000000, 2500000]
   model_save_frequency: 1
-  eval_envs: 0 #128
+  eval_envs: 128
   eval_frequency: 5e6
   eval_timesteps: 5000
 optimizer:
