@@ -5,14 +5,22 @@ XpV0(
             command: ["python", "main.py", "--config=configs/enhanced.yaml"],
             dockerfile: "Dockerfile",
             copy_repo: true,
-            wandb: true,
+            env_secrets: {
+                "WANDB_API_KEY": "wandb-api-key",
+            },
 
             gpu: 1,
             gpu_mem: "5GB",
+            volumes: {
+                "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
+            },
         ),
         "codecraftserver": (
             dockerfile: "CodeCraftServer.Dockerfile",
             tty: true,
+            env: {
+                "SBT_OPTS": "-Xmx15G",
+            },
         ),
     }
 )

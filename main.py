@@ -1226,7 +1226,7 @@ def main():
         out_dir = args.out_dir
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    checkpoint_dir = Path(args.out_dir) / "checkpoints"
+    checkpoint_dir = Path(out_dir) / "checkpoints"
     checkpoint = hyperstate.find_latest_checkpoint(checkpoint_dir)
     if checkpoint is not None:
         args.config = checkpoint

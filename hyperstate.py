@@ -134,6 +134,9 @@ def checkpoint(state, target_path: Path):
 
 def find_latest_checkpoint(dir: Path) -> Optional[Path]:
     # TODO: error handling
+    # Check that dir exists
+    if not dir.exists():
+        return None
     latest = None
     latest_dir = None
     for d in dir.iterdir():
@@ -787,10 +790,6 @@ class TaskConfig:
     task_hardness: float = 0
     # Max length of games, or default game length for map if 0.
     max_game_length: int = 0
-    # Maxiumum map area
-    max_hardness: float = 150
-    # Number of timesteps steps after which hardness starts to increase
-    hardness_offset: float = 1e6
     randomize: bool = True
     # Percentage of maps which are symmetric
     symmetric_map: float = 0.0
@@ -807,8 +806,6 @@ class TaskConfig:
     adr: bool = False
     # Amount by which task difficulty/map size is increased for each processed frame
     adr_hstepsize: float = 2.0e-6
-    # Linearly increase task difficulty/map size
-    linear_hardness: bool = True
     mothership_damage_scale: float = 4.0
     enforce_unit_cap: bool = False
     unit_cap: int = 0
@@ -824,9 +821,12 @@ class AdrConfig:
     stepsize: float = 0.003
     warmup: int = 100
     initial_hardness: float = 0.0
+    # Linearly increase task difficulty/map size
     linear_hardness: bool = False
-    max_hardness: float = 200
-    hardness_offset: int = 0
+    # Maxiumum map area
+    max_hardness: float = 150
+    # Number of timesteps steps after which hardness starts to increase
+    hardness_offset: float = 1e6
     variety: float = 0.7
     average_cost_target: float = 0.8
 

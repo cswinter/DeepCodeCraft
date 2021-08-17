@@ -2,6 +2,7 @@ logger==1.4
 matplotlib
 numpy==1.16.3
 orjson==3.0.2
+dill==0.3.4 
 requests==2.22.0
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.8.1+cu111

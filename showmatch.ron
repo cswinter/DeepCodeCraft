@@ -7,6 +7,9 @@ XpV0(
             copy_repo: true,
             gpu: 1,
             gpu_mem: "11GB",
+            volumes: {
+                "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
+            },
         ),
         "codecraftserver": (
             dockerfile: "CodeCraftServer.Dockerfile",

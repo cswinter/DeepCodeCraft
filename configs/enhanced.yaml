@@ -7,7 +7,6 @@ ppo:
   num_envs: 128
   num_self_play: 64
 task:
-  max_hardness: 150
   objective: "ENHANCED"
   enforce_unit_cap: true
   unit_cap: "step: 6@0 lin 20@50e6"
@@ -33,6 +32,8 @@ adr:
   variety: "step: 0.3@0 lin 0.15@150e6 0.1@200e6 0.01@250e6"
   cost_variance: "step: 2.0@0 lin 1.0@20e6 0.1@200e6"
   hstepsize: 2.5e-6
+  linear_hardness: true
+  max_hardness: 150
 obs:
   allies: 20
   obs_map_tiles: 5
