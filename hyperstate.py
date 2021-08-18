@@ -1,4 +1,3 @@
-from abc import ABC, abstractclassmethod, abstractmethod
 import os
 import shutil
 
@@ -6,10 +5,6 @@ from enum import Enum, EnumMeta
 import math
 from pathlib import Path
 import tempfile
-from torch import optim
-from torch.optim.optimizer import Optimizer
-from torch_ema.ema import ExponentialMovingAverage
-from policy_t8 import TransformerPolicy8
 from typing import (
     Callable,
     Generic,
@@ -37,6 +32,7 @@ class HyperState(Generic[C, S]):
     checkpoint_dir: Optional[Path]
     checkpoint_key: str
     last_checkpoint: Optional[Path] = None
+    schedules: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -59,7 +55,7 @@ class HyperState(Generic[C, S]):
             config_path = path
             state_path = None
 
-        config = load_file(config_clz, config_path)
+        config, schedules = _load_file_and_schedules(config_clz, config_path)
         # TODO: hack
         config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
         config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
@@ -72,8 +68,10 @@ class HyperState(Generic[C, S]):
 
         if checkpoint_dir is not None:
             checkpoint_dir = Path(checkpoint_dir)
-        hs = HyperState(config, state, checkpoint_dir, checkpoint_key)
-        hs._update_schedules(hs.config)
+        hs = HyperState(
+            config, state, checkpoint_dir, checkpoint_key, schedules=schedules
+        )
+        apply_schedules(state, config, schedules)
         return hs
 
     def checkpoint(self, target_dir: str):
@@ -81,14 +79,15 @@ class HyperState(Generic[C, S]):
             p = Path(tmpdir) / "checkpoint"
             p.mkdir()
             with open(p / "config.yaml", "w") as f:
-                yaml.dump(asdict(self.config, retain_schedules=True), f)
+                yaml.dump(asdict(self.config, schedules=self.schedules), f)
             checkpoint(self.state, p)
             shutil.move(p, target_dir)
 
     def step(self):
-        self._update_schedules(self.config)
+        apply_schedules(self.state, self.config, self.schedules)
         if self.checkpoint_dir is not None:
             val = getattr(self.state, self.checkpoint_key)
+            assert isinstance( val, int), f"checkpoint key `{self.checkpoint_key}`` must be an integer, but found value `{val}` of type `{type(val)}`"
             checkpoint_dir = (
                 self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
             )
@@ -99,12 +98,14 @@ class HyperState(Generic[C, S]):
             self.last_checkpoint = checkpoint_dir
             # TODO: persistent checkpoints
 
-    def _update_schedules(self, config):
-        for _, (schedule, _) in config._schedules.items():
-            schedule(self.config, self.state)
-        for field_name, field_clz in config.__annotations__.items():
-            if is_dataclass(field_clz):
-                self._update_schedules(getattr(config, field_name))
+
+def apply_schedules(state, config, schedules):
+    for field_name, schedule in schedules.items():
+        if isinstance(schedule, Schedule):
+            schedule.update_value(config, state)
+        else:
+            assert isinstance(schedule, dict)
+            apply_schedules(state, getattr(config, field_name), schedule)
 
 
 def qualified_name(clz):
@@ -183,15 +184,17 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
     return builder, blobs
 
 
-def asdict(x, retain_schedules: bool = False):
+def asdict(x, schedules: Optional[Dict[str, Any]] = None):
+    if schedules is None:
+        schedules = {}
     result = {}
     for field_name, field_clz in x.__annotations__.items():
-        if retain_schedules and hasattr(x, "_schedules") and field_name in x._schedules:
-            result[field_name] = x._schedules[field_name][1]
+        if field_name in schedules and isinstance(schedules[field_name], Schedule):
+            result[field_name] = schedules[field_name].unparsed
             continue
         value = getattr(x, field_name)
         if is_dataclass(field_clz):
-            result[field_name] = asdict(value, retain_schedules)
+            result[field_name] = asdict(value, schedules.get(field_name))
         elif field_clz in [int, float, str, bool]:
             result[field_name] = value
         elif hasattr(field_clz, "__args__") and (
@@ -208,6 +211,10 @@ def asdict(x, retain_schedules: bool = False):
 
 
 def load_file(clz: Type[T], path: str) -> T:
+    return _load_file_and_schedules(clz, path)[0]
+
+
+def _load_file_and_schedules(clz: Type[T], path: str) -> T:
     path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
@@ -216,7 +223,9 @@ def load_file(clz: Type[T], path: str) -> T:
     return _parse(clz, values, path.absolute().parent)
 
 
-def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
+def _parse(
+    clz: Type[T], values: Dict[str, Any], path: Path
+) -> Tuple[T, Dict[str, Any]]:
     kwargs = {}
     remaining_fields = set(clz.__annotations__.keys())
     schedules = {}
@@ -242,7 +251,9 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
 
                         return update
 
-                    schedules[field_name] = (_capture(field_name, schedule), value)
+                    schedules[field_name] = Schedule(
+                        _capture(field_name, schedule), value
+                    )
                     value = schedule.get_value(0.0)
                 else:
                     parsed = float(value)
@@ -262,7 +273,9 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
 
                         return update
 
-                    schedules[field_name] = (_capture(field_name, schedule), value)
+                    schedules[field_name] = Schedule(
+                        _capture(field_name, schedule), value
+                    )
                     value = int(schedule.get_value(0))
                 else:
                     parsed = _parse_int(value)
@@ -297,11 +310,11 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
             assert value == "<BLOB>", f"{value} != <BLOB>"
             value = Blob(path / field_name)
         elif is_dataclass(field_clz):
-            value = _parse(field_clz, value, path / field_name)
+            value, inner_schedules = _parse(field_clz, value, path / field_name)
+            schedules[field_name] = inner_schedules
         elif isinstance(field_clz, EnumMeta):
             value = field_clz(value)
         else:
-            __import__("ipdb").set_trace()
             raise TypeError(
                 f"Field {clz.__module__}.{clz.__name__}.{field_name} has unsupported type {qualified_name(field_clz)}."
             )
@@ -309,10 +322,15 @@ def _parse(clz: Type[T], values: Dict[str, Any], path: Path) -> T:
 
     try:
         instance = clz(**kwargs)
-        instance._schedules = schedules
-        return instance
+        return instance, schedules
     except TypeError as e:
         raise TypeError(f"Failed to initialize {clz.__module__}.{clz.__name__}: {e}")
+
+
+@dataclass
+class Schedule:
+    update_value: Callable[[Any], None]
+    unparsed: str
 
 
 @dataclass
@@ -325,7 +343,7 @@ class ScheduleSegment:
 
 
 @dataclass
-class Schedule:
+class PiecewiseFunction:
     segments: List[ScheduleSegment]
     xname: str
 
@@ -388,7 +406,7 @@ def _parse_schedule(schedule: str) -> Callable[[float], float]:
             last_x, last_y = x, y
         else:
             interpolator = INTERPOLATORS[part]
-    return Schedule(segments, xname)
+    return PiecewiseFunction(segments, xname)
 
 
 # TODO: gah
