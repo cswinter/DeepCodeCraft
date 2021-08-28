@@ -87,7 +87,9 @@ class HyperState(Generic[C, S]):
         apply_schedules(self.state, self.config, self.schedules)
         if self.checkpoint_dir is not None:
             val = getattr(self.state, self.checkpoint_key)
-            assert isinstance( val, int), f"checkpoint key `{self.checkpoint_key}`` must be an integer, but found value `{val}` of type `{type(val)}`"
+            assert isinstance(
+                val, int
+            ), f"checkpoint key `{self.checkpoint_key}`` must be an integer, but found value `{val}` of type `{type(val)}`"
             checkpoint_dir = (
                 self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
             )
