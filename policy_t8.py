@@ -322,8 +322,6 @@ class TransformerPolicy8(nn.Module):
             ).fill_(0)
         else:
             vin = torch.zeros(batch_size, self.d_agent * self.hps.dff_ratio)
-        print(x, active_agents.batch_index)
-        print(x.size(), vin.size())
         scatter_max(x, index=active_agents.batch_index, dim=0, out=vin)
         if self.hps.use_privileged:
             mask1k = 1000.0 * pmask.float().unsqueeze(-1)
