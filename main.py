@@ -640,6 +640,7 @@ def eval(
     rank=0,
     parallelism=1,
     policy_ema=None,
+    create_game_delay=0.0,
 ):
     start_time = time.time()
 
@@ -740,6 +741,7 @@ def eval(
         scripted_opponents=[(o, num_envs // n_opponent) for o in scripted_opponents],
         rule_rng_amount=random_rules,
         rule_rng_fraction=1.0 if random_rules > 0 else 0.0,
+        create_game_delay=create_game_delay,
     )
 
     scores = []

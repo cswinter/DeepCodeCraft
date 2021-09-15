@@ -1,5 +1,6 @@
 from collections import defaultdict
 import math
+import time
 
 from enum import Enum
 from typing import List, Union, Optional, Tuple
@@ -727,6 +728,7 @@ class CodeCraftVecEnv(object):
         stagger_offset: float = 0.0,
         loss_penalty: float = 0.0,
         partial_score: float = 1.0,
+        create_game_delay: float = 0.0,
     ):
         assert num_envs >= 2 * num_self_play
         self.num_envs = num_envs
@@ -759,6 +761,7 @@ class CodeCraftVecEnv(object):
         self.force_harvesting = False
         self.randomize_idle = objective != Objective.ALLIED_WEALTH
         self.config = config
+        self.create_game_delay = create_game_delay
 
         remaining_scripted = num_envs - 2 * num_self_play
         self.scripted_opponents = []
@@ -1117,6 +1120,8 @@ class CodeCraftVecEnv(object):
                     self_play = game // 2 < self.num_self_play
                     opponent = "none" if self_play else self.next_opponent()
                     ruleset = self.rules()
+                    if self.create_game_delay > 0:
+                        time.sleep(self.create_game_delay)
                     if self.mp_game_count < self.game_count * self.mix_mp:
                         m = map_mp(self.randomize, self.hardness)
                         m["symmetric"] = np.random.rand() <= self.symmetric

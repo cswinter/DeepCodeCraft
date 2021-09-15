@@ -852,7 +852,6 @@ class AdrConfig:
     # Number of timesteps steps after which hardness starts to increase
     hardness_offset: float = 1e6
     variety: float = 0.7
-    average_cost_target: float = 0.8
 
 
 @dataclass
