@@ -19,7 +19,7 @@ WORKDIR /root/CodeCraftGame
 RUN sbt publishLocal
 
 # Clone and build CodeCraftServer
-RUN /root/shallow_clone.sh https://github.com/cswinter/CodeCraftServer.git b91362dd2efc3fe76a99e329787ea5fbaa24536c /root/CodeCraftServer
+RUN /root/shallow_clone.sh https://github.com/cswinter/CodeCraftServer.git db01b4dbfe0e22f589ad015399a89b8e84be47c1 /root/CodeCraftServer
 WORKDIR /root/CodeCraftServer
 RUN sbt compile
 
