@@ -14,7 +14,7 @@ RUN sbt compile
 RUN rm -r /tmp/CodeCraftServer
 
 # Clone and locally publish CodeCraftGame package
-RUN /root/shallow_clone.sh https://github.com/cswinter/CodeCraftGame.git 865faafdcf87736b588bc2d0b32aaca8c8373408 /root/CodeCraftGame
+RUN /root/shallow_clone.sh https://github.com/cswinter/CodeCraftGame.git 3da8367a738ecfe34c256ca6c748ad688c079e07 /root/CodeCraftGame
 WORKDIR /root/CodeCraftGame
 RUN sbt publishLocal
 
