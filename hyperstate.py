@@ -367,7 +367,7 @@ class PiecewiseFunction:
 
 INTERPOLATORS = {
     "lin": lambda x: 1 - x,
-    "cos": lambda x: math.cos(x * math.pi / 2),
+    "cos": lambda x: math.cos(x * math.pi) * 0.5 + 0.5,
     "step": lambda _: 1,
 }
 
