@@ -6,7 +6,10 @@ ppo:
   seq_rosteps: 64
   num_envs: 128
   num_self_play: 64
-adr: {}
+adr:
+  initial_hardness: 1.0
+  max_hardness: 1.0
+  linear_hardness: true
 task:
   objective: "ARENA_MEDIUM"
   task_hardness: 1
