@@ -15,7 +15,6 @@ task:
   rule_rng_amount: 1.0
   mothership_damage_scale: 0.0
 eval:
-  eval_frequency: 10e6
   #TODO: extra_checkpoint_steps: [1e6, 2.5e6]
   extra_checkpoint_steps: [1000000, 2500000]
   model_save_frequency: 1

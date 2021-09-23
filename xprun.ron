@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "trainer": (
-            command: ["python", "main.py", "--config=configs/enhanced.yaml"],
+            command: ["python", "main.py"],
             dockerfile: "Dockerfile",
             copy_repo: true,
             env_secrets: {

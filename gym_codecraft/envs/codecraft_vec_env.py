@@ -153,23 +153,27 @@ def map_arena_medium(randomize: bool, hardness: int, require_default_mothership:
         map_height = 1500
         mineral_count = 5
     else:
-        map_width = 2000
-        map_height = 2000
+        map_width = 2250
+        map_height = 2250
         mineral_count = 8
 
     angle = 2 * np.pi * np.random.rand()
     spawn_x = (map_width // 2 - 100) * np.sin(angle)
     spawn_y = (map_height // 2 - 100) * np.cos(angle)
+    def mothership(x, y):
+        rnd = np.random.randint(0, 3)
+        if rnd == 0:
+            return drone_dict(spawn_x, spawn_y, constructors=1, storage_modules=2, long_range_missiles=1)
+        elif rnd == 1:
+            return drone_dict(spawn_x, spawn_y, constructors=1, storage_modules=2, shield_generators=1)
+        else:
+            return drone_dict(spawn_x, spawn_y, constructors=1, storage_modules=2, missile_batteries=1)
     return {
         "mapWidth": map_width,
         "mapHeight": map_height,
         "minerals": mineral_count * [(2, 25)],
-        "player1Drones": [
-            drone_dict(spawn_x, spawn_y, constructors=2, storage_modules=2),
-        ],
-        "player2Drones": [
-            drone_dict(-spawn_x, -spawn_y, constructors=2, storage_modules=2),
-        ],
+        "player1Drones": [mothership(spawn_x, spawn_y)],
+        "player2Drones": [mothership(-spawn_x, -spawn_y)],
     }
 
 

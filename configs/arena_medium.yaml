@@ -1,0 +1,34 @@
+ppo:
+  steps: 10e6
+  win_bonus: 2.0
+  partial_score: 1.0
+  gamma: 0.999
+  seq_rosteps: 64
+  num_envs: 128
+  num_self_play: 64
+adr: {}
+task:
+  objective: "ARENA_MEDIUM"
+  task_hardness: 1
+eval:
+  eval_frequency: 500e3
+  model_save_frequency: 1
+  eval_envs: 128
+  eval_timesteps: 2000
+optimizer:
+  lr: "step: 0.0005@0 cos 0.00005@10e6"
+  vf_coef: 1.0
+  entropy_bonus: "step: 0.5@0 lin 0.15@5e6 0.0@10e6"
+  batches_per_update: 8
+  bs: 512
+obs:
+  allies: 8
+  obs_enemies: 8
+  obs_minerals: 8
+  obs_map_tiles: 0
+policy:
+  agents: 8
+  nenemy: 8
+  nally: 8
+  nmineral: 8
+  ntile: 0
