@@ -464,7 +464,7 @@ class Trainer:
                 num_micro_batches = int(
                     config.ppo.seq_rosteps
                     * config.ppo.num_envs
-                    / config.optimizer.batch_size
+                    / config.optimizer.micro_batch_size
                 )
                 for micro_batch in range(num_micro_batches):
                     if (
