@@ -527,7 +527,7 @@ class Trainer:
                         gradnorm.append(
                             torch.nn.utils.clip_grad_norm_(
                                 self.policy.parameters(), config.optimizer.max_grad_norm
-                            )
+                            ).item()
                         )
                         self.optimizer.step()
                         for ema in self.ema:
