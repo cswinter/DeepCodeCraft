@@ -458,7 +458,7 @@ class Trainer:
                 clipfrac_sum = 0
                 aproxkl_sum = 0
                 entropy_loss_sum = 0
-                gradnorm = 0
+                gradnorm = []
                 self.policy.train()
                 torch.enable_grad()
                 num_micro_batches = int(
@@ -514,9 +514,6 @@ class Trainer:
                     value_loss_sum += value_loss
                     aproxkl_sum += aproxkl
                     clipfrac_sum += clipfrac
-                    gradnorm += torch.nn.utils.clip_grad_norm_(
-                        self.policy.parameters(), config.optimizer.max_grad_norm
-                    )
 
                     if (
                         (micro_batch + 1)
@@ -527,6 +524,11 @@ class Trainer:
                         # TODO: xprun
                         # if hps.parallelism > 1:
                         #    gradient_allreduce(policy)
+                        gradnorm.append(
+                            torch.nn.utils.clip_grad_norm_(
+                                self.policy.parameters(), config.optimizer.max_grad_norm
+                            )
+                        )
                         self.optimizer.step()
                         for ema in self.ema:
                             ema.update(self.policy.parameters())
@@ -559,9 +561,7 @@ class Trainer:
                         "eliminationmean": eliminationmean,
                         "entropy": sum(entropies) / len(entropies) / np.log(2),
                         "explained variance": explained_var,
-                        "gradnorm": gradnorm
-                        * config.optimizer.batch_size
-                        / config.rosteps,
+                        "gradnorm": np.array(gradnorm).mean(),
                         "advantages": wandb.Histogram(advantages),
                         "values": wandb.Histogram(all_values),
                         "meanval": all_values.mean(),
