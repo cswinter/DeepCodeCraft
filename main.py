@@ -1308,6 +1308,7 @@ def main():
         cfg["descriptor"] = vars(args)["descriptor"]
         if "XPRUN_NAME" in os.environ:
             cfg["xp_name"] = os.environ["XPRUN_NAME"]
+            cfg["base_name"] = os.environ["XPRUN_BASE_NAME"]
         wandb.config.update(cfg)
 
     trainer = Trainer(hs)
