@@ -18,7 +18,7 @@ eval:
   eval_frequency: 500e3
   model_save_frequency: 1
   eval_envs: 128
-  eval_timesteps: 2000
+  eval_timesteps: 1000
 optimizer:
   lr: "step: 0.0005@0 cos 0.00005@10e6"
   vf_coef: 1.0
