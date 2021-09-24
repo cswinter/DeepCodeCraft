@@ -659,8 +659,7 @@ def eval(
             }
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
-                # Scores -0.32 vs previous best, jumping-totem-100M
-                "easy": {"model_file": "arena_medium/copper-snow-25M.pt"},
+                "10m": {"model_file": "arena_medium/arena_medium-5f06842-0-10m"}
             }
         elif objective == envs.Objective.ARENA_MEDIUM_LARGE_MS:
             opponents = {
@@ -756,7 +755,10 @@ def eval(
     partitions = [(policy_envs, policy.obs_config)]
     i = 0
     for name, opp in opponents.items():
-        opp_policy, _, _, _ = load_policy(opp["model_file"], device)
+        if opp["model_file"].endswith(".pt"):
+            opp_policy, _, _, _ = load_policy(opp["model_file"], device)
+        else:
+            opp_policy = load_hs_policy(Path(EVAL_MODELS_PATH) / opp["model_file"], device)
         opp_policy.eval()
         opp["policy"] = opp_policy
         opp["envs"] = odds[
@@ -1019,6 +1021,20 @@ def load_policy(
         )
 
     return policy, optimizer, checkpoint.get("total_steps", 0), adr
+
+
+def load_hs_policy(path, device):
+    hs = HyperState.load(Config, State, lambda _: None, path)
+    config = hs.config
+    state = hs.state
+    policy = TransformerPolicy8HS(
+        config.policy,
+        config.obs,
+        config.task.objective.naction() + config.obs.extra_actions(),
+    )
+    policy.load_state_dict(state.policy.get())
+    policy.to(device)
+    return policy
 
 
 def explained_variance(ypred, y):

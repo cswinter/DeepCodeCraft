@@ -9,7 +9,7 @@ ppo:
 adr:
   initial_hardness: 1.0
   max_hardness: 1.0
-  hardness_offset: 1e20
+  hardness_offset: 1e15
   linear_hardness: true
 task:
   objective: "ARENA_MEDIUM"

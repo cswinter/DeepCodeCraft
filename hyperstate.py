@@ -258,7 +258,7 @@ def _parse(
                     )
                     value = schedule.get_value(0.0)
                 else:
-                    parsed = float(value)
+                    value = float(value)
             if isinstance(value, int):
                 value = float(value)
             _typecheck(field_name, value, float)
