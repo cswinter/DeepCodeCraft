@@ -312,7 +312,7 @@ class TransformerPolicy8HS(nn.Module):
         entropy_loss = -hps.optimizer.entropy_bonus * entropy.mean()
 
         loss = policy_loss + value_loss_scale * value_loss + entropy_loss
-        loss /= hps.optimizer.batches_per_update
+        loss /= hps.optimizer.batch_size / hps.optimizer.micro_batch_size
         loss.backward()
         return (
             policy_loss.data.tolist(),

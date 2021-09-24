@@ -215,11 +215,7 @@ class Trainer:
             # TODO: step
             for g in self.optimizer.param_groups:
                 g["lr"] = config.optimizer.lr
-            assert (
-                config.rosteps
-                % (config.optimizer.bs * config.optimizer.batches_per_update)
-                == 0
-            )
+            assert config.rosteps % config.optimizer.batch_size == 0
 
             if env is None:
                 env = envs.CodeCraftVecEnv(
@@ -465,15 +461,22 @@ class Trainer:
                 gradnorm = 0
                 self.policy.train()
                 torch.enable_grad()
-                num_minibatches = int(
-                    config.ppo.seq_rosteps * config.ppo.num_envs / config.optimizer.bs
+                num_micro_batches = int(
+                    config.ppo.seq_rosteps
+                    * config.ppo.num_envs
+                    / config.optimizer.batch_size
                 )
-                for batch in range(num_minibatches):
-                    if batch % config.optimizer.batches_per_update == 0:
+                for micro_batch in range(num_micro_batches):
+                    if (
+                        micro_batch
+                        * config.optimizer.micro_batch_size
+                        % config.optimizer.batch_size
+                        == 0
+                    ):
                         self.optimizer.zero_grad()
 
-                    start = config.optimizer.bs * batch
-                    end = config.optimizer.bs * (batch + 1)
+                    start = config.optimizer.micro_batch_size * micro_batch
+                    end = config.optimizer.micro_batch_size * (micro_batch + 1)
 
                     o = torch.tensor(all_obs[start:end]).to(device)
                     op = torch.tensor(all_privileged_obs[start:end]).to(device)
@@ -515,7 +518,12 @@ class Trainer:
                         self.policy.parameters(), config.optimizer.max_grad_norm
                     )
 
-                    if (batch + 1) % config.optimizer.batches_per_update == 0:
+                    if (
+                        (micro_batch + 1)
+                        * config.optimizer.micro_batch_size
+                        % config.optimizer.batch_size
+                        == 0
+                    ):
                         # TODO: xprun
                         # if hps.parallelism > 1:
                         #    gradient_allreduce(policy)
@@ -539,11 +547,11 @@ class Trainer:
                 if config.wandb:
                     # TODO: hyperstate metrics
                     metrics = {
-                        "policy_loss": policy_loss_sum / num_minibatches,
-                        "value_loss": value_loss_sum / num_minibatches,
-                        "entropy_loss": entropy_loss_sum / num_minibatches,
-                        "clipfrac": clipfrac_sum / num_minibatches,
-                        "aproxkl": aproxkl_sum / num_minibatches,
+                        "policy_loss": policy_loss_sum / num_micro_batches,
+                        "value_loss": value_loss_sum / num_micro_batches,
+                        "entropy_loss": entropy_loss_sum / num_micro_batches,
+                        "clipfrac": clipfrac_sum / num_micro_batches,
+                        "aproxkl": aproxkl_sum / num_micro_batches,
                         "throughput": throughput,
                         "eprewmean": eprewmean,
                         "eplenmean": eplenmean,
@@ -551,7 +559,9 @@ class Trainer:
                         "eliminationmean": eliminationmean,
                         "entropy": sum(entropies) / len(entropies) / np.log(2),
                         "explained variance": explained_var,
-                        "gradnorm": gradnorm * config.optimizer.bs / config.rosteps,
+                        "gradnorm": gradnorm
+                        * config.optimizer.batch_size
+                        / config.rosteps,
                         "advantages": wandb.Histogram(advantages),
                         "values": wandb.Histogram(all_values),
                         "meanval": all_values.mean(),
@@ -758,7 +768,9 @@ def eval(
         if opp["model_file"].endswith(".pt"):
             opp_policy, _, _, _ = load_policy(opp["model_file"], device)
         else:
-            opp_policy = load_hs_policy(Path(EVAL_MODELS_PATH) / opp["model_file"], device)
+            opp_policy = load_hs_policy(
+                Path(EVAL_MODELS_PATH) / opp["model_file"], device
+            )
         opp_policy.eval()
         opp["policy"] = opp_policy
         opp["envs"] = odds[

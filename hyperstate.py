@@ -544,9 +544,9 @@ class OptimizerConfig:
     # Weight decay
     weight_decay: float = 0.0001
     # Batch size during optimization
-    bs: int = 2048
-    # Accumulate gradients over this many batches before applying gradients
-    batches_per_update: int = 1
+    batch_size: int = 2048
+    # Micro batch size for gradient accumulation
+    micro_batch_size: int = 2048
     # Shuffle samples collected during rollout before optimization
     shuffle: bool = True
     # Weighting of value function loss in optimization objective
@@ -560,6 +560,10 @@ class OptimizerConfig:
     # Exponentially moving averages of model weights
     weights_ema: List[float] = field(default_factory=list)
     # [0.99, 0.997, 0.999, 0.9997, 0.9999]
+
+    # TODO: hack to load old checkpoints, find good solution for backwards compatibility
+    batches_per_update: int = -1
+    bs: int = -1
 
 
 @dataclass
@@ -871,8 +875,7 @@ class Config:
 
     def validate(self):
         assert (
-            self.ppo.seq_rosteps
-            % (self.optimizer.bs * self.optimizer.batches_per_update)
+            self.rosteps % self.optimizer.batch_size
             == 0
         )
         assert self.eval.eval_envs % 4 == 0
