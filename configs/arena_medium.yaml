@@ -1,5 +1,5 @@
 ppo:
-  steps: 10e6
+  steps: 25e6
   win_bonus: 2.0
   partial_score: 1.0
   gamma: 0.999
@@ -20,9 +20,9 @@ eval:
   eval_envs: 128
   eval_timesteps: 1000
 optimizer:
-  lr: "step: 0.0005@0 cos 0.00005@10e6"
+  lr: "step: 0.0005@0 cos 0.00005@25e6"
   vf_coef: 1.0
-  entropy_bonus: "step: 0.5@0 lin 0.15@5e6 0.0@10e6"
+  entropy_bonus: "step: 0.5@0 lin 0.15@10e6 0.0@25e6"
   batch_size: 4096
   micro_batch_size: 1024
 obs:
