@@ -1304,6 +1304,7 @@ def main():
             )
             cfg["xp_name"] = xp_info.xp_def.name
             cfg["base_name"] = xp_info.xp_def.base_name
+            cfg["parallelism"] = parallelism
         else:
             wandb.init(project=wandb_project)
         wandb.config.update(cfg)
