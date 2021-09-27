@@ -148,6 +148,12 @@ class Trainer:
         config = state_manager.config
         state = state_manager.state
 
+        assert (
+            config.optimizer.batch_size
+            % (config.optimizer.micro_batch_size * parallelism)
+            == 0
+        )
+
         self.hyperstate = state_manager
         self.config = config
         self.state = state
@@ -221,7 +227,7 @@ class Trainer:
 
             if env is None:
                 env = envs.CodeCraftVecEnv(
-                    exact_div(config.ppo.num_envs, self.parallelism),
+                    self.local_num_envs(),
                     exact_div(config.ppo.num_self_play, self.parallelism),
                     config.task.objective,
                     config.task.action_delay,
@@ -399,12 +405,13 @@ class Trainer:
 
                 all_returns = np.zeros(len(all_rewards), dtype=np.float32)
                 all_values = np.array(all_values)
-                last_gae = np.zeros(config.ppo.num_envs)
+                num_envs = self.local_num_envs()
+                last_gae = np.zeros(num_envs)
                 gamma = config.ppo.gamma
                 for t in reversed(range(config.ppo.seq_rosteps)):
-                    for i in range(config.ppo.num_envs):
-                        ti = t * config.ppo.num_envs + i
-                        tnext_i = (t + 1) * config.ppo.num_envs + i
+                    for i in range(num_envs):
+                        ti = t * num_envs + i
+                        tnext_i = (t + 1) * num_envs + i
                         nextnonterminal = 1.0 - all_dones[ti]
                         if t == config.ppo.seq_rosteps - 1:
                             next_value = final_values[i]
@@ -459,11 +466,9 @@ class Trainer:
                 gradnorm = []
                 self.policy.train()
                 torch.enable_grad()
-                num_micro_batches = int(
-                    config.ppo.seq_rosteps
-                    * config.ppo.num_envs
-                    / config.optimizer.micro_batch_size
-                    / self.parallelism
+                num_micro_batches = exact_div(
+                    config.ppo.seq_rosteps * self.local_num_envs(),
+                    config.optimizer.micro_batch_size,
                 )
                 for micro_batch in range(num_micro_batches):
                     if (
@@ -624,6 +629,9 @@ class Trainer:
             #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
             # )
             pass
+
+    def local_num_envs(self):
+        return exact_div(self.config.ppo.num_envs, self.parallelism)
 
 
 def eval(
@@ -1143,11 +1151,9 @@ def sync_parameters(model):
 
 
 def gradient_allreduce(model):
-    size = float(dist.get_world_size())
     for param in model.parameters():
         if param.grad is not None:
             dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-            param.grad.data /= size
 
 
 def allcat(tensor: torch.Tensor, rank: int, parallelism: int) -> Optional[torch.Tensor]:
@@ -1172,7 +1178,7 @@ def profile_fp(hps: HyperParams) -> None:
     start_time = time.time()
     device = torch.device("cuda:0")
     obs_config = obs_config_from(hps)
-    env = envs.CodeCraftVecEnv(
+    env = envs.CoderaftVecEnv(
         hps.num_envs,
         hps.num_self_play,
         hps.objective,
