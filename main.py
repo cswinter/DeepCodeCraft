@@ -267,7 +267,7 @@ class Trainer:
                     for policy_ema in emas:
                         eval(
                             policy=self.policy,
-                            num_envs=exact_div(config.eval.eval_envs, self.parallelism),
+                            num_envs=config.eval.eval_envs,
                             device=device,
                             objective=config.task.objective,
                             eval_steps=config.eval.eval_timesteps,
@@ -1225,6 +1225,7 @@ def profile_fp(hps: HyperParams) -> None:
 
 def init_process(backend="gloo"):
     """ Initialize the distributed environment. """
+    # TODO: use nice methods from xprun lib
     rank = int(os.environ["XPRUN_RANK"])
     world_size = int(os.environ["XPRUN_REPLICAS"])
     replica_name = os.environ["XPRUN_REPLICA_NAME"]
