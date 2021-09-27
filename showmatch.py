@@ -2,7 +2,7 @@ import click
 import torch
 import numpy as np
 
-from main import load_policy, eval
+from main import load_policy, eval, load_hs_policy
 from gym_codecraft import envs
 
 
@@ -38,7 +38,10 @@ def showmatch(
     else:
         raise Exception("Invalid args")
     objective = envs.Objective(task)
-    policy1, _, _, _ = load_policy(model_paths[0], device)
+    if model_paths[0].endswith(".pt"):
+        policy1, _, _, _ = load_policy(model_paths[0], device)
+    else:
+        policy1 = load_hs_policy(model_paths[0], device)
     eval(
         policy=policy1,
         num_envs=num_envs,

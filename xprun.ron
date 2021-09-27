@@ -6,6 +6,7 @@ XpV0(
             env_secrets: {
                 "WANDB_API_KEY": "wandb-api-key",
             },
+            replicas: 2,
             gpu: 1,
             gpu_mem: "5GB",
             volumes: {
@@ -13,8 +14,23 @@ XpV0(
             },
             build: [
                 BaseImage("nvcr.io/nvidia/pytorch:21.03-py3"),
-                Repo(path: "requirements.txt"),
+
+                // install rust toolchain
+                Run("apt-get update"),
+                Run("apt-get install curl build-essential --yes"),
+                Run("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"),
+                Env("PATH", "/root/.cargo/bin:${PATH}"),
+                Run("pip install --upgrade pip"),
+                Run("pip install maturin"),
+
+                // build xprun from source
+                Repo(url: "git@github.com:cswinter/xprun.git", rev: "8ec62f6", cd: true),
+                Run("maturin build --cargo-extra-args=--features=python"),
+                Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_27_x86_64.whl"),
+
+                Repo(path: "requirements.txt", cd: true),
                 Run("pip install -r requirements.txt"),
+
                 Repo(keep: true, cd: true),
             ],
         ),

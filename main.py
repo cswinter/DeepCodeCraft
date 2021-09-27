@@ -1,4 +1,5 @@
 import logging
+import xprun
 import subprocess
 import time
 import os
@@ -141,7 +142,9 @@ def initial_state(config: Config) -> State:
 
 
 class Trainer:
-    def __init__(self, state_manager: HyperState[Config, State]):
+    def __init__(
+        self, state_manager: HyperState[Config, State], rank: int, parallelism: int
+    ):
         config = state_manager.config
         state = state_manager.state
 
@@ -166,6 +169,8 @@ class Trainer:
         self.optimizer.load_state_dict(state.optimizer.get())
         self.ema = state.ema
         self.adr = ADR(config.adr, state.adr)
+        self.rank = rank
+        self.parallelism = parallelism
 
     def train(self, out_dir: str) -> None:
         config = self.config
@@ -186,13 +191,10 @@ class Trainer:
         #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
         #    )
 
-        # TODO: xprun
-        # if hps.parallelism > 1:
-        #    sync_parameters(policy)
-
-        # TODO: xprun
-        # if hps.rank == 0:
-        #    wandb.watch(policy)
+        if self.parallelism > 1:
+            sync_parameters(self.policy)
+        if self.rank == 0:
+            wandb.watch(self.policy)
 
         next_eval = state.step
         next_full_eval = 1
@@ -219,8 +221,8 @@ class Trainer:
 
             if env is None:
                 env = envs.CodeCraftVecEnv(
-                    config.ppo.num_envs,
-                    config.ppo.num_self_play,
+                    exact_div(config.ppo.num_envs, self.parallelism),
+                    exact_div(config.ppo.num_self_play, self.parallelism),
                     config.task.objective,
                     config.task.action_delay,
                     config=config.task,
@@ -246,8 +248,7 @@ class Trainer:
                     max_game_length=None
                     if config.task.max_game_length == 0
                     else config.task.max_game_length,
-                    # TODO: xprun
-                    stagger_offset=0,  # hps.rank / hps.parallelism,
+                    stagger_offset=self.rank / self.parallelism,
                     loss_penalty=config.ppo.loss_penalty,
                     partial_score=config.ppo.partial_score,
                 )
@@ -266,22 +267,19 @@ class Trainer:
                     for policy_ema in emas:
                         eval(
                             policy=self.policy,
-                            # TODO: xprun
-                            num_envs=config.eval.eval_envs,  # // hps.parallelism,
+                            num_envs=exact_div(config.eval.eval_envs, self.parallelism),
                             device=device,
                             objective=config.task.objective,
                             eval_steps=config.eval.eval_timesteps,
                             curr_step=state.step,
                             symmetric=config.eval.eval_symmetric,
-                            # TODO: xprun
-                            rank=0,  # hps.rank,
-                            parallelism=1,  # hps.parallelism,
+                            rank=self.rank,
+                            parallelism=self.parallelism,
                             policy_ema=policy_ema,
                         )
                 next_eval += config.eval.eval_frequency
                 next_model_save -= 1
-                # TODO: xprun
-                if next_model_save == 0:  # and hps.rank == 0:
+                if next_model_save == 0 and self.rank == 0:
                     # TODO: hyperstate
                     # hyperstate.checkpoint(state)
                     # next_model_save = config.eval.model_save_frequency
@@ -465,11 +463,13 @@ class Trainer:
                     config.ppo.seq_rosteps
                     * config.ppo.num_envs
                     / config.optimizer.micro_batch_size
+                    / self.parallelism
                 )
                 for micro_batch in range(num_micro_batches):
                     if (
                         micro_batch
                         * config.optimizer.micro_batch_size
+                        * self.parallelism
                         % config.optimizer.batch_size
                         == 0
                     ):
@@ -518,12 +518,12 @@ class Trainer:
                     if (
                         (micro_batch + 1)
                         * config.optimizer.micro_batch_size
+                        * self.parallelism
                         % config.optimizer.batch_size
                         == 0
                     ):
-                        # TODO: xprun
-                        # if hps.parallelism > 1:
-                        #    gradient_allreduce(policy)
+                        if self.parallelism > 1:
+                            gradient_allreduce(self.policy)
                         gradnorm.append(
                             torch.nn.utils.clip_grad_norm_(
                                 self.policy.parameters(), config.optimizer.max_grad_norm
@@ -535,19 +535,13 @@ class Trainer:
             torch.cuda.empty_cache()
 
             state.epoch += 1
-            # TODO: xprun
-            state.step += config.rosteps  # * hps.parallelism
+            state.step += config.rosteps
             state.iteration += 1
-            # TODO: xprun
-            throughput = int(
-                config.rosteps / (time.time() - episode_start)
-            )  # * hps.parallelism
+            throughput = int(config.rosteps / (time.time() - episode_start))
 
             all_agent_masks = all_action_masks.sum(2) > 1
-            # TODO: xprun if rank == 0
-            if config.optimizer.epochs > 0:
+            if config.optimizer.epochs > 0 and self.rank == 0:
                 if config.wandb:
-                    # TODO: hyperstate metrics
                     metrics = {
                         "policy_loss": policy_loss_sum / num_micro_batches,
                         "value_loss": value_loss_sum / num_micro_batches,
@@ -613,25 +607,23 @@ class Trainer:
             for policy_ema in [None] + self.ema:
                 eval(
                     policy=self.policy,
-                    # TODO: xprun
-                    num_envs=config.eval.eval_envs,  # // hps.parallelism,
+                    num_envs=config.eval.eval_envs,
                     device=device,
                     objective=config.task.objective,
                     eval_steps=5 * config.eval.eval_timesteps,
                     curr_step=state.step,
                     symmetric=config.eval.eval_symmetric,
                     printerval=config.eval.eval_timesteps,
-                    # TODO: xprun
-                    rank=0,  # hps.rank,
-                    parallelism=1,  # parallelism,
+                    rank=self.rank,
+                    parallelism=self.parallelism,
                     policy_ema=policy_ema,
                 )
-        # TODO: xprun
-        # if hps.rank == 0:
-        # TODO: hyperstate
-        # save_policy(
-        #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-        # )
+        if self.rank == 0:
+            # TODO: hyperstate
+            # save_policy(
+            #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
+            # )
+            pass
 
 
 def eval(
@@ -653,6 +645,8 @@ def eval(
     create_game_delay=0.0,
 ):
     start_time = time.time()
+    if parallelism > 1:
+        num_envs = exact_div(num_envs, parallelism)
 
     if printerval is None:
         printerval = eval_steps
@@ -768,9 +762,7 @@ def eval(
         if opp["model_file"].endswith(".pt"):
             opp_policy, _, _, _ = load_policy(opp["model_file"], device)
         else:
-            opp_policy = load_hs_policy(
-                Path(EVAL_MODELS_PATH) / opp["model_file"], device
-            )
+            opp_policy = load_hs_policy(opp["model_file"], device)
         opp_policy.eval()
         opp["policy"] = opp_policy
         opp["envs"] = odds[
@@ -1036,6 +1028,8 @@ def load_policy(
 
 
 def load_hs_policy(path, device):
+    if not path.startswith("/"):
+        path = os.path.join(EVAL_MODELS_PATH, path)
     hs = HyperState.load(Config, State, lambda _: None, path)
     config = hs.config
     state = hs.state
@@ -1253,12 +1247,15 @@ def main():
     args_parser.add_argument("--profile", action="store_true")
     args = args_parser.parse_args()
 
+    xp_info = xprun.current_xp()
+
     if not args.out_dir:
-        if "XPRUN_ID" in os.environ:
+        if xp_info is not None:
+            # TODO: move this into xprun library
             out_dir = os.path.join(
                 "/mnt/xprun",
-                os.environ["XPRUN_PROJECT"],
-                os.environ["XPRUN_SANITIZED_NAME"] + "-" + os.environ["XPRUN_ID"],
+                xp_info.xp_def.project,
+                xp_info.sanitized_name + "-" + xp_info.id,
             )
         else:
             t = time.strftime("%Y-%m-%d~%H:%M:%S")
@@ -1275,44 +1272,45 @@ def main():
     if checkpoint is not None:
         args.config = checkpoint
 
-    # TODO: xprun
-    """
-    if hps.parallelism > 1:
-        if "XPRUN_ID" not in os.environ:
-            raise Exception("Data parallel training only supported with xprun")
-        else:
-            init_process()
-            hps.rank = int(os.environ["XPRUN_RANK"])
-    """
+    if xp_info is not None and xp_info.replicas > 1:
+        init_process()
+        rank = xp_info.replica_index
+        parallelism = xp_info.replicas
+    else:
+        rank = 0
+        parallelism = 1
 
     hs = HyperState.load(Config, State, initial_state, args.config, checkpoint_dir,)
     config = hs.config
 
-    # TODO: xprun
-    if config.wandb:  # hps.rank == 0:
+    if config.wandb and rank == 0:
         wandb_project = (
             "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
         )
-        if "XPRUN_NAME" in os.environ:
-            wandb.init(
-                project=wandb_project,
-                name=os.environ["XPRUN_NAME"],
-                id=os.environ["XPRUN_ID"],
-            )
-        else:
-            wandb.init(project=wandb_project)
+
         cfg = hyperstate.asdict(config)
         cfg["commit"] = subprocess.check_output(
             ["git", "describe", "--tags", "--always", "--dirty"]
         ).decode("UTF-8")[:-1]
         cfg["descriptor"] = vars(args)["descriptor"]
-        if "XPRUN_NAME" in os.environ:
-            cfg["xp_name"] = os.environ["XPRUN_NAME"]
-            cfg["base_name"] = os.environ["XPRUN_BASE_NAME"]
+        if xp_info is not None:
+            wandb.init(
+                project=wandb_project, name=xp_info.xp_def.name, id=xp_info.id,
+            )
+            cfg["xp_name"] = xp_info.xp_def.name
+            cfg["base_name"] = xp_info.xp_def.base_name
+        else:
+            wandb.init(project=wandb_project)
         wandb.config.update(cfg)
 
-    trainer = Trainer(hs)
+    trainer = Trainer(hs, rank, parallelism)
     trainer.train(out_dir=out_dir)
+
+
+def exact_div(a, b):
+    if a % b != 0:
+        raise ValueError(f"{a} is not divisible by {b}")
+    return a // b
 
 
 if __name__ == "__main__":
