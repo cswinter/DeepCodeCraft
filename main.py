@@ -1249,6 +1249,7 @@ def main():
     args = args_parser.parse_args()
 
     xp_info = xprun.current_xp()
+    print(xp_info)
 
     if not args.out_dir:
         if xp_info is not None:
@@ -1283,6 +1284,9 @@ def main():
 
     hs = HyperState.load(Config, State, initial_state, args.config, checkpoint_dir,)
     config = hs.config
+    # TODO: make better
+    if parallelism > 1:
+        hs.checkpoint_dir = None
 
     if config.wandb and rank == 0:
         wandb_project = (

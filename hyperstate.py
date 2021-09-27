@@ -874,8 +874,5 @@ class Config:
         return self.ppo.num_envs * self.ppo.seq_rosteps
 
     def validate(self):
-        assert (
-            self.rosteps % self.optimizer.batch_size
-            == 0
-        )
+        assert self.rosteps % self.optimizer.batch_size == 0
         assert self.eval.eval_envs % 4 == 0
