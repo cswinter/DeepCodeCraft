@@ -1223,14 +1223,12 @@ def profile_fp(hps: HyperParams) -> None:
     print(prof.display(show_events=False))
 
 
-def init_process(backend="gloo"):
+def init_process(xp_info: xprun.XpInfo, backend="gloo"):
     """ Initialize the distributed environment. """
-    # TODO: use nice methods from xprun lib
-    rank = int(os.environ["XPRUN_RANK"])
-    world_size = int(os.environ["XPRUN_REPLICAS"])
-    replica_name = os.environ["XPRUN_REPLICA_NAME"]
-    xprun_id = os.environ["XPRUN_ID"]
-    os.environ["MASTER_ADDR"] = f"xprun.{xprun_id}.{replica_name}-0"
+    rank = xp_info.replica_index
+    world_size = xp_info.replicas
+    # TODO: move this into xprun lib
+    os.environ["MASTER_ADDR"] = f"xprun.{xp_info.id}.{xp_info.replica_name}-0"
     os.environ["MASTER_PORT"] = "29500"
     dist.init_process_group(backend, rank=rank, world_size=world_size)
 
@@ -1275,7 +1273,7 @@ def main():
         args.config = checkpoint
 
     if xp_info is not None and xp_info.replicas > 1:
-        init_process()
+        init_process(xp_info)
         rank = xp_info.replica_index
         parallelism = xp_info.replicas
     else:
