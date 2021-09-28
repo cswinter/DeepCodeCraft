@@ -73,6 +73,32 @@ def random_rules(
     )
 
 
+def map_allied_wealth(randomize: bool, hardness: int, require_default_mothership: bool):
+    map_width = 6000
+    map_height = 3750
+    mineral_count = 25
+    angle = 2 * np.pi * np.random.rand()
+    spawn_x = (map_width // 2 - 100) * np.sin(angle)
+    spawn_y = (map_height // 2 - 100) * np.cos(angle)
+
+    return {
+        "mapWidth": map_width,
+        "mapHeight": map_height,
+        "minerals": mineral_count * [(1, 1)],
+        "player1Drones": [
+            drone_dict(
+                spawn_x,
+                spawn_y,
+                constructors=2,
+                storage_modules=4,
+                engines=4,
+                resources=0,
+            )
+        ],
+        "player2Drones": [drone_dict(-spawn_x, -spawn_y, shield_generators=10)],
+    }
+
+
 def map_arena_tiny(randomize: bool, hardness: int, require_default_mothership: bool):
     storage_modules = 1
     constructors = 1
@@ -787,6 +813,9 @@ class CodeCraftVecEnv(object):
         self.next_opponent_index = 0
 
         self.builds = objective.extra_builds()
+        if objective == Objective.ALLIED_WEALTH:
+            self.custom_map = map_allied_wealth
+            self.game_length = 1 * 60 * 60
         if objective == Objective.ARENA_TINY:
             self.game_length = 1 * 60 * 60
             self.custom_map = map_arena_tiny

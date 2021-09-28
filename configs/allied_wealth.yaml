@@ -1,0 +1,24 @@
+ppo:
+  steps: 1.5e6
+  gamma: 0.99
+  num_envs: 64
+  num_self_play: 0
+task:
+  objective: "ALLIED_WEALTH"
+eval:
+  eval_envs: 0
+optimizer:
+  lr: 0.0003
+adr: {}
+obs:
+  allies: 1
+  obs_minerals: 10
+  obs_enemies: 0
+  obs_map_tiles: 0
+  use_privileged: false
+policy:
+  agents: 1
+  nally: 1
+  nmineral: 10
+  nenemy: 0
+  ntile: 0

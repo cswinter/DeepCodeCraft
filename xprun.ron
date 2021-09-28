@@ -6,7 +6,7 @@ XpV0(
             env_secrets: {
                 "WANDB_API_KEY": "wandb-api-key",
             },
-            replicas: 2,
+            replicas: 1,
             gpu: 1,
             gpu_mem: "5GB",
             volumes: {
@@ -50,9 +50,9 @@ XpV0(
                 Run("sbt compile"),
 
                 // build CodeCraftGame and CodeCraftServer from source
-                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "3da8367", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "edc5a9f2", cd: true),
                 Run("sbt publishLocal"),
-                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "db01b4d", keep: true, cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "01a7dde", keep: true, cd: true),
                 Run("sbt compile"),
             ],
         ),
