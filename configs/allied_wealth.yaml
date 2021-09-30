@@ -9,6 +9,7 @@ eval:
   eval_envs: 0
 optimizer:
   lr: 0.0003
+  micro_batch_size: 1024
 adr: {}
 obs:
   allies: 1
