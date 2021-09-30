@@ -35,7 +35,8 @@ XpV0(
             ],
         ),
         "codecraftserver": (
-            command: ["sbt", "run"],
+            command: ["server-0.1.0-SNAPSHOT/bin/server", "-Dplay.http.secret.key=ad31779d4ee49d5ad5162bf1429c32e2e9933f3b"],
+            //command: ["sbt", "run"],
             tty: true,
             env: {
                 "SBT_OPTS": "-Xmx15G",
@@ -53,7 +54,10 @@ XpV0(
                 Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "edc5a9f2", cd: true),
                 Run("sbt publishLocal"),
                 Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "01a7dde", keep: true, cd: true),
-                Run("sbt compile"),
+                Run("sbt dist"),
+                Run("unzip server/target/universal/server-0.1.0-SNAPSHOT.zip"),
+
+                // Run("sbt compile"),
             ],
         ),
     }
