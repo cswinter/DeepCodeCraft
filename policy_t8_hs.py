@@ -499,10 +499,11 @@ class InputNorm(nn.Module):
             return
         mean = input.mean(dim=0)
 
-        if dist.is_initialized():
-            dist.all_reduce(count, op=dist.ReduceOp.SUM)
-            dist.all_reduce(mean, op=dist.ReduceOp.SUM)
-            mean /= dist.get_world_size()
+        # TODO: this can crash with gloo error. ordering of different InputNorm modules different?
+        #if dist.is_initialized():
+            #dist.all_reduce(count, op=dist.ReduceOp.SUM)
+            #dist.all_reduce(mean, op=dist.ReduceOp.SUM)
+            #mean /= dist.get_world_size()
 
         if self.count == 0:
             self.count += count
