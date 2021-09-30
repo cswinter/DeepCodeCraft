@@ -599,10 +599,10 @@ class Trainer:
                     # TODO: steps
                     wandb.log(metrics, step=state.step)
 
-                # TODO: some way to avoid doing this on every iteration?
-                state.policy.set(self.policy.state_dict())
-                state.optimizer.set(self.optimizer.state_dict())
-                self.hyperstate.step()
+            # TODO: some way to avoid doing this on every iteration?
+            state.policy.set(self.policy.state_dict())
+            state.optimizer.set(self.optimizer.state_dict())
+            self.hyperstate.step()
 
             print(f"{throughput} samples/s", flush=True)
 
