@@ -1,3 +1,4 @@
+import argparse
 import logging
 import xprun
 import subprocess
@@ -1243,13 +1244,13 @@ def main():
     logging.basicConfig(level=logging.INFO)
     # torch.set_printoptions(threshold=25000)
 
-    hps = HyperParams()
-    args_parser = hps.args_parser()
+    args_parser = argparse.ArgumentParser()
     args_parser.add_argument("--out-dir")
     args_parser.add_argument("--config")
     args_parser.add_argument("--device", default=0)
     args_parser.add_argument("--descriptor", default="none")
     args_parser.add_argument("--profile", action="store_true")
+    args_parser.add_argument("--hps", nargs="*")
     args = args_parser.parse_args()
 
     xp_info = xprun.current_xp()
@@ -1286,7 +1287,9 @@ def main():
         rank = 0
         parallelism = 1
 
-    hs = HyperState.load(Config, State, initial_state, args.config, checkpoint_dir,)
+    hs = HyperState.load(
+        Config, State, initial_state, args.config, checkpoint_dir, overrides=args.hps
+    )
     config = hs.config
     # TODO: make better
     if parallelism > 1:

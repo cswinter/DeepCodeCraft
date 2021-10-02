@@ -31,6 +31,8 @@ class HyperState(Generic[C, S]):
     state: S
     checkpoint_dir: Optional[Path]
     checkpoint_key: str
+    config_clz: Type[C]
+    state_clz: Type[S]
     last_checkpoint: Optional[Path] = None
     schedules: Dict[str, Any] = field(default_factory=dict)
 
@@ -43,9 +45,12 @@ class HyperState(Generic[C, S]):
         path: str,
         checkpoint_dir: Optional[str] = None,
         checkpoint_key: Optional[str] = None,
+        overrides: Optional[List[str]] = None,
     ) -> "HyperState[C, S]":
         if checkpoint_key is None:
             checkpoint_key = "step"
+        if overrides is None:
+            overrides = []
 
         path = Path(path)
         if os.path.isdir(path):
@@ -55,7 +60,7 @@ class HyperState(Generic[C, S]):
             config_path = path
             state_path = None
 
-        config, schedules = _load_file_and_schedules(config_clz, config_path)
+        config, schedules = _load_file_and_schedules(config_clz, config_path, overrides)
         # TODO: hack
         config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
         config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
@@ -69,9 +74,15 @@ class HyperState(Generic[C, S]):
         if checkpoint_dir is not None:
             checkpoint_dir = Path(checkpoint_dir)
         hs = HyperState(
-            config, state, checkpoint_dir, checkpoint_key, schedules=schedules
+            config,
+            state,
+            checkpoint_dir,
+            checkpoint_key,
+            config_clz,
+            state_clz,
+            schedules=schedules,
         )
-        apply_schedules(state, config, schedules)
+        apply_schedules(state, config, hs.schedules)
         return hs
 
     def checkpoint(self, target_dir: str):
@@ -216,12 +227,30 @@ def load_file(clz: Type[T], path: str) -> T:
     return _load_file_and_schedules(clz, path)[0]
 
 
-def _load_file_and_schedules(clz: Type[T], path: str) -> T:
+def _load_file_and_schedules(clz: Type[T], path: str, overrides: List[str]) -> T:
     path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
     file = open(path)
     values = yaml.full_load(file)
+    for override in overrides:
+        key, str_val = override.split("=")
+        fpath = key.split(".")
+        _values = values
+        _clz = clz
+        for segment in fpath[:-1]:
+            _values = _values[segment]
+            _clz = _clz.__annotations__[segment]
+        # TODO: missing types
+        if (_clz == int or _clz == float) and "@" in str_val:
+            val = str_val
+        elif _clz == int:
+            val = _parse_int(str_val)
+        elif clz == float or _clz == bool:
+            val = _clz(str_val)
+        else:
+            val = str_val
+        _values[fpath[-1]] = val
     return _parse(clz, values, path.absolute().parent)
 
 
