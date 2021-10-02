@@ -10,4 +10,5 @@ torchprof
 -f https://pytorch-geometric.com/whl/torch-1.8.0+cu111.html
 torch-scatter
 wandb==0.10.9
+optuna==2.9.1
 git+https://github.com/fadel/pytorch_ema@3950a7b5c4b88f46fd14f620277bad21898597a9
