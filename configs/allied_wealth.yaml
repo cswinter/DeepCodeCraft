@@ -1,15 +1,17 @@
 ppo:
-  steps: 1.5e6
+  steps: 500e3
+  seq_rosteps: 32
+  num_envs: 128
   gamma: 0.99
-  num_envs: 64
   num_self_play: 0
 task:
   objective: "ALLIED_WEALTH"
 eval:
   eval_envs: 0
 optimizer:
-  lr: 0.0003
-  micro_batch_size: 2048
+  lr: "step: 0.0015@0 cos 0.0001@500e3"
+  batch_size: 512
+  micro_batch_size: 512
 adr: {}
 obs:
   allies: 1
