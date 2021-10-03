@@ -189,15 +189,6 @@ class Trainer:
 
         obs_config = obs_config_from(config)
 
-        # self.hyperstate.checkpoint("test")
-        # return
-
-        # TODO: hyperstate
-        # if hps.resume_from != "":
-        #    policy, optimizer, resume_steps, adr, lr_scheduler = load_policy(
-        #        hps.resume_from, device, optimizer_fn, optimizer_kwargs, hps, hps.verify
-        #    )
-
         if self.parallelism > 1:
             sync_parameters(self.policy)
         if self.rank == 0:
@@ -1278,6 +1269,7 @@ def main():
     checkpoint = hyperstate.find_latest_checkpoint(checkpoint_dir)
     if checkpoint is not None:
         args.config = checkpoint
+        print(f"Resuming from checkpoint {checkpoint}")
 
     if xp_info is not None and xp_info.replicas > 1:
         init_process(xp_info)

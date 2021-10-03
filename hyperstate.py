@@ -69,7 +69,7 @@ class HyperState(Generic[C, S]):
         if state_path is None:
             state = initial_state(config)
         else:
-            state = load_file(state_clz, state_path)
+            state = load_file(state_clz, state_path, overrides=[])
 
         if checkpoint_dir is not None:
             checkpoint_dir = Path(checkpoint_dir)
@@ -100,7 +100,7 @@ class HyperState(Generic[C, S]):
             val = getattr(self.state, self.checkpoint_key)
             assert isinstance(
                 val, int
-            ), f"checkpoint key `{self.checkpoint_key}`` must be an integer, but found value `{val}` of type `{type(val)}`"
+            ), f"checkpoint key `{self.checkpoint_key}` must be an integer, but found value `{val}` of type `{type(val)}`"
             checkpoint_dir = (
                 self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
             )
@@ -223,8 +223,8 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None):
     return result
 
 
-def load_file(clz: Type[T], path: str) -> T:
-    return _load_file_and_schedules(clz, path)[0]
+def load_file(clz: Type[T], path: str, overrides: List[str]) -> T:
+    return _load_file_and_schedules(clz, path, overrides)[0]
 
 
 def _load_file_and_schedules(clz: Type[T], path: str, overrides: List[str]) -> T:
@@ -775,7 +775,7 @@ class ObsConfig:
 class EvalConfig:
     eval_envs: int = 256
     eval_timesteps: int = 360
-    eval_frequency: int = 1e5
+    eval_frequency: int = int(1e5)
     model_save_frequency: int = 10
     eval_symmetric: bool = True
     full_eval_frequency: int = 5
