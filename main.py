@@ -598,7 +598,8 @@ class Trainer:
 
             print(f"{throughput} samples/s", flush=True)
 
-        env.close()
+        if env is not None:
+            env.close()
 
         if config.eval.eval_envs > 0:
             for policy_ema in [None] + self.ema:
@@ -615,12 +616,6 @@ class Trainer:
                     parallelism=self.parallelism,
                     policy_ema=policy_ema,
                 )
-        if self.rank == 0:
-            # TODO: hyperstate
-            # save_policy(
-            #    policy, out_dir, total_steps, optimizer, adr, lr_scheduler, policy_emas
-            # )
-            pass
 
     def local_num_envs(self):
         return exact_div(self.config.ppo.num_envs, self.parallelism)
