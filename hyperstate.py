@@ -92,7 +92,7 @@ class HyperState(Generic[C, S]):
             with open(p / "config.yaml", "w") as f:
                 yaml.dump(asdict(self.config, schedules=self.schedules), f)
             checkpoint(self.state, p)
-            shutil.move(p, target_dir)
+            shutil.move(str(p), target_dir)
 
     def step(self):
         apply_schedules(self.state, self.config, self.schedules)
@@ -104,7 +104,7 @@ class HyperState(Generic[C, S]):
             checkpoint_dir = (
                 self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
             )
-            self.checkpoint(checkpoint_dir)
+            self.checkpoint(str(checkpoint_dir))
             if self.last_checkpoint is not None:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     shutil.move(str(self.last_checkpoint), tmpdir)
