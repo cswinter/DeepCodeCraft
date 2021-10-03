@@ -38,7 +38,7 @@ class HyperOptimizer:
         momentum = 1 - ommomentum
         weight_decay = trial.suggest_loguniform("weight_decay", 1e-6, 1e-2)
         epochs = trial.suggest_int("epochs", 1, 3)
-        omgamma = trial.suggest_loguniform("omgamma", 0.01, 1)
+        omgamma = trial.suggest_loguniform("omgamma", 0.001, 1)
         gamma = 1 - omgamma
         omlambda = trial.suggest_loguniform("omlambda", 0.01, 1)
         lamb = 1 - omlambda
