@@ -1279,7 +1279,7 @@ def main():
     )
     config = hs.config
     # TODO: make better
-    if parallelism > 1:
+    if rank > 1:
         hs.checkpoint_dir = None
 
     if config.wandb and rank == 0:
