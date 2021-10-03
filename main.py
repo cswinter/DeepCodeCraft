@@ -1279,7 +1279,7 @@ def main():
     )
     config = hs.config
     # TODO: make better
-    if rank > 1:
+    if rank > 0:
         hs.checkpoint_dir = None
 
     if config.wandb and rank == 0:
