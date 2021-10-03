@@ -44,8 +44,8 @@ class HyperOptimizer:
             "--config",
             "configs/arena_medium.yaml",
             "--hps",
-            "ppo.steps=5e6",
-            f"optimizer.lr=step: {lr}@0 cos {lr*final_lr_mult}@5e6",
+            "ppo.steps=10e6",
+            f"optimizer.lr=step: {lr}@0 cos {lr*final_lr_mult}@10e6",
             f"optimizer.batch_size={batch_size}",
             f"optimizer.micro_batch_size={micro_batch_size}",
             f"optimizer.momentum={momentum}",
@@ -115,7 +115,7 @@ class HyperOptimizer:
 
     def optimize(self):
         study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)
-        study.optimize(self.objective, n_trials=50, n_jobs=6)
+        study.optimize(self.objective, n_trials=250, n_jobs=6)
         print(study.best_params)
 
 
