@@ -9,10 +9,10 @@ XpV0(
                 "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
             },
             build: [
-                BaseImage("nvcr.io/nvidia/pytorch:21.03-py3"),
-                Repo(path: "requirements.txt"),
+                From("nvcr.io/nvidia/pytorch:21.03-py3"),
+                Repo(path: "requirements.txt", rm: true),
                 Run("pip install -r requirements.txt"),
-                Repo(keep: true, cd: true),
+                Repo(cd: true),
             ],
         ),
         "codecraftserver": (
@@ -22,19 +22,20 @@ XpV0(
             },
             tty: true,
             build: [
-                BaseImage("hseeberger/scala-sbt:8u222_1.3.5_2.13.1"),
+                From("hseeberger/scala-sbt:8u222_1.3.5_2.13.1"),
 
                 // build fixed versions of CodeCraftGame and CodeCraftServer as a straightforward way to download sbt 0.13.16 and populate dependency cache
-                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "92304eb", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "92304eb", cd: true, rm: true),
                 Run("sbt publishLocal"),
-                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "df76892", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "df76892", cd: true, rm: true),
                 Run("sbt compile"),
 
                 // build CodeCraftGame and CodeCraftServer from source
-                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "3da8367", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "edc5a9f2", cd: true),
                 Run("sbt publishLocal"),
-                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "db01b4d", keep: true, cd: true),
-                Run("sbt compile"),
+                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "01a7dde", cd: true),
+                Run("sbt dist"),
+                Run("unzip server/target/universal/server-0.1.0-SNAPSHOT.zip"),
             ],
         ),
     }
