@@ -1,5 +1,6 @@
 import optuna
 import xprun
+import time
 import random
 import wandb
 from copy import deepcopy
@@ -58,8 +59,9 @@ class HyperOptimizer:
             f"--descriptor=lr={lr:.2e},final_lr={lr*final_lr_mult:.2e},batch_size={batch_size},seq_rosteps={seq_rosteps},num_envs={num_envs},momentum={momentum:.2e},weight_decay={weight_decay:.2e},epochs={epochs},cliprange={cliprange:.2e},gamma={gamma:.2e}",
         ]
         xp.name = f"{self.xp_name}-{self.trial}"
+
         self.trial += 1
-        self.xprun.run_to_completion(xp, wait=True, priority=3, user="clemens")
+        self.run_xp(xp)
         run = list(
             self.wandb.runs("cswinter/deep-codecraft-vs", {"config.xp_name": xp.name})
         )[0]
@@ -107,11 +109,33 @@ class HyperOptimizer:
         ]
         xp.name = f"{self.xp_name}-{self.trial}"
         self.trial += 1
-        self.xprun.run_to_completion(xp, wait=True, priority=3, user="clemens")
+        self.run_xp(xp)
         run = list(
             self.wandb.runs("cswinter/deep-codecraft", {"config.xp_name": xp.name})
         )[0]
         return run.summary.get("eprewmean", 0)
+
+    def run_xp(self, xp):
+        for retry in range(3):
+            try:
+                self.xprun.run(xp, wait=True, priority=3, user="clemens")
+            except Exception as e:
+                print(f"Failed to run {xp.name}: {e}")
+                print(f"Retrying in 60 seconds... ({retry})")
+                time.sleep(60)
+                continue
+            break
+        else:
+            print(f"Failed to run {xp.name}")
+            return 0
+        while True:
+            try:
+                self.xprun.block_until_completed(xp.name)
+            except Exception as e:
+                print(f"Failed to block_until_completed {xp.name}: {e}")
+                print(f"Retrying in 60 seconds... ({retry})")
+                time.sleep(60)
+                continue
 
     def optimize(self):
         study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)
