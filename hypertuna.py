@@ -116,7 +116,7 @@ class HyperOptimizer:
         return run.summary.get("eprewmean", 0)
 
     def run_xp(self, xp):
-        for retry in range(3):
+        for retry in range(10):
             try:
                 self.xprun.run(xp, wait=True, priority=3, user="clemens")
             except Exception as e:
@@ -131,6 +131,7 @@ class HyperOptimizer:
         while True:
             try:
                 self.xprun.block_until_completed(xp.name)
+                break
             except Exception as e:
                 print(f"Failed to block_until_completed {xp.name}: {e}")
                 print(f"Retrying in 60 seconds... ({retry})")
