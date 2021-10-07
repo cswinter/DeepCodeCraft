@@ -65,7 +65,7 @@ class HyperOptimizer:
         run = list(
             self.wandb.runs("cswinter/deep-codecraft-vs", {"config.xp_name": xp.name})
         )[0]
-        return run.summary.get("eval_mean_score", 0)
+        return run.summary.get("eval_mean_score", -1)
 
     def allied_wealth(self, trial: optuna.trial.Trial):
         lr = trial.suggest_loguniform("lr", 1e-6, 1)
