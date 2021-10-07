@@ -23,6 +23,7 @@ class HyperOptimizer:
         return self.arena_medium(trial)
 
     def arena_medium(self, trial: optuna.trial.Trial):
+        steps = int(5e6)
         lr = trial.suggest_loguniform("lr", 1e-5, 1e-2)
         final_lr_mult = trial.suggest_loguniform("final_lr_mult", 1e-2, 1)
         lg_seq_rosteps = trial.suggest_int("lg_seq_rosteps", 3, 8)
@@ -39,19 +40,22 @@ class HyperOptimizer:
         omgamma = trial.suggest_loguniform("omgamma", 0.0001, 1)
         gamma = 1 - omgamma
         cliprange = trial.suggest_uniform("cliprange", 0.05, 0.5)
+        entropy_bonus1 = trial.suggest_loguniform("entropy_bonus1", 0.1, 10)
+        entropy_bonus2 = trial.suggest_loguniform("entropy_bonus2", 0.01, 1)
         micro_batch_size = min(2048, batch_size)
         xp = deepcopy(self.config)
         xp.containers[0].command += [
             "--config",
             "configs/arena_medium.yaml",
             "--hps",
-            "ppo.steps=10e6",
-            f"optimizer.lr=step: {lr}@0 cos {lr*final_lr_mult}@10e6",
+            f"ppo.steps={steps}",
+            f"optimizer.lr=step: {lr}@0 cos {lr*final_lr_mult}@{steps}",
             f"optimizer.batch_size={batch_size}",
             f"optimizer.micro_batch_size={micro_batch_size}",
             f"optimizer.momentum={momentum}",
             f"optimizer.weight_decay={weight_decay}",
             f"optimizer.epochs={epochs}",
+            f"optimizer.entropy_bonus=step: {entropy_bonus1}@0 lin {entropy_bonus2}@{steps // 2} 0.0@{steps}",
             f"ppo.cliprange={cliprange}",
             f"ppo.gamma={gamma}",
             f"ppo.seq_rosteps={seq_rosteps}",
@@ -140,7 +144,7 @@ class HyperOptimizer:
 
     def optimize(self):
         study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)
-        study.optimize(self.objective, n_trials=250, n_jobs=6)
+        study.optimize(self.objective, n_trials=500, n_jobs=6)
         print(study.best_params)
 
 
