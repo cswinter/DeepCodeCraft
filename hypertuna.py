@@ -60,6 +60,7 @@ class HyperOptimizer:
             f"ppo.gamma={gamma}",
             f"ppo.seq_rosteps={seq_rosteps}",
             f"ppo.num_envs={num_envs}",
+            f"ppo.num_self_play={num_envs // 2}",
             f"--descriptor=lr={lr:.2e},final_lr={lr*final_lr_mult:.2e},batch_size={batch_size},seq_rosteps={seq_rosteps},num_envs={num_envs},momentum={momentum:.2e},weight_decay={weight_decay:.2e},epochs={epochs},cliprange={cliprange:.2e},gamma={gamma:.2e}",
         ]
         xp.name = f"{self.xp_name}-{self.trial}"
