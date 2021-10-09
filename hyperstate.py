@@ -47,6 +47,17 @@ class HyperState(Generic[C, S]):
         checkpoint_key: Optional[str] = None,
         overrides: Optional[List[str]] = None,
     ) -> "HyperState[C, S]":
+        """
+        Loads a HyperState from a checkpoint (if exists) or initializes a new one.
+
+        :param config_clz: The type of the config object.
+        :param state_clz: The type of the state object.
+        :param initial_state: A function that takes a config object and returns an initial state object.
+        :param path: The path to the checkpoint.
+        :param checkpoint_dir: The directory to store checkpoints.
+        :param checkpoint_key: The key to use for the checkpoint. This must be a field of the state object (e.g. a field holding current iteration).
+        :param overrides: A list of overrides to apply to the config. (Example: ["optimizer.lr=0.1"])
+        """
         if checkpoint_key is None:
             checkpoint_key = "step"
         if overrides is None:
