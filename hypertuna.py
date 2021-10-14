@@ -202,7 +202,7 @@ class HyperOptimizer:
             self.wandb.runs("cswinter/deep-codecraft-vs", {"config.xp_name": xp.name})
         )[0]
         result = run.summary.get("eval_mean_score", -1)
-        self.study.tell(trial.number, result)
+        self.study.tell(trial, result)
         with self.lock:
             self.running_xps -= 1
             self.cvar.notify()
