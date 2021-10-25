@@ -108,8 +108,8 @@ def map_arena_tiny(randomize: bool, hardness: int, require_default_mothership: b
         constructors = np.random.randint(1, 3)
         missiles_batteries = np.random.randint(1, 3)
     return {
-        "mapWidth": 1000,
-        "mapHeight": 1000,
+        "mapWidth": 1500,
+        "mapHeight": 1500,
         "minerals": [],
         "player1Drones": [
             drone_dict(
