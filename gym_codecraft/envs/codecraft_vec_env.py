@@ -139,8 +139,8 @@ def map_arena_tiny_2v2(
         s1 = np.random.randint(0, 2)
         s2 = np.random.randint(0, 2)
     return {
-        "mapWidth": 1000,
-        "mapHeight": 1000,
+        "mapWidth": 1500,
+        "mapHeight": 1500,
         "minerals": [],
         "player1Drones": [
             drone_dict(
