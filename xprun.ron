@@ -53,7 +53,7 @@ XpV0(
                 // build CodeCraftGame and CodeCraftServer from source
                 Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "edc5a9f2", cd: true),
                 Run("sbt publishLocal"),
-                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "01a7dde", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "302a379", cd: true),
                 Run("sbt dist"),
                 Run("unzip server/target/universal/server-0.1.0-SNAPSHOT.zip"),
             ],

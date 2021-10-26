@@ -1,5 +1,5 @@
 ppo:
-  steps: 2e6
+  steps: 1e6
   seq_rosteps: 64
   num_envs: 128
   num_self_play: 64
@@ -7,13 +7,14 @@ task:
   objective: "ARENA_TINY"
   task_hardness: 1
 eval:
-  eval_frequency: 500e3
+  eval_frequency: 250e3
   model_save_frequency: 1
-  eval_envs: 256
-  eval_timesteps: 360
+  eval_envs: 512
+  eval_timesteps: 500
   eval_symmetric: False
 optimizer:
-  lr: "step: 0.0003@0 lin 0.0@2e6"
+  lr: "step: 0.0003@0 lin 0.0@1e6"
+  entropy_bonus: "step: 0.01@0 lin 0.0@1e6"
   vf_coef: 1.0
   batch_size: 2048
   micro_batch_size: 2048
