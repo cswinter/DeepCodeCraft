@@ -650,7 +650,7 @@ def eval(
     if opponents is None:
         if objective == envs.Objective.ARENA_TINY:
             opponents = {
-                "easy": {"model_file": "arena_tiny/t2_random.pt"},
+                "easy": {"model_file": "arena_tiny/arena_tiny-200K"},
             }
         elif objective == envs.Objective.ARENA_TINY_2V2:
             opponents = {
