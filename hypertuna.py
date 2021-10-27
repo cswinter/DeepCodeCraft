@@ -95,7 +95,7 @@ hyper_params = {
     ),
     "vf_coef": HyperParam(
         path="optimizer.vf_coef", sampling_strategy=SamplingStrategy.LOGUNIFORM,
-    )
+    ),
 }
 
 
@@ -105,6 +105,7 @@ class HyperOptimizer:
         base_config_path: str,
         params: List[Tuple[str, float]],
         parallelism: int = 6,
+        steps: Optional[int] = None,
     ):
         self.xprun = xprun.Client()
         self.wandb = wandb.Api()
@@ -121,6 +122,7 @@ class HyperOptimizer:
         self.running_xps = 0
         self.parallelism = parallelism
         self.base_config_path = base_config_path
+        self.steps = steps
 
         hpconfig, schedules = _load_file_and_schedules(Config, base_config_path, [])
         params_with_center = []
@@ -133,7 +135,7 @@ class HyperOptimizer:
             center = _hpconfig.__getattribute__(segments[0])
             params_with_center.append((name, center, range,))
         self.params = params_with_center
-        self.steps = hpconfig.ppo.steps
+        self.steps = steps or hpconfig.ppo.steps
 
     def base_xp_config(self, trial: int) -> Config:
         xp = deepcopy(self.config)
@@ -218,11 +220,14 @@ if __name__ == "__main__":
     parser.add_argument("--n_trials", type=int, default=100)
     parser.add_argument("--params", type=str, nargs="+", default=[])
     parser.add_argument("--parallelism", type=int, default=6)
+    parser.add_argument("--steps", type=float)
     args = parser.parse_args()
     params = []
     for param in args.params:
         path, r = param.split("=")
         params.append((path, float(r),))
-    HyperOptimizer(args.base_config_path, params, args.parallelism).run(args.n_trials)
+    HyperOptimizer(args.base_config_path, params, args.parallelism, float(args.steps) if args.steps is not None else None).run(
+        args.n_trials
+    )
 
 # python hypertuna.py --base_config_path=configs/arena_medium_10m.yaml --params lr=10 gamma=10 batch_size=4 weight_decay=10 entropy_bonus=10 cliprange=0.1 seq_rosteps=4 num_envs=4
