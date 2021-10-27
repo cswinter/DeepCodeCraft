@@ -13,7 +13,7 @@ eval:
   eval_timesteps: 360
   eval_symmetric: False
 optimizer:
-  lr: "step: 0.0003@0 lin 0.0@200e3"
+  lr: "step: 0.003@0 lin 0.0@200e3"
   entropy_bonus: "step: 0.01@0 lin 0.0@200e3"
   vf_coef: 1.0
   batch_size: 2048
