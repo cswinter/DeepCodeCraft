@@ -3,7 +3,7 @@ ppo:
 task:
   objective: "ARENA_TINY_2V2"
 eval:
-  eval_frequency: 1e5
+  eval_frequency: 1e6
   model_save_frequency: 1
   eval_envs: 256
   eval_timesteps: 360
