@@ -654,7 +654,7 @@ def eval(
             }
         elif objective == envs.Objective.ARENA_TINY_2V2:
             opponents = {
-                "easy": {"model_file": "arena_tiny_2v2/fine-sky-10M.pt"},
+                "25m": {"model_file": "arena_tiny_2v2/arena_tiny_2v2-e58ceea-0-25m"},
             }
         elif objective == envs.Objective.ARENA_MEDIUM:
             opponents = {
