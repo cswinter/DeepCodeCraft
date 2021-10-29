@@ -103,7 +103,7 @@ class HyperState(Generic[C, S]):
             p.mkdir()
             with open(p / "config.ron", "w") as f:
                 serialized = pyron.to_string(
-                    asdict(self.config, schedules=self.schedules)
+                    asdict(self.config, schedules=self.schedules, named_tuples=True)
                 )
                 f.write(serialized)
             checkpoint(self.state, p)
@@ -184,6 +184,7 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
         value = getattr(state, field_name)
         if is_dataclass(field_clz):
             value, _blobs = _checkpoint(value, target_path)
+            value = namedtuple(field_clz.__name__, value.keys())(**value)
             for path, blob in _blobs:
                 blobs[os.path.join(field_name, path)] = blob
         elif field_clz in [int, float, str, bool]:
@@ -213,7 +214,7 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
     return builder, blobs
 
 
-def asdict(x, schedules: Optional[Dict[str, Any]] = None):
+def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = False):
     if schedules is None:
         schedules = {}
     result = {}
@@ -223,8 +224,13 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None):
             continue
         value = getattr(x, field_name)
         if is_dataclass(field_clz):
-            attrs = asdict(value, schedules.get(field_name))
-            result[field_name] = namedtuple(field_clz.__name__, attrs.keys())(**attrs)
+            attrs = asdict(value, schedules.get(field_name), named_tuples)
+            if named_tuples:
+                result[field_name] = namedtuple(field_clz.__name__, attrs.keys())(
+                    **attrs
+                )
+            else:
+                result[field_name] = attrs
         elif field_clz in [int, float, str, bool]:
             result[field_name] = value
         elif hasattr(field_clz, "__args__") and (
