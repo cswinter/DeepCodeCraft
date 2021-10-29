@@ -1,0 +1,43 @@
+Config(
+  ppo: (
+    steps: 10e6,
+    num_envs: 256,
+    num_self_play: 128,
+    gamma: 0.997,
+    seq_rosteps: 128,
+  ),
+  task: (
+    objective: "ARENA_TINY_2V2",
+  ),
+  eval: (
+    eval_frequency: 1e6,
+    model_save_frequency: 1,
+    eval_envs: 256,
+    eval_timesteps: 360,
+    eval_symmetric: False,
+  ),
+  optimizer: (
+    lr: "step: 0.0005@0 lin 0.0@10e6",
+    entropy_bonus: "step: 0.0003@0 lin 0.0@10e6",
+    vf_coef: 2.0,
+    batch_size: 1024,
+    micro_batch_size: 1024,
+    weight_decay: 0.00002,
+  ),
+  obs: (
+    allies: 2,
+    obs_enemies: 2,
+    obs_minerals: 1,
+    obs_map_tiles: 0,
+  ),
+  policy: (
+    d_agent: 128,
+    agents: 2,
+    nenemy: 2,
+    nally: 2,
+    // Could be 0, currently incompatible with ally_enemy_same=False
+    nmineral: 1,
+    ntile: 0,
+  ),
+  adr: {},
+)
