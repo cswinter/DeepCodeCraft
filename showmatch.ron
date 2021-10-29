@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "showmatch": (
-            command: ["python", "showmatch.py", "--task=ENHANCED", "--num_envs=16", "--hardness=150", "enhanced/helpful-rain-1.75b-ema09997.pt", "enhanced/helpful-rain-2b-ema09999.pt"],
+            command: ["python", "showmatch.py", "--task=ARENA_TINY_2V2", "--num_envs=8", "--create_game_delay=2.0"],
             gpu: 1,
             gpu_mem: "11GB",
             volumes: {
@@ -10,8 +10,29 @@ XpV0(
             },
             build: [
                 From("nvcr.io/nvidia/pytorch:21.03-py3"),
-                Repo(path: "requirements.txt", rm: true),
+
+                // install rust toolchain
+                Run("apt-get update"),
+                Run("apt-get install curl build-essential --yes"),
+                Run("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"),
+                Env("PATH", "/root/.cargo/bin:${PATH}"),
+                Run("pip install --upgrade pip"),
+                Run("pip install maturin"),
+
+                // build xprun from source
+                Repo(url: "git@github.com:cswinter/xprun.git", rev: "eb59b24", cd: true),
+                Run("maturin build --cargo-extra-args=--features=python"),
+                Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_27_x86_64.whl"),
+
+                // build pyron from source
+                Repo(url: "git@github.com:cswinter/pyron.git", rev: "72a0040", cd: true),
+                Run("maturin build"),
+                Run("pip install target/wheels/pyron-0.1.0-cp38-cp38-manylinux_2_24_x86_64.whl"),
+
+                Repo(path: "requirements.txt", cd: true, rm: true),
+                Run("cat requirements.txt"),
                 Run("pip install -r requirements.txt"),
+
                 Repo(cd: true),
             ],
         ),
@@ -33,7 +54,7 @@ XpV0(
                 // build CodeCraftGame and CodeCraftServer from source
                 Repo(url: "https://github.com/cswinter/CodeCraftGame.git", rev: "edc5a9f2", cd: true),
                 Run("sbt publishLocal"),
-                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "01a7dde", cd: true),
+                Repo(url: "https://github.com/cswinter/CodeCraftServer.git", rev: "302a379", cd: true),
                 Run("sbt dist"),
                 Run("unzip server/target/universal/server-0.1.0-SNAPSHOT.zip"),
             ],

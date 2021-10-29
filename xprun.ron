@@ -28,6 +28,11 @@ XpV0(
                 Run("maturin build --cargo-extra-args=--features=python"),
                 Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_27_x86_64.whl"),
 
+                // build pyron from source
+                Repo(url: "git@github.com:cswinter/pyron.git", rev: "72a0040", cd: true),
+                Run("maturin build"),
+                Run("pip install target/wheels/pyron-0.1.0-cp38-cp38-manylinux_2_24_x86_64.whl"),
+
                 Repo(path: "requirements.txt", cd: true, rm: true),
                 Run("pip install -r requirements.txt"),
 

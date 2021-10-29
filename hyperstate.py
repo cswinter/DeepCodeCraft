@@ -1,6 +1,7 @@
 import os
 import shutil
 
+from collections import namedtuple
 from enum import Enum, EnumMeta
 import math
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import (
     Union,
 )
 from dataclasses import dataclass, field, is_dataclass
-import yaml
+import pyron
 
 C = TypeVar("C")
 S = TypeVar("S")
@@ -65,8 +66,8 @@ class HyperState(Generic[C, S]):
 
         path = Path(path)
         if os.path.isdir(path):
-            config_path = path / "config.yaml"
-            state_path = path / "state.yaml"
+            config_path = path / "config.ron"
+            state_path = path / "state.ron"
         else:
             config_path = path
             state_path = None
@@ -100,8 +101,11 @@ class HyperState(Generic[C, S]):
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "checkpoint"
             p.mkdir()
-            with open(p / "config.yaml", "w") as f:
-                yaml.dump(asdict(self.config, schedules=self.schedules), f)
+            with open(p / "config.ron", "w") as f:
+                serialized = pyron.to_string(
+                    asdict(self.config, schedules=self.schedules)
+                )
+                f.write(serialized)
             checkpoint(self.state, p)
             shutil.move(str(p), target_dir)
 
@@ -150,8 +154,9 @@ def _typecheck(name, value, typ):
 
 def checkpoint(state, target_path: Path):
     builder, blobs = _checkpoint(state, target_path)
-    with open(target_path / "state.yaml", "w") as f:
-        yaml.dump(builder, f)
+    with open(target_path / "state.ron", "w") as f:
+        serialized = pyron.to_string(builder)
+        f.write(serialized)
     for path, blob in blobs.items():
         with open(target_path / path, "wb") as f:
             f.write(blob)
@@ -218,7 +223,8 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None):
             continue
         value = getattr(x, field_name)
         if is_dataclass(field_clz):
-            result[field_name] = asdict(value, schedules.get(field_name))
+            attrs = asdict(value, schedules.get(field_name))
+            result[field_name] = namedtuple(field_clz.__name__, attrs.keys())(**attrs)
         elif field_clz in [int, float, str, bool]:
             result[field_name] = value
         elif hasattr(field_clz, "__args__") and (
@@ -242,8 +248,9 @@ def _load_file_and_schedules(clz: Type[T], path: str, overrides: List[str]) -> T
     path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
-    file = open(path)
-    values = yaml.full_load(file)
+    with open(path, "r") as f:
+        content = f.read()
+        values = pyron.load(content)
     for override in overrides:
         key, str_val = override.split("=")
         fpath = key.split(".")
@@ -284,18 +291,13 @@ def _parse(
                 if "@" in value:
                     schedule = _parse_schedule(value)
 
-                    # TODO: surely there's a better way?
-                    def _capture(field_name, schedule):
-                        def update(self, state):
-                            x = getattr(state, schedule.xname)
-                            value = schedule.get_value(x)
-                            setattr(self, field_name, value)
+                    def update(self, state):
+                        nonlocal field_name, schedule
+                        x = getattr(state, schedule.xname)
+                        value = schedule.get_value(x)
+                        setattr(self, field_name, value)
 
-                        return update
-
-                    schedules[field_name] = Schedule(
-                        _capture(field_name, schedule), value
-                    )
+                    schedules[field_name] = Schedule(update, value)
                     value = schedule.get_value(0.0)
                 else:
                     value = float(value)
@@ -307,17 +309,13 @@ def _parse(
                 if "@" in value:
                     schedule = _parse_schedule(value)
 
-                    def _capture(field_name, schedule):
-                        def update(self, state):
-                            x = getattr(state, schedule.xname)
-                            value = int(schedule.get_value(x))
-                            setattr(self, field_name, value)
+                    def update(self, state):
+                        nonlocal field_name, schedule
+                        x = getattr(state, schedule.xname)
+                        value = int(schedule.get_value(x))
+                        setattr(self, field_name, value)
 
-                        return update
-
-                    schedules[field_name] = Schedule(
-                        _capture(field_name, schedule), value
-                    )
+                    schedules[field_name] = Schedule(update, value)
                     value = int(schedule.get_value(0))
                 else:
                     parsed = _parse_int(value)

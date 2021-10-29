@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "showmatch": (
-            command: ["python", "showmatch.py", "--task=ENHANCED", "--num_envs=2", "--hardness=150", "--create_game_delay=2.0", "enhanced/helpful-rain-1.75b-ema09997.pt", "enhanced/helpful-rain-2b-ema09999.pt"],
+            command: ["python", "showmatch.py", "--task=ARENA_MEDIUM", "--num_envs=2", "--create_game_delay=2.0", "arena_medium/arena_medium-5f06842-0-10m"],
             dockerfile: "Dockerfile",
             copy_repo: true,
             volumes: {
