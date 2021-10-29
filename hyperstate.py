@@ -321,6 +321,8 @@ def _parse(
                     parsed = _parse_int(value)
                     if parsed is not None:
                         value = parsed
+            if isinstance(value, float) and value == int(value):
+                value = int(value)
             _typecheck(field_name, value, int)
         elif field_clz == bool:
             _typecheck(field_name, value, bool)
