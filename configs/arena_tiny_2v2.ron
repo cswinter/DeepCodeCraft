@@ -14,7 +14,7 @@ Config(
     model_save_frequency: 1,
     eval_envs: 256,
     eval_timesteps: 360,
-    eval_symmetric: False,
+    eval_symmetric: false,
   ),
   optimizer: (
     lr: "step: 0.0005@0 lin 0.0@10e6",
