@@ -1,6 +1,6 @@
 import os
 import shutil
-
+from abc import ABC, abstractmethod
 from collections import namedtuple
 from enum import Enum, EnumMeta
 import math
@@ -27,45 +27,37 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 
-@dataclass
-class HyperState(Generic[C, S]):
-    config: C
-    state: S
-    checkpoint_dir: Optional[Path]
-    checkpoint_key: str
-    config_clz: Type[C]
-    state_clz: Type[S]
-    last_checkpoint: Optional[Path] = None
-    schedules: Dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def load(
-        clz,
+class HyperState(ABC, Generic[C, S]):
+    def __init__(
+        self,
         config_clz: Type[C],
         state_clz: Type[S],
-        initial_state: Callable[[C], S],
-        path: str,
+        initial_config: str,
         checkpoint_dir: Optional[str] = None,
-        checkpoint_key: Optional[str] = None,
         overrides: Optional[List[str]] = None,
-    ) -> "HyperState[C, S]":
+    ) -> None:
         """
-        Loads a HyperState from a checkpoint (if exists) or initializes a new one.
-
         :param config_clz: The type of the config object.
         :param state_clz: The type of the state object.
-        :param initial_state: A function that takes a config object and returns an initial state object.
-        :param path: The path to the checkpoint.
-        :param checkpoint_dir: The directory to store checkpoints.
-        :param checkpoint_key: The key to use for the checkpoint. This must be a field of the state object (e.g. a field holding current iteration).
+        :param initial_config: Path to a config file or checkpoint.
+        :param checkpoint_dir: Directory to store checkpoints. If the directory contains a valid checkpoint, the latest checkpoint will be loaded and `initial_config` will be ignored.
         :param overrides: A list of overrides to apply to the config. (Example: ["optimizer.lr=0.1"])
         """
-        if checkpoint_key is None:
-            checkpoint_key = "step"
+        self.config_clz = config_clz
+        self.state_clz = state_clz
+        self._last_checkpoint: Optional[Path] = None
+
         if overrides is None:
             overrides = []
 
-        path = Path(path)
+        checkpoint = None
+        if checkpoint_dir is not None:
+            checkpoint = find_latest_checkpoint(checkpoint_dir)
+            if checkpoint is not None:
+                print(f"Resuming from checkpoint {checkpoint}")
+                initial_config = checkpoint
+
+        path = Path(initial_config)
         if os.path.isdir(path):
             config_path = path / "config.ron"
             state_path = path / "state.ron"
@@ -73,30 +65,34 @@ class HyperState(Generic[C, S]):
             config_path = path
             state_path = None
 
-        config, schedules = _load_file_and_schedules(config_clz, config_path, overrides)
+        self.config, self.schedules = _load_file_and_schedules(
+            config_clz, config_path, overrides
+        )
+
         # TODO: hack
+        config = self.config
         config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
         config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
         config.obs.num_builds = len(config.task.objective.builds())
 
         if state_path is None:
-            state = initial_state(config)
+            self.state = self.initial_state()
         else:
-            state = load_file(state_clz, state_path, overrides=[])
+            self.state = load_file(state_clz, state_path, overrides=[])
 
         if checkpoint_dir is not None:
-            checkpoint_dir = Path(checkpoint_dir)
-        hs = HyperState(
-            config,
-            state,
-            checkpoint_dir,
-            checkpoint_key,
-            config_clz,
-            state_clz,
-            schedules=schedules,
-        )
-        apply_schedules(state, config, hs.schedules)
-        return hs
+            self.checkpoint_dir = Path(checkpoint_dir)
+        else:
+            self.checkpoint_dir = None
+
+        apply_schedules(self.state, config, self.schedules)
+
+    @abstractmethod
+    def initial_state(self, config: C) -> S:
+        pass
+
+    def checkpoint_key(self):
+        return "step"
 
     def checkpoint(self, target_dir: str):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -113,18 +109,18 @@ class HyperState(Generic[C, S]):
     def step(self):
         apply_schedules(self.state, self.config, self.schedules)
         if self.checkpoint_dir is not None:
-            val = getattr(self.state, self.checkpoint_key)
+            val = getattr(self.state, self.checkpoint_key())
             assert isinstance(
                 val, int
-            ), f"checkpoint key `{self.checkpoint_key}` must be an integer, but found value `{val}` of type `{type(val)}`"
+            ), f"checkpoint key `{self.checkpoint_key()}` must be an integer, but found value `{val}` of type `{type(val)}`"
             checkpoint_dir = (
-                self.checkpoint_dir / f"latest-{self.checkpoint_key}{val:012}"
+                self.checkpoint_dir / f"latest-{self.checkpoint_key()}{val:012}"
             )
             self.checkpoint(str(checkpoint_dir))
-            if self.last_checkpoint is not None:
+            if self._last_checkpoint is not None:
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    shutil.move(str(self.last_checkpoint), tmpdir)
-            self.last_checkpoint = checkpoint_dir
+                    shutil.move(str(self._last_checkpoint), tmpdir)
+            self._last_checkpoint = checkpoint_dir
             # TODO: persistent checkpoints
 
 

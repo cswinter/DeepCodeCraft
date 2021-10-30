@@ -105,52 +105,26 @@ def create_optimizer(
     return optimizer_fn(policy.parameters(), **optimizer_kwargs)
 
 
-def initial_state(config: Config) -> State:
-    policy = TransformerPolicy8HS(
-        config.policy,
-        config.obs,
-        config.task.objective.naction() + config.obs.extra_actions(),
-    )
-    optimizer = create_optimizer(policy, config.optimizer)
-    adr = ADRState(
-        hardness=config.adr.initial_hardness,
-        ruleset=Rules(
-            mothership_damage_multiplier=config.task.mothership_damage_scale,
-            cost_modifiers={build: 1.0 for build in config.task.objective.builds()},
-        ),
-    )
-    policy_emas = [
-        ExponentialMovingAverage(policy.parameters(), decay=float(decay))
-        for decay in config.optimizer.weights_ema
-    ]
-
-    return State(
-        step=0,
-        iteration=0,
-        epoch=0,
-        policy=Blob(policy.state_dict()),
-        optimizer=Blob(optimizer.state_dict()),
-        ema=policy_emas,
-        adr=adr,
-    )
-
-
-class Trainer:
+class Trainer(HyperState[Config, State]):
     def __init__(
-        self, state_manager: HyperState[Config, State], rank: int, parallelism: int
+        self,
+        initial_config: str,
+        rank: int = 0,
+        parallelism: int = 1,
+        checkpoint_dir: Optional[str] = None,
+        config_overrides: Optional[List[str]] = None,
     ):
-        config = state_manager.config
-        state = state_manager.state
-
-        assert (
-            config.optimizer.batch_size
-            % (config.optimizer.micro_batch_size * parallelism)
-            == 0
+        super().__init__(
+            Config, State, initial_config, checkpoint_dir, overrides=config_overrides
         )
 
-        self.hyperstate = state_manager
-        self.config = config
-        self.state = state
+        assert (
+            self.config.optimizer.batch_size
+            % (self.config.optimizer.micro_batch_size * parallelism)
+            == 0
+        )
+        self.rank = rank
+        self.parallelism = parallelism
 
         if torch.cuda.is_available():
             self.device = torch.device("cuda:0")
@@ -159,18 +133,46 @@ class Trainer:
             self.device = "cpu"
 
         self.policy = TransformerPolicy8HS(
+            self.config.policy,
+            self.config.obs,
+            self.config.task.objective.naction() + self.config.obs.extra_actions(),
+        )
+        self.policy.load_state_dict(self.state.policy.get())
+        self.policy.to(self.device)
+        self.optimizer = create_optimizer(self.policy, self.config.optimizer)
+        self.optimizer.load_state_dict(self.state.optimizer.get())
+        self.ema = self.state.ema
+        self.adr = ADR(self.config.adr, self.state.adr)
+
+    def initial_state(self) -> State:
+        config = self.config
+        policy = TransformerPolicy8HS(
             config.policy,
             config.obs,
             config.task.objective.naction() + config.obs.extra_actions(),
         )
-        self.policy.load_state_dict(state.policy.get())
-        self.policy.to(self.device)
-        self.optimizer = create_optimizer(self.policy, config.optimizer)
-        self.optimizer.load_state_dict(state.optimizer.get())
-        self.ema = state.ema
-        self.adr = ADR(config.adr, state.adr)
-        self.rank = rank
-        self.parallelism = parallelism
+        optimizer = create_optimizer(policy, config.optimizer)
+        adr = ADRState(
+            hardness=config.adr.initial_hardness,
+            ruleset=Rules(
+                mothership_damage_multiplier=config.task.mothership_damage_scale,
+                cost_modifiers={build: 1.0 for build in config.task.objective.builds()},
+            ),
+        )
+        policy_emas = [
+            ExponentialMovingAverage(policy.parameters(), decay=float(decay))
+            for decay in config.optimizer.weights_ema
+        ]
+
+        return State(
+            step=0,
+            iteration=0,
+            epoch=0,
+            policy=Blob(policy.state_dict()),
+            optimizer=Blob(optimizer.state_dict()),
+            ema=policy_emas,
+            adr=adr,
+        )
 
     def train(self, out_dir: str) -> None:
         config = self.config
@@ -587,7 +589,7 @@ class Trainer:
             # TODO: some way to avoid doing this on every iteration?
             state.policy.set(self.policy.state_dict())
             state.optimizer.set(self.optimizer.state_dict())
-            self.hyperstate.step()
+            self.step()
 
             print(f"{throughput} samples/s", flush=True)
 
@@ -1018,17 +1020,7 @@ def load_policy(
 def load_hs_policy(path, device):
     if not path.startswith("/"):
         path = os.path.join(EVAL_MODELS_PATH, path)
-    hs = HyperState.load(Config, State, lambda _: None, path)
-    config = hs.config
-    state = hs.state
-    policy = TransformerPolicy8HS(
-        config.policy,
-        config.obs,
-        config.task.objective.naction() + config.obs.extra_actions(),
-    )
-    policy.load_state_dict(state.policy.get())
-    policy.to(device)
-    return policy
+    return Trainer(path).policy
 
 
 def explained_variance(ypred, y):
@@ -1254,10 +1246,6 @@ def main():
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
     checkpoint_dir = Path(out_dir) / "checkpoints"
-    checkpoint = hyperstate.find_latest_checkpoint(checkpoint_dir)
-    if checkpoint is not None:
-        args.config = checkpoint
-        print(f"Resuming from checkpoint {checkpoint}")
 
     if xp_info is not None and xp_info.replicas > 1:
         init_process(xp_info)
@@ -1267,13 +1255,11 @@ def main():
         rank = 0
         parallelism = 1
 
-    hs = HyperState.load(
-        Config, State, initial_state, args.config, checkpoint_dir, overrides=args.hps
-    )
-    config = hs.config
+    trainer = Trainer(args.config, rank, parallelism, checkpoint_dir, args.hps,)
+    config = trainer.config
     # TODO: make better
     if rank > 0:
-        hs.checkpoint_dir = None
+        config.checkpoint_dir = None
 
     if config.wandb and rank == 0:
         wandb_project = (
@@ -1296,7 +1282,6 @@ def main():
             wandb.init(project=wandb_project)
         wandb.config.update(cfg)
 
-    trainer = Trainer(hs, rank, parallelism)
     trainer.train(out_dir=out_dir)
 
 
@@ -1308,4 +1293,3 @@ def exact_div(a, b):
 
 if __name__ == "__main__":
     main()
-
