@@ -1,0 +1,47 @@
+Config(
+  ppo: (
+    steps: 25e6,
+    win_bonus: 2.0,
+    partial_score: 1.0,
+    gamma: 0.999,
+    seq_rosteps: 64,
+    num_envs: 128,
+    num_self_play: 64
+  ),
+  adr: (
+    initial_hardness: 1.0,
+    max_hardness: 1.0,
+    hardness_offset: 1e15,
+    linear_hardness: true
+  ),
+  task: (
+    objective: "ARENA_MEDIUM",
+    task_hardness: 1
+  ),
+  eval: (
+    eval_frequency: 500e3,
+    model_save_frequency: 1,
+    eval_envs: 128,
+    eval_timesteps: 1000
+  ),
+  optimizer: (
+    lr: "step: 0.0005@0 cos 0.00005@25e6",
+    vf_coef: 1.0,
+    entropy_bonus: "step: 0.5@0 lin 0.15@10e6 0.0@25e6",
+    batch_size: 4096,
+    micro_batch_size: 2048
+  ),
+  obs: (
+    allies: 8,
+    obs_enemies: 8,
+    obs_minerals: 8,
+    obs_map_tiles: 0
+  ),
+  policy: (
+    agents: 8,
+    nenemy: 8,
+    nally: 8,
+    nmineral: 8,
+    ntile: 0
+  ),
+)
