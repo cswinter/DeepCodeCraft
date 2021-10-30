@@ -182,6 +182,11 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
     blobs = {}
     for field_name, field_clz in state.__annotations__.items():
         value = getattr(state, field_name)
+        if is_optional(field_clz):
+            if value is None:
+                builder[field_name] = value
+                continue
+            field_clz = field_clz.__args__[0]
         if is_dataclass(field_clz):
             value, _blobs = _checkpoint(value, target_path)
             value = namedtuple(field_clz.__name__, value.keys())(**value)
@@ -223,6 +228,12 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
             result[field_name] = schedules[field_name].unparsed
             continue
         value = getattr(x, field_name)
+
+        if is_optional(field_clz):
+            if value is None:
+                result[field_name] = value
+                continue
+            field_clz = field_clz.__args__[0]
         if is_dataclass(field_clz):
             attrs = asdict(value, schedules.get(field_name), named_tuples)
             if named_tuples:
@@ -233,9 +244,9 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
                 result[field_name] = attrs
         elif field_clz in [int, float, str, bool]:
             result[field_name] = value
-        elif hasattr(field_clz, "__args__") and (
-            field_clz == List[field_clz.__args__]
-            or field_clz == Dict[field_clz.__args__]
+        elif hasattr(field_clz, "__origin__") and (
+            (field_clz.__origin__ is list and field_clz == List[field_clz.__args__])
+            or (field_clz.__origin__ is dict and field_clz == Dict[field_clz.__args__])
         ):
             # TODO: recurse
             result[field_name] = value
@@ -292,7 +303,13 @@ def _parse(
         else:
             remaining_fields.remove(field_name)
         field_clz = clz.__annotations__[field_name]
-        if field_clz == float:
+        is_opt = is_optional(field_clz)
+        if is_opt and value is not None:
+            field_clz = field_clz.__args__[0]
+
+        if is_opt and value is None:
+            pass
+        elif field_clz == float:
             if isinstance(value, str):
                 if "@" in value:
                     schedule = _parse_schedule(value)
@@ -922,6 +939,7 @@ class Config:
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     obs: ObsConfig = field(default_factory=ObsConfig)
     wandb: bool = True
+    trial: Optional[int] = None
 
     @property
     def rosteps(self):
@@ -930,3 +948,12 @@ class Config:
     def validate(self):
         assert self.rosteps % self.optimizer.batch_size == 0
         assert self.eval.eval_envs % 4 == 0
+
+
+def is_optional(clz):
+    return (
+        hasattr(clz, "__origin__")
+        and clz.__origin__ is Union
+        and clz.__args__.__len__() == 2
+        and clz.__args__[1] is type(None)
+    )
