@@ -14,7 +14,8 @@ import numpy as np
 
 from enum import Enum
 
-from hyperstate import Config, HyperState, _load_file_and_schedules
+from config import Config
+from hyperstate.hyperstate import _load_file_and_schedules
 
 
 class SamplingStrategy(Enum):
