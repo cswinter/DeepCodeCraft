@@ -297,13 +297,17 @@ def _parse(
                 if "@" in value:
                     schedule = _parse_schedule(value)
 
-                    def update(self, state):
-                        nonlocal field_name, schedule
-                        x = getattr(state, schedule.xname)
-                        value = schedule.get_value(x)
-                        setattr(self, field_name, value)
+                    def _capture(field_name, schedule):
+                        def update(self, state):
+                            x = getattr(state, schedule.xname)
+                            value = schedule.get_value(x)
+                            setattr(self, field_name, value)
 
-                    schedules[field_name] = Schedule(update, value)
+                        return update
+
+                    schedules[field_name] = Schedule(
+                        _capture(field_name, schedule), value
+                    )
                     value = schedule.get_value(0.0)
                 else:
                     value = float(value)
@@ -315,13 +319,17 @@ def _parse(
                 if "@" in value:
                     schedule = _parse_schedule(value)
 
-                    def update(self, state):
-                        nonlocal field_name, schedule
-                        x = getattr(state, schedule.xname)
-                        value = int(schedule.get_value(x))
-                        setattr(self, field_name, value)
+                    def _capture(field_name, schedule):
+                        def update(self, state):
+                            x = getattr(state, schedule.xname)
+                            value = schedule.get_value(x)
+                            setattr(self, field_name, value)
 
-                    schedules[field_name] = Schedule(update, value)
+                        return update
+
+                    schedules[field_name] = Schedule(
+                        _capture(field_name, schedule), value
+                    )
                     value = int(schedule.get_value(0))
                 else:
                     parsed = _parse_int(value)
