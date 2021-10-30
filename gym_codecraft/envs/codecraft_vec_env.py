@@ -5,11 +5,11 @@ import time
 from enum import Enum
 from typing import List, Union, Optional, Tuple
 import numpy as np
-from hyperstate import TaskConfig, Objective
 
+from config import TaskConfig, Objective
+import config
 import codecraft
 from codecraft import Rules, ObsConfig
-import hyperstate
 
 DEFAULT_OBS_CONFIG = ObsConfig(
     allies=2, drones=4, minerals=2, tiles=0, global_drones=4, num_builds=0
@@ -1017,7 +1017,7 @@ class CodeCraftVecEnv(object):
         rews = []
         dones = []
         infos = []
-        if isinstance(obs_config, hyperstate.ObsConfig):
+        if isinstance(obs_config, config.ObsConfig):
             obs = codecraft.observe_batch_raw(
                 obs_config,
                 [(gid, pid) for (gid, pid, _) in games],

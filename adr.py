@@ -1,4 +1,4 @@
-from hyperstate import AdrConfig
+from config import AdrConfig
 import math
 from collections import defaultdict
 from gym_codecraft.envs.codecraft_vec_env import Rules

@@ -5,8 +5,7 @@ import torch.distributions as distributions
 from torch_scatter import scatter_add, scatter_max
 import torch.distributed as dist
 
-from hyperstate import PolicyConfig, ObsConfig, Config
-import hyperstate
+from config import PolicyConfig, ObsConfig, Config
 
 import spatial
 
@@ -500,10 +499,10 @@ class InputNorm(nn.Module):
         mean = input.mean(dim=0)
 
         # TODO: this can crash with gloo error. ordering of different InputNorm modules different?
-        #if dist.is_initialized():
-            #dist.all_reduce(count, op=dist.ReduceOp.SUM)
-            #dist.all_reduce(mean, op=dist.ReduceOp.SUM)
-            #mean /= dist.get_world_size()
+        # if dist.is_initialized():
+        # dist.all_reduce(count, op=dist.ReduceOp.SUM)
+        # dist.all_reduce(mean, op=dist.ReduceOp.SUM)
+        # mean /= dist.get_world_size()
 
         if self.count == 0:
             self.count += count

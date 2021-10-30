@@ -13,7 +13,6 @@ from dataclasses import dataclass
 import torch.distributed as dist
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
 import numpy as np
 from torch.optim.optimizer import Optimizer
 from torch_ema import ExponentialMovingAverage
@@ -21,14 +20,8 @@ from torch_ema import ExponentialMovingAverage
 import wandb
 
 import hyperstate
-from hyperstate import (
-    Config,
-    ObsConfig as HSObsConfig,
-    Blob,
-    OptimizerConfig,
-    HyperState,
-    TaskConfig,
-)
+from config import Config, ObsConfig as HSObsConfig, OptimizerConfig, TaskConfig
+from hyperstate import Blob, HyperState
 
 from adr import ADR, ADRState, normalize, spec_key
 from gym_codecraft import envs
