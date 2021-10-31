@@ -58,7 +58,7 @@ class DeleteField(RewriteRule):
 
 
 @dataclass
-class MapField(RewriteRule):
+class MapFieldValue(RewriteRule):
     field: str
     map_fn: Callable[[Any], Any]
 
@@ -72,7 +72,7 @@ class MapField(RewriteRule):
 
 
 @dataclass
-class DefaultChanged(RewriteRule):
+class ChangeDefault(RewriteRule):
     field: str
     new_default: Any
 
@@ -81,6 +81,18 @@ class DefaultChanged(RewriteRule):
         _, present = _remove(state_dict, path)
         if not present:
             _insert(state_dict, path, self.default)
+        return state_dict
+
+
+@dataclass
+class AddDefault(RewriteRule):
+    field: str
+    default: Any
+
+    def apply(self, state_dict: Any) -> Any:
+        path = self.field.split(".")
+        value, present = _remove(state_dict, path)
+        _insert(state_dict, path, value if present else self.default)
         return state_dict
 
 
