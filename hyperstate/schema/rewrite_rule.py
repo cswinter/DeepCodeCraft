@@ -38,6 +38,7 @@ class DeleteField(RewriteRule):
 
     def apply(self, state_dict: Any) -> Any:
         _remove(state_dict, self.field)
+        return state_dict
 
     def apply_to_schema(self, schema: types.Type) -> Dict[str, Any]:
         _remove_schema(schema, self.field)
