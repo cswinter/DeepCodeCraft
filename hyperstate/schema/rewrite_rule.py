@@ -1,37 +1,12 @@
-from abc import ABC, abstractmethod, abstractclassmethod
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict, Any, Callable, Type
-import click
+from typing import List, Optional, Tuple, Dict, Any, Callable
 
 
 class RewriteRule(ABC):
     @abstractmethod
     def apply(self, state_dict: Any) -> Any:
         pass
-
-
-class Versioned(ABC):
-    @abstractclassmethod
-    def version(clz) -> int:
-        pass
-
-    @classmethod
-    def minimum_version(clz) -> int:
-        return 0
-
-    @classmethod
-    def upgrade_rules(clz, version: int) -> List[RewriteRule]:
-        """
-        Returns a list of rewrite rules that can be applied to the given version
-        to make it compatible with the next version.
-        """
-        return []
-
-    def _apply_upgrades(clz, state_dict: Any, version: int) -> Any:
-        for i in range(version, clz.version()):
-            for rule in clz.upgrade_rules(i):
-                state_dict = rule.apply(state_dict)
-        return state_dict
 
 
 @dataclass

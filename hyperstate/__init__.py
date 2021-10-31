@@ -1,4 +1,4 @@
 from .hyperstate import HyperState, asdict
 from .lazy import Lazy, lazy
-from .schema import schema_evolution_cli
-from .versioning import Versioned
+from .schema.versioned import Versioned
+from .schema.schema_checker import schema_evolution_cli
