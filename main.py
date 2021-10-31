@@ -132,9 +132,10 @@ class Trainer(HyperState[Config, State]):
         parallelism: int = 1,
         checkpoint_dir: Optional[str] = None,
         config_overrides: Optional[List[str]] = None,
+        allow_unversioned: bool = False,
     ):
         super().__init__(
-            Config, State, initial_config, checkpoint_dir, overrides=config_overrides
+            Config, State, initial_config, checkpoint_dir, overrides=config_overrides, default_version=0 if allow_unversioned else None,
         )
 
         assert (
@@ -1035,7 +1036,7 @@ def load_policy(
 def load_hs_policy(path, device):
     if not path.startswith("/"):
         path = os.path.join(EVAL_MODELS_PATH, path)
-    return Trainer(path).state.policy
+    return Trainer(path, allow_unversioned=True).state.policy
 
 
 def explained_variance(ypred, y):

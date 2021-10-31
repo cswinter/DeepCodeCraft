@@ -18,6 +18,8 @@ from typing import (
 )
 import inspect
 from dataclasses import dataclass, field, is_dataclass
+
+from hyperstate.schema.versioned import Versioned
 from .lazy import LazyField
 
 import torch
@@ -38,6 +40,7 @@ class HyperState(ABC, Generic[C, S]):
         initial_config: str,
         checkpoint_dir: Optional[str] = None,
         overrides: Optional[List[str]] = None,
+        default_version: Optional[int] = None,
     ) -> None:
         """
         :param config_clz: The type of the config object.
@@ -68,7 +71,15 @@ class HyperState(ABC, Generic[C, S]):
             config_path = path
             state_path = None
 
-        config, schedules = _load_file_and_schedules(config_clz, config_path, overrides)
+        try:
+            config, schedules = _load_file_and_schedules(
+                config_clz,
+                config_path,
+                overrides=overrides,
+                default_version=default_version,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to load config from {config_path}: {e}") from e
         self.config: C = config
         self.schedules = schedules
 
@@ -81,7 +92,13 @@ class HyperState(ABC, Generic[C, S]):
         if state_path is None:
             self.state = self.initial_state()
         else:
-            self.state = load_file(state_clz, state_path, overrides=[], config=config)
+            self.state = load_file(
+                state_clz,
+                state_path,
+                overrides=[],
+                config=config,
+                default_version=default_version,
+            )
 
         if checkpoint_dir is not None:
             self.checkpoint_dir = Path(checkpoint_dir)
@@ -143,13 +160,6 @@ def qualified_name(clz):
         return repr(clz)
     else:
         return f"{clz.__module__}.{clz.__name__}"
-
-
-def _typecheck(name, value, typ):
-    if not isinstance(value, typ):
-        raise TypeError(
-            f"{name} has type {qualified_name(typ)}, but received value {value} of type {qualified_name(value.__class__)}."
-        )
 
 
 def checkpoint(state, target_path: Path):
@@ -257,24 +267,32 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
 
 
 def load_file(
-    clz: Type[T], path: str, overrides: List[str], config: Optional[Any]
+    clz: Type[T],
+    path: str,
+    overrides: List[str],
+    config: Optional[Any],
+    default_version: Optional[int] = None,
 ) -> T:
-    return _load_file_and_schedules(clz, path, overrides, config)[0]
+    return _load_file_and_schedules(clz, path, overrides, config, default_version)[0]
 
 
 def _load_file_and_schedules(
-    clz: Type[T], path: str, overrides: List[str], config: Optional[Any] = None
+    clz: Type[T],
+    path: str,
+    overrides: List[str],
+    config: Optional[Any] = None,
+    default_version: Optional[int] = None,
 ) -> T:
     path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
     with open(path, "r") as f:
         content = f.read()
-        values = pyron.load(content)
+        state_dict = pyron.load(content)
     for override in overrides:
         key, str_val = override.split("=")
         fpath = key.split(".")
-        _values = values
+        _values = state_dict
         _clz = clz
         for segment in fpath[:-1]:
             _values = _values[segment]
@@ -289,14 +307,23 @@ def _load_file_and_schedules(
         else:
             val = str_val
         _values[fpath[-1]] = val
-    return _parse(clz, values, path.absolute().parent, config)
+    return _parse(clz, state_dict, path.absolute().parent, config, default_version)
 
 
 def _parse(
-    clz: Type[T], values: Dict[str, Any], path: Path, config: Optional[Any] = None
+    clz: Type[T],
+    values: Dict[str, Any],
+    path: Path,
+    config: Optional[Any] = None,
+    default_version: Optional[int] = None,
 ) -> Tuple[T, Dict[str, Any]]:
     schedules = ScheduleDeserializer()
     lazy = LazyDeserializer(config, path)
+    if issubclass(clz, Versioned):
+        version = values.get("version", default_version)
+        if version is None:
+            raise ValueError(f"Config is missing version field.")
+        values = clz._apply_upgrades(values, version)
     value = from_dict(clz, values, DeserializerList([schedules, lazy]))
     if len(lazy.lazy_fields) > 0:
         value._unloaded_lazy_fields = lazy.lazy_fields

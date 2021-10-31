@@ -11,7 +11,7 @@ class Versioned(ABC):
 
     @abstractclassmethod
     def latest_version(clz) -> int:
-        pass
+        raise NotImplementedError()
 
     @classmethod
     def minimum_version(clz) -> int:
@@ -23,11 +23,12 @@ class Versioned(ABC):
         Returns a list of rewrite rules that can be applied to the given version
         to make it compatible with the next version.
         """
-        return []
+        return {}
 
     @classmethod
     def _apply_upgrades(clz, state_dict: Any, version: int) -> Any:
-        for i in range(version, clz.version()):
+        for i in range(version, clz.latest_version()):
             for rule in clz.upgrade_rules.get(i, []):
                 state_dict = rule.apply(state_dict)
+        state_dict["version"] = clz.latest_version()
         return state_dict

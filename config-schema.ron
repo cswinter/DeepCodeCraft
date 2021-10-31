@@ -1,6 +1,14 @@
 Struct(
     name: "Config",
     fields: {
+        "version": Field(
+            name: "version",
+            type: Primitive(
+                type: "int",
+            ),
+            default: None,
+            has_default: false,
+        ),
         "optimizer": Field(
             name: "optimizer",
             type: Struct(

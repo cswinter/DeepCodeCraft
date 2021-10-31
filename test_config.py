@@ -9,5 +9,5 @@ def test_config():
     new = materialize_type(Config)
     checker = SchemaChecker(old, new)
     if checker.severity() >= Severity.WARN:
-        print(checker.report())
+        print(checker.print_report())
     assert checker.severity() == Severity.INFO

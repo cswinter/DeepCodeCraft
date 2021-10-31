@@ -1,4 +1,5 @@
 Config(
+  version: 0,
   ppo: (
     steps: 10e6,
     win_bonus: 2.0,

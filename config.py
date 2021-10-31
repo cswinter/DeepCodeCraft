@@ -5,6 +5,7 @@ from typing import (
 )
 from dataclasses import dataclass, field
 from hyperstate import schema_evolution_cli
+from hyperstate.schema.versioned import Versioned
 
 
 class Objective(Enum):
@@ -418,7 +419,7 @@ class AdrConfig:
 
 
 @dataclass
-class Config:
+class Config(Versioned):
     optimizer: OptimizerConfig
     eval: EvalConfig
     ppo: PPOConfig
@@ -436,6 +437,10 @@ class Config:
     def validate(self):
         assert self.rosteps % self.optimizer.batch_size == 0
         assert self.eval.eval_envs % 4 == 0
+
+    @classmethod
+    def latest_version(clz) -> int:
+        return 0
 
 
 if __name__ == "__main__":
