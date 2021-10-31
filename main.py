@@ -21,7 +21,7 @@ import wandb
 
 import hyperstate
 from config import Config, ObsConfig as HSObsConfig, OptimizerConfig, TaskConfig
-from hyperstate import Blob, HyperState
+from hyperstate import HyperState, lazy
 
 from adr import ADR, ADRState, normalize, spec_key
 from gym_codecraft import envs
@@ -49,14 +49,33 @@ else:
 
 
 @dataclass
-class State:
+class State(hyperstate.Lazy):
     step: int
     iteration: int
     epoch: int
-    policy: Blob[Any]
-    optimizer: Blob[Any]
-    ema: List[Blob[Any]]
     adr: ADRState
+    policy: lazy(TransformerPolicy8HS)
+    optimizer: lazy(Optimizer)
+    ema: List[lazy(ExponentialMovingAverage)]
+
+    def _load_policy(self, config: Config, state_dict: Any) -> TransformerPolicy8HS:
+        policy = TransformerPolicy8HS(
+            config.policy,
+            config.obs,
+            config.task.objective.naction() + config.obs.extra_actions(),
+        )
+        policy.load_state_dict(state_dict)
+        return policy
+
+    def _load_optimizer(self, config: Config, state_dict: Any) -> Optimizer:
+        optimizer = create_optimizer(config.optimizer, self.policy)
+        optimizer.load_state_dict(state_dict)
+        return optimizer
+
+    def _load_ema(
+        self, config: Config, state_dict: Any
+    ) -> List[ExponentialMovingAverage]:
+        return []
 
 
 def run_codecraft():
@@ -83,7 +102,7 @@ def run_codecraft():
 
 
 def create_optimizer(
-    policy: TransformerPolicy8HS, config: OptimizerConfig
+    config: OptimizerConfig, policy: TransformerPolicy8HS,
 ) -> Optimizer:
     if config.optimizer_type == "SGD":
         optimizer_fn = optim.SGD
@@ -132,15 +151,7 @@ class Trainer(HyperState[Config, State]):
             print("Running on CPU")
             self.device = "cpu"
 
-        self.policy = TransformerPolicy8HS(
-            self.config.policy,
-            self.config.obs,
-            self.config.task.objective.naction() + self.config.obs.extra_actions(),
-        )
-        self.policy.load_state_dict(self.state.policy.get())
-        self.policy.to(self.device)
-        self.optimizer = create_optimizer(self.policy, self.config.optimizer)
-        self.optimizer.load_state_dict(self.state.optimizer.get())
+        self.state.policy.to(self.device)
         self.ema = self.state.ema
         self.adr = ADR(self.config.adr, self.state.adr)
 
@@ -151,7 +162,7 @@ class Trainer(HyperState[Config, State]):
             config.obs,
             config.task.objective.naction() + config.obs.extra_actions(),
         )
-        optimizer = create_optimizer(policy, config.optimizer)
+        optimizer = create_optimizer(config.optimizer, policy)
         adr = ADRState(
             hardness=config.adr.initial_hardness,
             ruleset=Rules(
@@ -168,8 +179,8 @@ class Trainer(HyperState[Config, State]):
             step=0,
             iteration=0,
             epoch=0,
-            policy=Blob(policy.state_dict()),
-            optimizer=Blob(optimizer.state_dict()),
+            policy=policy,
+            optimizer=optimizer,
             ema=policy_emas,
             adr=adr,
         )
@@ -185,9 +196,9 @@ class Trainer(HyperState[Config, State]):
         obs_config = obs_config_from(config)
 
         if self.parallelism > 1:
-            sync_parameters(self.policy)
+            sync_parameters(self.state.policy)
         if self.rank == 0:
-            wandb.watch(self.policy)
+            wandb.watch(self.state.policy)
 
         next_eval = state.step
         next_full_eval = 1
@@ -208,7 +219,7 @@ class Trainer(HyperState[Config, State]):
             self.config.task.cost_variance = self.config.adr.cost_variance
 
             # TODO: step
-            for g in self.optimizer.param_groups:
+            for g in self.state.optimizer.param_groups:
                 g["lr"] = config.optimizer.lr
             assert config.rosteps % config.optimizer.batch_size == 0
 
@@ -259,7 +270,7 @@ class Trainer(HyperState[Config, State]):
                         emas = [None]
                     for policy_ema in emas:
                         eval(
-                            policy=self.policy,
+                            policy=self.state.policy,
                             num_envs=config.eval.eval_envs,
                             device=device,
                             objective=config.task.objective,
@@ -299,7 +310,7 @@ class Trainer(HyperState[Config, State]):
             all_action_masks = []
             all_privileged_obs = []
 
-            self.policy.eval()
+            self.state.policy.eval()
             buildtotal = defaultdict(lambda: 0)
             eliminations = []
             if config.task.adr:
@@ -316,7 +327,13 @@ class Trainer(HyperState[Config, State]):
                     obs_tensor = torch.tensor(obs).to(device)
                     privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
                     action_masks_tensor = torch.tensor(action_masks).to(device)
-                    actions, logprobs, entropy, values, probs = self.policy.evaluate(
+                    (
+                        actions,
+                        logprobs,
+                        entropy,
+                        values,
+                        probs,
+                    ) = self.state.policy.evaluate(
                         obs_tensor, action_masks_tensor, privileged_obs_tensor
                     )
                     actions = actions.cpu().numpy()
@@ -379,7 +396,7 @@ class Trainer(HyperState[Config, State]):
                 obs_tensor = torch.tensor(obs).to(device)
                 action_masks_tensor = torch.tensor(action_masks).to(device)
                 privileged_obs_tensor = torch.tensor(privileged_obs).to(device)
-                _, _, _, final_values, final_probs = self.policy.evaluate(
+                _, _, _, final_values, final_probs = self.state.policy.evaluate(
                     obs_tensor, action_masks_tensor, privileged_obs_tensor
                 )
 
@@ -451,7 +468,7 @@ class Trainer(HyperState[Config, State]):
                 aproxkl_sum = 0
                 entropy_loss_sum = 0
                 gradnorm = []
-                self.policy.train()
+                self.state.policy.train()
                 torch.enable_grad()
                 num_micro_batches = exact_div(
                     config.ppo.seq_rosteps * self.local_num_envs(),
@@ -465,7 +482,7 @@ class Trainer(HyperState[Config, State]):
                         % config.optimizer.batch_size
                         == 0
                     ):
-                        self.optimizer.zero_grad()
+                        self.state.optimizer.zero_grad()
 
                     start = config.optimizer.micro_batch_size * micro_batch
                     end = config.optimizer.micro_batch_size * (micro_batch + 1)
@@ -486,7 +503,7 @@ class Trainer(HyperState[Config, State]):
                         entropy_loss,
                         aproxkl,
                         clipfrac,
-                    ) = self.policy.backprop(
+                    ) = self.state.policy.backprop(
                         config,
                         o,
                         actions,
@@ -515,15 +532,16 @@ class Trainer(HyperState[Config, State]):
                         == 0
                     ):
                         if self.parallelism > 1:
-                            gradient_allreduce(self.policy)
+                            gradient_allreduce(self.state.policy)
                         gradnorm.append(
                             torch.nn.utils.clip_grad_norm_(
-                                self.policy.parameters(), config.optimizer.max_grad_norm
+                                self.state.policy.parameters(),
+                                config.optimizer.max_grad_norm,
                             ).item()
                         )
-                        self.optimizer.step()
+                        self.state.optimizer.step()
                         for ema in self.ema:
-                            ema.update(self.policy.parameters())
+                            ema.update(self.state.policy.parameters())
             torch.cuda.empty_cache()
 
             state.epoch += 1
@@ -577,7 +595,7 @@ class Trainer(HyperState[Config, State]):
                     metrics.update(self.adr.metrics())
                     total_norm = 0.0
                     count = 0
-                    for name, param in self.policy.named_parameters():
+                    for name, param in self.state.policy.named_parameters():
                         norm = param.data.norm()
                         metrics[f"weight_norm[{name}]"] = norm
                         count += 1
@@ -586,9 +604,6 @@ class Trainer(HyperState[Config, State]):
                     # TODO: steps
                     wandb.log(metrics, step=state.step)
 
-            # TODO: some way to avoid doing this on every iteration?
-            state.policy.set(self.policy.state_dict())
-            state.optimizer.set(self.optimizer.state_dict())
             self.step()
 
             print(f"{throughput} samples/s", flush=True)
@@ -599,7 +614,7 @@ class Trainer(HyperState[Config, State]):
         if config.eval.eval_envs > 0:
             for policy_ema in [None] + self.ema:
                 eval(
-                    policy=self.policy,
+                    policy=self.state.policy,
                     num_envs=config.eval.eval_envs,
                     device=device,
                     objective=config.task.objective,
@@ -1020,7 +1035,7 @@ def load_policy(
 def load_hs_policy(path, device):
     if not path.startswith("/"):
         path = os.path.join(EVAL_MODELS_PATH, path)
-    return Trainer(path).policy
+    return Trainer(path).state.policy
 
 
 def explained_variance(ypred, y):

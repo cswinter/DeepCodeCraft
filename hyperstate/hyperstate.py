@@ -2,12 +2,10 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from collections import namedtuple
-from enum import Enum, EnumMeta
-import math
+from enum import EnumMeta
 from pathlib import Path
 import tempfile
 from typing import (
-    Callable,
     Generic,
     List,
     Any,
@@ -18,8 +16,13 @@ from typing import (
     Tuple,
     Union,
 )
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import is_dataclass
+
+import torch
+import msgpack
+import msgpack_numpy
 import pyron
+
 from hyperstate.schedule import Schedule, _parse_schedule
 
 C = TypeVar("C")
@@ -65,9 +68,9 @@ class HyperState(ABC, Generic[C, S]):
             config_path = path
             state_path = None
 
-        self.config, self.schedules = _load_file_and_schedules(
-            config_clz, config_path, overrides
-        )
+        config, schedules = _load_file_and_schedules(config_clz, config_path, overrides)
+        self.config: C = config
+        self.schedules = schedules
 
         # TODO: hack
         config = self.config
@@ -78,7 +81,7 @@ class HyperState(ABC, Generic[C, S]):
         if state_path is None:
             self.state = self.initial_state()
         else:
-            self.state = load_file(state_clz, state_path, overrides=[])
+            self.state = load_file(state_clz, state_path, overrides=[], config=config)
 
         if checkpoint_dir is not None:
             self.checkpoint_dir = Path(checkpoint_dir)
@@ -199,17 +202,15 @@ def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
             pass
         elif isinstance(field_clz, EnumMeta):
             value = value.name
-        elif (
-            hasattr(field_clz, "__args__")
-            and len(field_clz.__args__) == 1
-            and field_clz == Blob[field_clz.__args__]
-        ):
-            # TODO: use sane serialization library
+        elif issubclass(field_clz, LazyField):
             import dill
 
-            data = dill.dumps(value._inner)
-            blobs[field_name] = data
+            blobs[field_name] = dill.dumps(value.state_dict())
             value = "<BLOB>"
+            # TODO: make msgpack work with pytorch tensors
+            # state_dict = _dict_to_cpu(value.state_dict())
+            # blobs[field_name] = msgpack.packb(state_dict, default=msgpack_numpy.encode)
+            # value = "<blob:msgpack>"
         else:
             raise TypeError(f"Unexpected type {field_clz}")
         builder[field_name] = value
@@ -254,11 +255,15 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
     return result
 
 
-def load_file(clz: Type[T], path: str, overrides: List[str]) -> T:
-    return _load_file_and_schedules(clz, path, overrides)[0]
+def load_file(
+    clz: Type[T], path: str, overrides: List[str], config: Optional[Any]
+) -> T:
+    return _load_file_and_schedules(clz, path, overrides, config)[0]
 
 
-def _load_file_and_schedules(clz: Type[T], path: str, overrides: List[str]) -> T:
+def _load_file_and_schedules(
+    clz: Type[T], path: str, overrides: List[str], config: Optional[Any] = None
+) -> T:
     path = Path(path)
     if not is_dataclass(clz):
         raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
@@ -283,15 +288,16 @@ def _load_file_and_schedules(clz: Type[T], path: str, overrides: List[str]) -> T
         else:
             val = str_val
         _values[fpath[-1]] = val
-    return _parse(clz, values, path.absolute().parent)
+    return _parse(clz, values, path.absolute().parent, config)
 
 
 def _parse(
-    clz: Type[T], values: Dict[str, Any], path: Path
+    clz: Type[T], values: Dict[str, Any], path: Path, config: Optional[Any] = None
 ) -> Tuple[T, Dict[str, Any]]:
     kwargs = {}
     remaining_fields = set(clz.__annotations__.keys())
     schedules = {}
+    lazy_fields = {}
     for field_name, value in values.items():
         if field_name not in remaining_fields:
             raise TypeError(
@@ -372,13 +378,12 @@ def _parse(
         ):
             _typecheck(field_name, value, dict)
             # TODO: recurse
-        elif (
-            hasattr(field_clz, "__args__")
-            and len(field_clz.__args__) == 1
-            and field_clz == Blob[field_clz.__args__]
-        ):
-            assert value == "<BLOB>", f"{value} != <BLOB>"
-            value = Blob(path / field_name)
+        elif issubclass(field_clz, LazyField):
+            assert (
+                value == "<BLOB>" or value == "<blob:msgpack>"
+            ), f"{value} != <BLOB> or <blob:msgpack>"
+            lazy_fields[field_name] = (config, path / field_name, value == "<BLOB>")
+            value = None
         elif is_dataclass(field_clz):
             value, inner_schedules = _parse(field_clz, value, path / field_name)
             schedules[field_name] = inner_schedules
@@ -392,6 +397,8 @@ def _parse(
 
     try:
         instance = clz(**kwargs)
+        if len(lazy_fields) > 0:
+            instance._unloaded_lazy_fields = lazy_fields
         return instance, schedules
     except TypeError as e:
         raise TypeError(f"Failed to initialize {clz.__module__}.{clz.__name__}: {e}")
@@ -408,20 +415,15 @@ def _parse_int(s: str):
         return None
 
 
-@dataclass
-class Blob(Generic[T]):
-    _inner: Union[T, Path]
-
-    def get(self) -> T:
-        if isinstance(self._inner, Path):
-            import pickle
-
-            with open(self._inner, "rb") as f:
-                self._inner = pickle.load(f)
-        return self._inner
-
-    def set(self, value: T):
-        self._inner = value
+def _dict_to_cpu(x: Any) -> Dict[str, Any]:
+    if isinstance(x, torch.Tensor):
+        return x.cpu().numpy()
+    elif isinstance(x, dict):
+        return {k: _dict_to_cpu(v) for k, v in x.items()}
+    elif isinstance(x, list):
+        return [_dict_to_cpu(v) for v in x]
+    else:
+        return x
 
 
 def is_optional(clz):
@@ -431,3 +433,44 @@ def is_optional(clz):
         and clz.__args__.__len__() == 2
         and clz.__args__[1] is type(None)
     )
+
+
+class Lazy:
+    def __init__(self):
+        self._unloaded_lazy_fields = {}
+
+    def __getattribute__(self, name: str) -> Any:
+        try:
+            unloaded = super(Lazy, self).__getattribute__("_unloaded_lazy_fields")
+            if name in unloaded:
+                config, path, legacy_pickle = unloaded[name]
+                # clz = self.__annotations__[name]
+                with open(path, "rb") as f:
+                    # TODO: deprecate
+                    if legacy_pickle:
+                        import pickle
+
+                        state_dict = pickle.load(f)
+                    else:
+                        # TODO: this doesn't work for tensors :( need custom encoder/decoder that converts numpy arrays back into tensors?
+                        state_dict = msgpack.unpack(f, object_hook=msgpack_numpy.decode)
+                # TODO: recursion check
+                value = super(Lazy, self).__getattribute__(f"_load_{name}")(
+                    config, state_dict
+                )
+                self.__setattr__(name, value)
+                del unloaded[name]
+        except AttributeError:
+            pass
+        return super(Lazy, self).__getattribute__(name)
+
+
+class LazyField(ABC):
+    pass
+
+
+def lazy(clz: Type[T]) -> Type[T]:
+    class _LazyField(clz, LazyField):
+        pass
+
+    return _LazyField
