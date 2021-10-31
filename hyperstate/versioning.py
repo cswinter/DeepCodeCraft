@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod, abstractclassmethod
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any, Callable, Type
+from typing import List, Optional, Tuple, Dict, Any, Callable, Type
 import click
 
 
@@ -61,6 +61,7 @@ class DeleteField(RewriteRule):
 class MapFieldValue(RewriteRule):
     field: str
     map_fn: Callable[[Any], Any]
+    rendered: Optional[str] = None
 
     def apply(self, state_dict: Any) -> Any:
         path = self.field.split(".")

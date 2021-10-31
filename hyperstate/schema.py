@@ -2,11 +2,20 @@ from typing import Type, TypeVar, Any
 from enum import EnumMeta
 import enum
 import typing
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, is_dataclass
 import dataclasses
+import logging
 
-from .versioning import Versioned
+from .versioning import (
+    RewriteRule,
+    Versioned,
+    DeleteField,
+    RenameField,
+    MapFieldValue,
+    ChangeDefault,
+    AddDefault,
+)
 
 import pyron
 import click
@@ -22,10 +31,16 @@ class Type(ABC):
 class Primitive(Type):
     type: str
 
+    def __repr__(self) -> str:
+        return self.type
+
 
 @dataclass(eq=True, frozen=True)
 class List(Type):
-    item_type: Type
+    inner: Type
+
+    def __repr__(self) -> str:
+        return f"List[{self.inner}]"
 
 
 @dataclass(eq=True, frozen=True)
@@ -49,10 +64,16 @@ class Struct(Type):
     fields: typing.Dict[str, Field]
     version: typing.Optional[int]
 
+    def __repr__(self) -> str:
+        return f"{self.name}({', '.join(f'{k}={v}' for k, v in self.fields.items())})"
+
 
 @dataclass(eq=True, frozen=True)
 class Option:
     type: Type
+
+    def __repr__(self) -> str:
+        return f"Optional[{self.type}]"
 
 
 def materialize_type(clz: typing.Type[Any]) -> Type:
@@ -113,7 +134,7 @@ def schema_from_namedtuple(schema: Any) -> Type:
     if clz_name == "Primitive":
         return Primitive(schema.type)
     elif clz_name == "List":
-        return List(schema_from_namedtuple(schema.item_type))
+        return List(schema_from_namedtuple(schema.inner))
     elif clz_name == "Struct":
         fields = {}
         for name, field in schema.fields.items():
@@ -141,99 +162,235 @@ def load_schema(path: str) -> Type:
     return schema_from_namedtuple(schema)
 
 
-def compare_schemas(old: Type, new: Type, path: typing.List[str]):
-    if old.__class__ != new.__class__:
-        # ALLOWED
-        # T -> Optional[T]
-        # POTENTIALLY FIXABLE
-        # Optional[T] -> T => Add Map None -> new default
-        # T -> List[T] => Add Map x => [x]
-        # ERROR
-        # Any other type change
-        if isinstance(new, Option):  # and new.type == old:
-            print(f"INFO: {'.'.join(path)}: {old} -> {new}")
-        elif isinstance(old, Option) and old.type == new:
-            print(f"WARN: {'.'.join(path)}: {old} -> {new}")
-        elif isinstance(new, List) and new.item_type == old:
-            print(f"WARN: {'.'.join(path)}: {old} -> {new}")
-        else:
-            print(f"ERROR: {'.'.join(path)}: {old} -> {new}")
-    elif isinstance(old, Primitive):
-        # ALLOWED
-        # int -> float
-        # ERROR
-        # Any other type change
-        if old.type == "int" and new.type == "float":
-            print(f"INFO: {'.'.join(path)}: {old.type} -> {new.type}")
-        elif old.type != new.type:
-            print(f"ERROR: {'.'.join(path)}: {old.type} -> {new.type}")
-    elif isinstance(old, List):
-        compare_schemas(old.item_type, new.item_type, path + ["[]"])
-    elif isinstance(old, Struct):
-        # ALLOWED
-        # new field with default value
-        # default value added
-        # POTENTIALLY FIXABLE
-        # new field without default value
-        # removed field
-        # field default value changed
-        # ERROR
-        # default value removed
+@dataclass
+class SchemaChange(ABC):
+    field: typing.List[str]
 
-        # Check for new fields and field type changes
-        for name, field in new.fields.items():
-            if name not in old.fields:
-                if field.has_default:
-                    print(f"INFO: Added {'.'.join(path)}.{name}")
+    @abstractmethod
+    def diagnostic(self) -> str:
+        pass
+
+    def severity(self) -> int:
+        if self.proposed_fix() is not None:
+            return logging.WARNING
+        else:
+            return logging.ERROR
+
+    def proposed_fix(self) -> typing.Optional[RewriteRule]:
+        return None
+
+    @property
+    def field_name(self) -> str:
+        return ".".join(self.field)
+
+    def emit_diagnostic(self) -> None:
+        severity = self.severity()
+        if severity == logging.INFO:
+            styled_severity = click.style("INFO ", fg="white")
+        elif severity == logging.WARNING:
+            styled_severity = click.style("WARN ", fg="yellow")
+        else:
+            styled_severity = click.style("ERROR", fg="red")
+
+        print(
+            f"{styled_severity} {self.diagnostic()}: {click.style(self.field_name, fg='cyan')}"
+        )
+
+
+@dataclass
+class FieldAdded(SchemaChange):
+    type: Type
+
+    def diagnostic(self) -> str:
+        return "new field without default value"
+
+
+@dataclass
+class FieldRemoved(SchemaChange):
+    def diagnostic(self) -> str:
+        return "field removed"
+
+    def proposed_fix(self) -> RewriteRule:
+        return DeleteField(self.field_name)
+
+
+@dataclass
+class DefaultValueChanged(SchemaChange):
+    old: Any
+    new: Any
+
+    def diagnostic(self) -> str:
+        return f"default value changed from {self.old} to {self.new}"
+
+    def proposed_fix(self) -> RewriteRule:
+        return ChangeDefault(self.field_name, self.new)
+
+
+@dataclass
+class DefaultValueRemoved(SchemaChange):
+    old: Any
+
+    def diagnostic(self) -> str:
+        return f"default value removed: {self.old}"
+
+    def proposed_fix(self) -> RewriteRule:
+        return AddDefault(self.field_name, self.old)
+
+
+@dataclass
+class TypeChanged(SchemaChange):
+    old: Type
+    new: Type
+
+    def severity(self) -> int:
+        if isinstance(self.new, Option) and self.new.type == self.old:
+            return logging.INFO
+        elif (
+            isinstance(self.old, Primitive)
+            and isinstance(self.new, Primitive)
+            and self.old.type == "int"
+            and self.new.type == "float"
+        ):
+            return logging.INFO
+        return super().severity()
+
+    def diagnostic(self) -> str:
+        return f"type changed from {self.old} to {self.new}"
+
+    def proposed_fix(self) -> RewriteRule:
+        if isinstance(self.new, List) and self.new.inner == self.old:
+            return MapFieldValue(
+                self.field_name, lambda x: [x], rendered="lambda x: [x]"
+            )
+        elif (
+            isinstance(self.old, Primitive)
+            and isinstance(self.new, Primitive)
+            and self.old == "float"
+            and self.new == "int"
+        ):
+            return MapFieldValue(
+                self.field_name, lambda x: int(x), rendered="lambda x: int(x)"
+            )
+
+
+@dataclass
+class EnumVariantValueChanged(SchemaChange):
+    enum_name: str
+    variant: str
+    old_value: typing.Union[str, int]
+    new_value: typing.Union[str, int]
+
+    def diagnostic(self) -> str:
+        return f"value of {self.enum_name}.{self.variant} changed from {self.old_value} to {self.new_value}"
+
+    def proposed_fix(self) -> RewriteRule:
+        return MapFieldValue(
+            self.field_name,
+            lambda x: x if x != self.old_value else self.new_value,
+            rendered=f"lambda x: x if x != {self.old_value} else {self.new_value}",
+        )
+
+
+@dataclass
+class EnumVariantRemoved(SchemaChange):
+    enum_name: str
+    variant: str
+
+    def diagnostic(self) -> str:
+        return f"variant {self.variant} of {self.enum_name} removed"
+
+
+class SchemaChecker:
+    def __init__(self, old: Type, new: Type):
+        self.old = old
+        self.new = new
+        self.changes = []
+        self._find_changes(old, new, [])
+
+    def _find_changes(self, old: Type, new: Type, path: typing.List[str]):
+        if old.__class__ != new.__class__:
+            self.changes.append(TypeChanged(list(path), old, new))
+        elif isinstance(old, Primitive):
+            if old != new:
+                self.changes.append(TypeChanged(list(path), old, new))
+        elif isinstance(old, List):
+            self._find_changes(old.inner, new.inner, path + ["[]"])
+        elif isinstance(old, Struct):
+            for name, field in new.fields.items():
+                if name not in old.fields:
+                    if not field.has_default:
+                        self.changes.append(
+                            FieldAdded(
+                                list(path + [name]),
+                                field.type,
+                                field.default,
+                                field.has_default,
+                            )
+                        )
                 else:
-                    print(f"WARN: Added {'.'.join(path)}.{name} without default")
-            else:
-                compare_schemas(old.fields[name].type, field.type, path + [name])
-                if old.fields[name].has_default != field.has_default:
-                    if field.has_default:
-                        print(f"INFO: Added default value to {'.'.join(path)}.{name}")
-                    else:
-                        print(
-                            f"WARN: Removed default value from {'.'.join(path)}.{name}"
+                    self._find_changes(old.fields[name].type, field.type, path + [name])
+                    if old.fields[name].has_default != field.has_default:
+                        if not field.has_default:
+                            self.changes.append(
+                                DefaultValueRemoved(
+                                    list(path + [name]), old.fields[name].default
+                                )
+                            )
+                    elif (
+                        old.fields[name].has_default
+                        and old.fields[name].default != field.default
+                    ):
+                        if is_dataclass(field.default):
+                            # TODO: perform comparison against namedtuple
+                            pass
+                        else:
+                            self.changes.append(
+                                DefaultValueChanged(
+                                    list(path + [name]),
+                                    old.fields[name].default,
+                                    field.default,
+                                )
+                            )
+            # Check for removed fields
+            for name, field in old.fields.items():
+                if name not in new.fields:
+                    self.changes.append(FieldRemoved(list(path + [name])))
+
+        elif isinstance(old, Option):
+            self._find_changes(old.type, new.type, path + ["?"])
+        elif isinstance(old, Enum):
+            for name, value in new.variants.items():
+                if name not in old.variants:
+                    pass
+                else:
+                    if old.variants[name] != value:
+                        self.changes.append(
+                            EnumVariantValueChanged(
+                                list(path), old.variants[name], value,
+                            )
                         )
-                elif (
-                    old.fields[name].has_default
-                    and old.fields[name].default != field.default
-                ):
-                    if is_dataclass(field.default):
-                        # TODO: perform comparison against namedtuple
-                        pass
-                    else:
-                        print(
-                            f"WARN: Changed default value of {'.'.join(path)}.{name} from {old.fields[name].default} to {field.default}"
-                        )
-        # Check for removed fields
-        for name, field in old.fields.items():
-            if name not in new.fields:
-                print(f"WARN: {'.'.join(path)}.{name} removed")
-    elif isinstance(old, Option):
-        compare_schemas(old.type, new.type, path + ["?"])
-    elif isinstance(old, Enum):
-        # ALLOWED
-        # new variant
-        # POTENTIALLY FIXABLE
-        # variant removed
-        # variant value changed
-        for name, value in new.variants.items():
-            if name not in old.variants:
-                print(f"INFO: Added {'.'.join(path)}.{name}")
-            else:
-                if old.variants[name] != value:
-                    print(
-                        f"WARN: Changed value of {name} variant of {old.name} enum ({'.'.join(path)})"
-                    )
-        for name, value in old.variants.items():
-            if name not in new.variants:
-                print(
-                    f"ERROR: Removed {name} variant of {old.name} enum ({'.'.join(path)})"
-                )
-    else:
-        raise ValueError(f"Unsupported type: {old}")
+            for name, value in old.variants.items():
+                if name not in new.variants:
+                    self.changes.append(EnumVariantRemoved(list(path), value))
+        else:
+            raise ValueError(f"Unsupported type: {old}")
+
+    def print_report(self):
+        for change in self.changes:
+            change.emit_diagnostic()
+
+        print()
+        click.echo(click.style("Proposed mitigations", fg="white", bold=True,))
+        all_rewrite_rules = []
+        for change in self.changes:
+            proposed_fix = change.proposed_fix()
+            if proposed_fix is not None:
+                all_rewrite_rules.append(proposed_fix)
+        if all_rewrite_rules:
+            print("0: [")
+            for mitigation in all_rewrite_rules:
+                print(f"    {mitigation},")
+            print("]")
 
 
 CONFIG_CLZ: typing.Type[Any] = None
@@ -259,7 +416,7 @@ def check_schema(filename: str):
     global CONFIG_CLZ
     old = load_schema(filename)
     new = materialize_type(CONFIG_CLZ)
-    compare_schemas(old, new, [])
+    SchemaChecker(old, new).print_report()
 
 
 def schema_evolution_cli(config_clz: typing.Type[Any]):

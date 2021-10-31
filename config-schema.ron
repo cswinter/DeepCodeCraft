@@ -97,7 +97,7 @@ Struct(
                     "weights_ema": Field(
                         name: "weights_ema",
                         type: List(
-                            item_type: Primitive(
+                            inner: Primitive(
                                 type: "float",
                             ),
                         ),
@@ -182,7 +182,7 @@ Struct(
                     "extra_checkpoint_steps": Field(
                         name: "extra_checkpoint_steps",
                         type: List(
-                            item_type: Primitive(
+                            inner: Primitive(
                                 type: "int",
                             ),
                         ),
