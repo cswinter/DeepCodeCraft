@@ -1,12 +1,16 @@
 from abc import ABC, abstractclassmethod
+from dataclasses import dataclass
 from typing import List, Any, Dict
 
 from hyperstate.schema.rewrite_rule import RewriteRule
 
 
+@dataclass
 class Versioned(ABC):
+    version: int
+
     @abstractclassmethod
-    def version(clz) -> int:
+    def latest_version(clz) -> int:
         pass
 
     @classmethod

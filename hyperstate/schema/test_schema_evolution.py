@@ -135,10 +135,7 @@ def automatic_upgrade(old: Any, new: Any):
         materialize_type(old.__class__), materialize_type(new.__class__)
     ).proposed_fixes
     old_state_dict = asdict(old)
-    print(old_state_dict)
     for fix in autofixes:
-        print(fix)
         old_state_dict = fix.apply(old_state_dict)
-        print(old_state_dict)
     assert from_dict(new.__class__, old_state_dict) == new
 

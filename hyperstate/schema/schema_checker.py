@@ -110,9 +110,9 @@ class SchemaChecker:
                         )
                     )
 
-        elif isinstance(old, type.Option):
+        elif isinstance(old, types.Option):
             self._find_changes(old.type, new.type, path + ["?"])
-        elif isinstance(old, Enum):
+        elif isinstance(old, types.Enum):
             for name, value in new.variants.items():
                 if name not in old.variants:
                     pass
@@ -139,7 +139,6 @@ class SchemaChecker:
             best_similarity = threshold
             best_match: Optional[FieldAdded] = None
             for added in addeds:
-                print(removed)
                 if (
                     removed.type == added.type
                     and removed.has_default == added.has_default

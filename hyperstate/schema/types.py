@@ -2,10 +2,9 @@ from typing import Type, TypeVar, Any
 from enum import EnumMeta
 import enum
 import typing
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, is_dataclass
 import dataclasses
-import logging
 
 import pyron
 
@@ -128,7 +127,7 @@ def schema_from_namedtuple(schema: Any) -> Type:
                 field.default,
                 field.has_default,
             )
-        return Struct(schema.name, fields, schema.version)
+        return Struct(schema.name, fields)
     elif clz_name == "Option":
         return Option(schema_from_namedtuple(schema.type))
     elif clz_name == "Enum":
