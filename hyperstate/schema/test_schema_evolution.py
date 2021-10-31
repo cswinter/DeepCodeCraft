@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 import tempfile
 import pytest
+from hyperstate.hyperstate import asdict, from_dict
 from hyperstate.schema.rewrite_rule import (
     AddDefault,
     ChangeDefault,
@@ -78,6 +79,18 @@ def test_config_v1_to_v2():
         [],
         Severity.ERROR,
     )
+    automatic_upgrade(
+        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV2Warn(
+            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer=None,
+        ),
+    )
+    automatic_upgrade(
+        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV2Info(
+            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer="sgd",
+        ),
+    )
 
 
 def test_config_v2_to_v3():
@@ -89,10 +102,14 @@ def test_config_v2_to_v3():
             FieldRenamed(field=("learning_rate",), new_name=("lr",)),
         ],
         [
-            ChangeDefault(field="optimizer", new_default="adam"),
-            RenameField(old_field="learning_rate", new_field=("lr",)),
+            ChangeDefault(field=("optimizer",), new_default="adam"),
+            RenameField(old_field=("learning_rate",), new_field=("lr",)),
         ],
         Severity.WARN,
+    )
+    automatic_upgrade(
+        ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV3(steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",),
     )
 
 
@@ -115,6 +132,13 @@ def check_schema(
 
 def automatic_upgrade(old: Any, new: Any):
     autofixes = SchemaChecker(
-        materialize_type(old.clz), materialize_type(new.clz)
-    ).changes
-    state_dict = old.to_dict()
+        materialize_type(old.__class__), materialize_type(new.__class__)
+    ).proposed_fixes
+    old_state_dict = asdict(old)
+    print(old_state_dict)
+    for fix in autofixes:
+        print(fix)
+        old_state_dict = fix.apply(old_state_dict)
+        print(old_state_dict)
+    assert from_dict(new.__class__, old_state_dict) == new
+

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict, Any, Callable
+from typing import List, Optional, Sequence, Tuple, Dict, Any, Callable
 
 
 class RewriteRule(ABC):
@@ -11,35 +11,33 @@ class RewriteRule(ABC):
 
 @dataclass
 class RenameField(RewriteRule):
-    old_field: str
-    new_field: str
+    old_field: Sequence[str]
+    new_field: Sequence[str]
 
     def apply(self, state_dict: Any) -> Any:
         # TODO: handle lists
-        old_path = self.old_field.split(".")
-        value, present = _remove(state_dict, old_path)
-        if present:
-            new_path = self.new_field.split(".")
-            _insert(state_dict, new_path, value)
+        value, ok = _remove(state_dict, self.old_field)
+        if ok:
+            _insert(state_dict, self.new_field, value)
         return state_dict
 
 
 @dataclass
 class DeleteField(RewriteRule):
-    field: str
+    field: Sequence[str]
 
     def apply(self, state_dict: Any) -> Any:
-        _remove(state_dict, self.field.split("."))
+        _remove(state_dict, self.field)
 
 
 @dataclass
 class MapFieldValue(RewriteRule):
-    field: str
+    field: Sequence[str]
     map_fn: Callable[[Any], Any]
     rendered: Optional[str] = None
 
     def apply(self, state_dict: Any) -> Any:
-        path = self.field.split(".")
+        path = self.field
         value, present = _remove(state_dict, path)
         if present:
             new_value = self.map_fn(value)
@@ -49,26 +47,26 @@ class MapFieldValue(RewriteRule):
 
 @dataclass
 class ChangeDefault(RewriteRule):
-    field: str
+    field: Sequence[str]
     new_default: Any
 
     def apply(self, state_dict: Any) -> Any:
-        path = self.field.split(".")
-        _, present = _remove(state_dict, path)
-        if not present:
-            _insert(state_dict, path, self.default)
+        existing_value, ok = _remove(state_dict, self.field)
+        if not ok:
+            _insert(state_dict, self.field, self.new_default)
+        else:
+            _insert(state_dict, self.field, existing_value)
         return state_dict
 
 
 @dataclass
 class AddDefault(RewriteRule):
-    field: str
+    field: Sequence[str]
     default: Any
 
     def apply(self, state_dict: Any) -> Any:
-        path = self.field.split(".")
-        value, present = _remove(state_dict, path)
-        _insert(state_dict, path, value if present else self.default)
+        value, present = _remove(state_dict, self.field)
+        _insert(state_dict, self.field, value if present else self.default)
         return state_dict
 
 

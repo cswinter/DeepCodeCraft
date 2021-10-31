@@ -221,7 +221,8 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
     if schedules is None:
         schedules = {}
     result = {}
-    for field_name, field_clz in x.__annotations__.items():
+    for field_name, field in x.__dataclass_fields__.items():
+        field_clz = field.type
         if field_name in schedules and isinstance(schedules[field_name], Schedule):
             result[field_name] = schedules[field_name].unparsed
             continue
@@ -408,16 +409,14 @@ def from_dict(
         # TODO: better error
         assert isinstance(value, dict), f"{value} is not a dict"
         kwargs = {}
-        remaining_fields = set(clz.__annotations__.keys())
         for field_name, v in value.items():
-            if field_name not in remaining_fields:
+            field = clz.__dataclass_fields__.get(field_name)
+            if field is None:
                 raise TypeError(
                     f"{clz.__module__}.{clz.__name__} has no attribute {field_name}."
                 )
-            else:
-                remaining_fields.remove(field_name)
             kwargs[field_name] = from_dict(
-                clz.__annotations__[field_name],
+                field.type,
                 v,
                 deserializer,
                 f"{path}.{field_name}" if path else field_name,

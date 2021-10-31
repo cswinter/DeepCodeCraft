@@ -85,7 +85,7 @@ class FieldRemoved(SchemaChange):
         return "field removed"
 
     def proposed_fix(self) -> RewriteRule:
-        return DeleteField(self.field_name)
+        return DeleteField(self.field)
 
 
 @dataclass(eq=True, frozen=True)
@@ -96,7 +96,7 @@ class FieldRenamed(SchemaChange):
         return f"field renamed to {self.new_name}"
 
     def proposed_fix(self) -> RewriteRule:
-        return RenameField(self.field_name, self.new_name)
+        return RenameField(self.field, self.new_name)
 
 
 @dataclass(eq=True, frozen=True)
@@ -108,7 +108,7 @@ class DefaultValueChanged(SchemaChange):
         return f"default value changed from {self.old} to {self.new}"
 
     def proposed_fix(self) -> RewriteRule:
-        return ChangeDefault(self.field_name, self.new)
+        return ChangeDefault(self.field, self.new)
 
 
 @dataclass(eq=True, frozen=True)
@@ -119,7 +119,7 @@ class DefaultValueRemoved(SchemaChange):
         return f"default value removed: {self.old}"
 
     def proposed_fix(self) -> RewriteRule:
-        return AddDefault(self.field_name, self.old)
+        return AddDefault(self.field, self.old)
 
 
 @dataclass(eq=True, frozen=True)
@@ -144,9 +144,7 @@ class TypeChanged(SchemaChange):
 
     def proposed_fix(self) -> RewriteRule:
         if isinstance(self.new, List) and self.new.inner == self.old:
-            return MapFieldValue(
-                self.field_name, lambda x: [x], rendered="lambda x: [x]"
-            )
+            return MapFieldValue(self.field, lambda x: [x], rendered="lambda x: [x]")
         elif (
             isinstance(self.old, Primitive)
             and isinstance(self.new, Primitive)
@@ -154,7 +152,7 @@ class TypeChanged(SchemaChange):
             and self.new == "int"
         ):
             return MapFieldValue(
-                self.field_name, lambda x: int(x), rendered="lambda x: int(x)"
+                self.field, lambda x: int(x), rendered="lambda x: int(x)"
             )
 
 
@@ -170,7 +168,7 @@ class EnumVariantValueChanged(SchemaChange):
 
     def proposed_fix(self) -> RewriteRule:
         return MapFieldValue(
-            self.field_name,
+            self.field,
             lambda x: x if x != self.old_value else self.new_value,
             rendered=f"lambda x: x if x != {self.old_value} else {self.new_value}",
         )
