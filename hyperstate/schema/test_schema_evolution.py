@@ -19,17 +19,21 @@ from hyperstate.schema.schema_change import (
 from hyperstate.schema.schema_checker import (
     SchemaChecker,
     Severity,
-    _dump_schema,
 )
 from hyperstate.schema.types import materialize_type, Type, Primitive, Option
+from hyperstate.schema.versioned import Versioned
 
 
 @dataclass
-class ConfigV1:
+class ConfigV1(Versioned):
     steps: int
     learning_rate: float
     batch_size: int
     epochs: int
+
+    @classmethod
+    def latest_version(clz) -> int:
+        return 1
 
 
 @dataclass
@@ -48,12 +52,16 @@ class ConfigV2Info(ConfigV1):
 
 
 @dataclass
-class ConfigV3:
+class ConfigV3(Versioned):
     steps: int
     lr: float
     batch_size: int
     epochs: int
     optimizer: str = "adam"
+
+    @classmethod
+    def latest_version(clz) -> int:
+        return 3
 
 
 def test_config_v1_to_v2():
@@ -80,15 +88,25 @@ def test_config_v1_to_v2():
         Severity.ERROR,
     )
     automatic_upgrade(
-        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV1(version=0, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
         ConfigV2Warn(
-            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer=None,
+            version=1,
+            steps=1,
+            learning_rate=0.1,
+            batch_size=32,
+            epochs=10,
+            optimizer=None,
         ),
     )
     automatic_upgrade(
-        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV1(version=1, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
         ConfigV2Info(
-            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer="sgd",
+            version=2,
+            steps=1,
+            learning_rate=0.1,
+            batch_size=32,
+            epochs=10,
+            optimizer="sgd",
         ),
     )
 
@@ -108,8 +126,10 @@ def test_config_v2_to_v3():
         Severity.WARN,
     )
     automatic_upgrade(
-        ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
-        ConfigV3(steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",),
+        ConfigV2Info(version=2, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV3(
+            version=3, steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",
+        ),
     )
 
 
@@ -122,7 +142,7 @@ def check_schema(
     print_report: bool = False,
 ):
     with tempfile.TemporaryFile() as f:
-        checker = SchemaChecker(materialize_type(old), materialize_type(new))
+        checker = SchemaChecker(materialize_type(old), new)
         if print_report:
             checker.print_report()
         assert checker.changes == expected_changes
@@ -132,10 +152,11 @@ def check_schema(
 
 def automatic_upgrade(old: Any, new: Any):
     autofixes = SchemaChecker(
-        materialize_type(old.__class__), materialize_type(new.__class__)
+        materialize_type(old.__class__), new.__class__
     ).proposed_fixes
     old_state_dict = asdict(old)
     for fix in autofixes:
         old_state_dict = fix.apply(old_state_dict)
+    old_state_dict["version"] = new.version
     assert from_dict(new.__class__, old_state_dict) == new
 

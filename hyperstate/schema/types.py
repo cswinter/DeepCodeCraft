@@ -8,7 +8,6 @@ import dataclasses
 
 import pyron
 
-from hyperstate.schema.versioned import Versioned
 
 T = TypeVar("T")
 
@@ -94,6 +93,7 @@ def materialize_type(clz: typing.Type[Any]) -> Type:
             fields[name] = Field(
                 name, materialize_type(field.type), default, has_default
             )
+        from hyperstate.schema.versioned import Versioned
         return Struct(
             clz.__name__,
             fields,

@@ -1,10 +1,12 @@
 from enum import Enum
 from typing import (
+    Dict,
     List,
     Optional,
 )
 from dataclasses import dataclass, field
 from hyperstate import schema_evolution_cli
+from hyperstate.schema.rewrite_rule import DeleteField, RewriteRule
 from hyperstate.schema.versioned import Versioned
 
 
@@ -119,10 +121,6 @@ class OptimizerConfig:
     # Exponentially moving averages of model weights
     weights_ema: List[float] = field(default_factory=list)
     # [0.99, 0.997, 0.999, 0.9997, 0.9999]
-
-    # TODO: hack to load old checkpoints, find good solution for backwards compatibility
-    batches_per_update: int = -1
-    bs: int = -1
 
 
 @dataclass
@@ -440,7 +438,20 @@ class Config(Versioned):
 
     @classmethod
     def latest_version(clz) -> int:
-        return 0
+        return 1
+
+    @classmethod
+    def upgrade_rules(clz) -> Dict[int, RewriteRule]:
+        """
+        Returns a list of rewrite rules that can be applied to the given version
+        to make it compatible with the next version.
+        """
+        return {
+            0: [
+                DeleteField(field=("optimizer", "batches_per_update")),
+                DeleteField(field=("optimizer", "bs")),
+            ]
+        }
 
 
 if __name__ == "__main__":

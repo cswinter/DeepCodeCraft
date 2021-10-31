@@ -6,8 +6,7 @@ from hyperstate.schema.types import materialize_type, load_schema
 
 def test_config():
     old = load_schema("config-schema.ron")
-    new = materialize_type(Config)
-    checker = SchemaChecker(old, new)
+    checker = SchemaChecker(old, Config)
     if checker.severity() >= Severity.WARN:
         print(checker.print_report())
     assert checker.severity() == Severity.INFO

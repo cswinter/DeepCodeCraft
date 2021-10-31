@@ -1,4 +1,5 @@
-from typing import Optional, Type, Any
+from pickle import load
+from typing import List, Optional, Type, Any
 from enum import Enum
 import typing
 from dataclasses import Field, is_dataclass
@@ -11,9 +12,11 @@ from hyperstate.schema.schema_change import (
     FieldAdded,
     FieldRemoved,
     FieldRenamed,
+    SchemaChange,
     Severity,
     TypeChanged,
 )
+from hyperstate.schema.versioned import Versioned
 
 from .types import T, Type, load_schema, materialize_type
 from . import types
@@ -23,12 +26,13 @@ import click
 
 
 class SchemaChecker:
-    def __init__(self, old: Type, new: Type):
-        self.old = old
-        self.new = new
-        self.changes = []
+    def __init__(self, old: Type, config_clz: typing.Type[Versioned]):
+        self.config_clz = config_clz
+        self.new = materialize_type(config_clz)
+        self.old = config_clz._apply_schema_upgrades(old)
+        self.changes: List[SchemaChange] = []
         self.proposed_fixes = []
-        self._find_changes(old, new, [])
+        self._find_changes(old, self.new, [])
         self._find_renames()
         for change in self.changes:
             proposed_fix = change.proposed_fix()
@@ -45,19 +49,28 @@ class SchemaChecker:
     def print_report(self):
         for change in self.changes:
             change.emit_diagnostic()
+        if self.severity() > Severity.INFO and self.old.version == self.new.version:
+            print(
+                click.style("WARN", fg="yellow")
+                + "  schema changed but version identical"
+            )
 
         if self.severity() == Severity.INFO:
             click.secho("Schema compatible", fg="green")
         else:
             click.secho("Schema incompatible", fg="red")
             print()
-            click.secho("Proposed mitigations", fg="cyan", bold=True)
+            click.secho("Proposed mitigations", fg="white", bold=True)
             if self.proposed_fixes:
-                click.secho("- add rewrite rules:", fg="white", bold=True)
+                click.secho("- add upgrade rules:", fg="white", bold=True)
                 print("    0: [")
                 for mitigation in self.proposed_fixes:
                     print(f"        {mitigation},")
-                print("    ]")
+                print("    ],")
+            if self.severity() > Severity.INFO and self.old.version == self.new.version:
+                click.secho(
+                    f"- bump version to {self.old.version + 1}", fg="white", bold=True
+                )
 
     def _find_changes(self, old: Type, new: Type, path: typing.List[str]):
         if old.__class__ != new.__class__:
@@ -198,10 +211,20 @@ def levenshtein(s1, s2):
     return previous_row[-1]
 
 
-def _dump_schema(filename: str, type: Type):
-    serialized = pyron.to_string(type)
+def _dump_schema(filename: str, type: typing.Type[Versioned]):
+    serialized = pyron.to_string(materialize_type(type))
     with open(filename, "w") as f:
         f.write(serialized)
+
+
+def _upgrade_schema(filename: str, config_clz: typing.Type[Versioned]):
+    schema = load_schema(filename)
+    checker = SchemaChecker(schema, config_clz)
+    if checker.severity() >= Severity.WARN:
+        print(checker.report())
+    else:
+        _dump_schema(filename, config_clz)
+        click.secho("Schema updated", fg="green")
 
 
 CONFIG_CLZ: typing.Type[Any] = None
@@ -215,8 +238,14 @@ def cli():
 @cli.command()
 @click.argument("filename", default="config-schema.ron", type=click.Path())
 def dump_schema(filename: str):
-    type = materialize_type(CONFIG_CLZ)
-    _dump_schema(filename, type)
+    _dump_schema(filename, CONFIG_CLZ)
+
+
+@cli.command()
+@click.argument("filename", default="config-schema.ron", type=click.Path())
+def upgrade_schema(filename: str):
+    global CONFIG_CLZ
+    _upgrade_schema(filename, CONFIG_CLZ)
 
 
 @cli.command()
@@ -224,8 +253,7 @@ def dump_schema(filename: str):
 def check_schema(filename: str):
     global CONFIG_CLZ
     old = load_schema(filename)
-    new = materialize_type(CONFIG_CLZ)
-    SchemaChecker(old, new).print_report()
+    SchemaChecker(old, CONFIG_CLZ).print_report()
 
 
 def schema_evolution_cli(config_clz: typing.Type[Any]):

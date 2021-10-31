@@ -112,22 +112,6 @@ Struct(
                         default: [],
                         has_default: true,
                     ),
-                    "batches_per_update": Field(
-                        name: "batches_per_update",
-                        type: Primitive(
-                            type: "int",
-                        ),
-                        default: -1,
-                        has_default: true,
-                    ),
-                    "bs": Field(
-                        name: "bs",
-                        type: Primitive(
-                            type: "int",
-                        ),
-                        default: -1,
-                        has_default: true,
-                    ),
                 },
                 version: None,
             ),
@@ -1051,5 +1035,5 @@ Struct(
             has_default: true,
         ),
     },
-    version: 0,
+    version: 1,
 )
