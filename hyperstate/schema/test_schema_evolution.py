@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 import tempfile
 import pytest
 from hyperstate.schema.rewrite_rule import (
@@ -56,8 +56,8 @@ class ConfigV3:
 
 
 def test_config_v1_to_v2():
-    schema_upgrade_test(ConfigV1, ConfigV2Info, [], [], Severity.INFO)
-    schema_upgrade_test(
+    check_schema(ConfigV1, ConfigV2Info, [], [], Severity.INFO)
+    check_schema(
         ConfigV1,
         ConfigV2Warn,
         [
@@ -71,7 +71,7 @@ def test_config_v1_to_v2():
         [AddDefault(field=("optimizer",), default=None)],
         Severity.WARN,
     )
-    schema_upgrade_test(
+    check_schema(
         ConfigV1,
         ConfigV2Error,
         [FieldAdded(("optimizer",), type=Primitive(type="str"),)],
@@ -81,7 +81,7 @@ def test_config_v1_to_v2():
 
 
 def test_config_v2_to_v3():
-    schema_upgrade_test(
+    check_schema(
         ConfigV2Info,
         ConfigV3,
         [
@@ -96,7 +96,7 @@ def test_config_v2_to_v3():
     )
 
 
-def schema_upgrade_test(
+def check_schema(
     old: Type,
     new: Type,
     expected_changes: List[SchemaChange],
@@ -111,3 +111,10 @@ def schema_upgrade_test(
         assert checker.changes == expected_changes
         assert checker.proposed_fixes == expected_fixes
         assert checker.severity() == expected_severity
+
+
+def automatic_upgrade(old: Any, new: Any):
+    autofixes = SchemaChecker(
+        materialize_type(old.clz), materialize_type(new.clz)
+    ).changes
+    state_dict = old.to_dict()

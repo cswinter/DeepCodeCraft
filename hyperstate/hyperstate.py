@@ -16,7 +16,8 @@ from typing import (
     Tuple,
     Union,
 )
-from dataclasses import is_dataclass
+import inspect
+from dataclasses import dataclass, field, is_dataclass
 from .lazy import LazyField
 
 import torch
@@ -293,114 +294,144 @@ def _load_file_and_schedules(
 def _parse(
     clz: Type[T], values: Dict[str, Any], path: Path, config: Optional[Any] = None
 ) -> Tuple[T, Dict[str, Any]]:
-    kwargs = {}
-    remaining_fields = set(clz.__annotations__.keys())
-    schedules = {}
-    lazy_fields = {}
-    for field_name, value in values.items():
-        if field_name not in remaining_fields:
-            raise TypeError(
-                f"{clz.__module__}.{clz.__name__} has no attribute {field_name}."
+    schedules = ScheduleDeserializer()
+    lazy = LazyDeserializer(config, path)
+    value = from_dict(clz, values, DeserializerList([schedules, lazy]))
+    if len(lazy.lazy_fields) > 0:
+        value._unloaded_lazy_fields = lazy.lazy_fields
+    return value, schedules.schedules
+
+
+class Deserializer(ABC):
+    @abstractmethod
+    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+        pass
+
+
+@dataclass
+class DeserializerList(Deserializer):
+    deserializers: List[Deserializer]
+
+    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+        for deserializer in self.deserializers:
+            instance, match = deserializer.deserialize(clz, value, path)
+            if match:
+                return instance, True
+        return None, False
+
+
+class ScheduleDeserializer(Deserializer):
+    def __init__(self):
+        self.schedules = {}
+
+    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+        if (clz == int or clz == float) and isinstance(value, str) and "@" in value:
+            schedule = _parse_schedule(value)
+            field_name = path.split(".")[-1]
+
+            def update(self, state):
+                x = getattr(state, schedule.xname)
+                value = schedule.get_value(x)
+                setattr(self, field_name, clz(value))
+
+            self.schedules[path] = Schedule(update, value)
+            value = schedule.get_value(0.0)
+            return clz(value), True
+        return None, False
+
+
+@dataclass
+class LazyDeserializer(Deserializer, Generic[C]):
+    config: C
+    path: Path
+    lazy_fields: Dict[str, Tuple[C, str, bool]] = field(default_factory=dict)
+
+    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+        if inspect.isclass(clz) and issubclass(clz, LazyField):
+            assert value == "<BLOB>" or value == "<blob:msgpack>"
+            filepath = path.replace(".", "/").replace("[", "/").replace("]", "")
+            self.lazy_fields[path] = (
+                self.config,
+                self.path / filepath,
+                value == "<BLOB>",
             )
+            return None, True
+        return None, False
+
+
+def from_dict(
+    clz: Type[T],
+    value: Any,
+    deserializer: Optional[Deserializer] = None,
+    path: str = "",
+) -> T:
+    if is_optional(clz):
+        if value is None:
+            return None
         else:
-            remaining_fields.remove(field_name)
-        field_clz = clz.__annotations__[field_name]
-        is_opt = is_optional(field_clz)
-        if is_opt and value is not None:
-            field_clz = field_clz.__args__[0]
-
-        if is_opt and value is None:
-            pass
-        elif field_clz == float:
-            if isinstance(value, str):
-                if "@" in value:
-                    schedule = _parse_schedule(value)
-
-                    def _capture(field_name, schedule):
-                        def update(self, state):
-                            x = getattr(state, schedule.xname)
-                            value = schedule.get_value(x)
-                            setattr(self, field_name, value)
-
-                        return update
-
-                    schedules[field_name] = Schedule(
-                        _capture(field_name, schedule), value
-                    )
-                    value = schedule.get_value(0.0)
-                else:
-                    value = float(value)
-            if isinstance(value, int):
-                value = float(value)
-            _typecheck(field_name, value, float)
-        elif field_clz == int:
-            if isinstance(value, str):
-                if "@" in value:
-                    schedule = _parse_schedule(value)
-
-                    def _capture(field_name, schedule):
-                        def update(self, state):
-                            x = getattr(state, schedule.xname)
-                            value = schedule.get_value(x)
-                            setattr(self, field_name, value)
-
-                        return update
-
-                    schedules[field_name] = Schedule(
-                        _capture(field_name, schedule), value
-                    )
-                    value = int(schedule.get_value(0))
-                else:
-                    parsed = _parse_int(value)
-                    if parsed is not None:
-                        value = parsed
-            if isinstance(value, float) and value == int(value):
-                value = int(value)
-            _typecheck(field_name, value, int)
-        elif field_clz == bool:
-            _typecheck(field_name, value, bool)
-        elif field_clz == str:
-            _typecheck(field_name, value, str)
-        elif (
-            hasattr(field_clz, "__args__")
-            and len(field_clz.__args__) == 1
-            and field_clz == List[field_clz.__args__]
-        ):
-            _typecheck(field_name, value, list)
-            # TODO: nested types, dataclasses etc.
-            for i, item in enumerate(value):
-                _typecheck(f"{field_name}[{i}]", item, field_clz.__args__[0])
-        elif (
-            hasattr(field_clz, "__args__")
-            and len(field_clz.__args__) == 2
-            and field_clz == Dict[field_clz.__args__]
-        ):
-            _typecheck(field_name, value, dict)
-            # TODO: recurse
-        elif issubclass(field_clz, LazyField):
-            assert (
-                value == "<BLOB>" or value == "<blob:msgpack>"
-            ), f"{value} != <BLOB> or <blob:msgpack>"
-            lazy_fields[field_name] = (config, path / field_name, value == "<BLOB>")
-            value = None
-        elif is_dataclass(field_clz):
-            value, inner_schedules = _parse(field_clz, value, path / field_name)
-            schedules[field_name] = inner_schedules
-        elif isinstance(field_clz, EnumMeta):
-            value = field_clz(value)
+            clz = clz.__args__[0]
+    if deserializer is not None:
+        _value, match = deserializer.deserialize(clz, value, path)
+        if match:
+            return _value
+    if inspect.isclass(clz) and isinstance(value, clz):
+        return value
+    elif clz == float and isinstance(value, int):
+        return int(value)
+    elif clz == int and isinstance(value, float) and int(value) == value:
+        return int(value)
+    elif clz == float and isinstance(value, str):
+        return float(value)
+    elif clz == int and isinstance(value, str):
+        f = float(value)
+        if int(f) == f:
+            return int(f)
         else:
-            raise TypeError(
-                f"Field {clz.__module__}.{clz.__name__}.{field_name} has unsupported type {qualified_name(field_clz)}."
+            raise ValueError(f"Expected {path} to be an int, got {value}")
+    elif (
+        hasattr(clz, "__args__")
+        and len(clz.__args__) == 1
+        and clz == List[clz.__args__]
+        and isinstance(value, list)
+    ):
+        # TODO: recurse
+        return value
+    elif (
+        hasattr(clz, "__args__")
+        and len(clz.__args__) == 2
+        and clz == Dict[clz.__args__]
+        and isinstance(value, dict)
+    ):
+        # TODO: recurse
+        return value
+    elif is_dataclass(clz):
+        # TODO: better error
+        assert isinstance(value, dict), f"{value} is not a dict"
+        kwargs = {}
+        remaining_fields = set(clz.__annotations__.keys())
+        for field_name, v in value.items():
+            if field_name not in remaining_fields:
+                raise TypeError(
+                    f"{clz.__module__}.{clz.__name__} has no attribute {field_name}."
+                )
+            else:
+                remaining_fields.remove(field_name)
+            kwargs[field_name] = from_dict(
+                clz.__annotations__[field_name],
+                v,
+                deserializer,
+                f"{path}.{field_name}" if path else field_name,
             )
-        kwargs[field_name] = value
-
-    try:
-        instance = clz(**kwargs)
-        if len(lazy_fields) > 0:
-            instance._unloaded_lazy_fields = lazy_fields
-        return instance, schedules
-    except TypeError as e:
-        raise TypeError(f"Failed to initialize {clz.__module__}.{clz.__name__}: {e}")
+        try:
+            instance = clz(**kwargs)
+            return instance
+        except TypeError as e:
+            raise TypeError(f"Failed to initialize {path}: {e}")
+    elif isinstance(clz, EnumMeta):
+        return clz(value)
+    raise TypeError(
+        f"Failed to deserialize {path}: {value} is not a {qualified_name(clz)}"
+    )
 
 
 # TODO: gah
