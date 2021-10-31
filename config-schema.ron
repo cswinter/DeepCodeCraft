@@ -1,0 +1,1039 @@
+Struct(
+    name: "Config",
+    fields: {
+        "optimizer": Field(
+            name: "optimizer",
+            type: Struct(
+                name: "OptimizerConfig",
+                fields: {
+                    "optimizer_type": Field(
+                        name: "optimizer_type",
+                        type: Primitive(
+                            type: "str",
+                        ),
+                        default: "Adam",
+                        has_default: true,
+                    ),
+                    "lr": Field(
+                        name: "lr",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0003,
+                        has_default: true,
+                    ),
+                    "momentum": Field(
+                        name: "momentum",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.9,
+                        has_default: true,
+                    ),
+                    "weight_decay": Field(
+                        name: "weight_decay",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0001,
+                        has_default: true,
+                    ),
+                    "batch_size": Field(
+                        name: "batch_size",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 2048,
+                        has_default: true,
+                    ),
+                    "micro_batch_size": Field(
+                        name: "micro_batch_size",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 2048,
+                        has_default: true,
+                    ),
+                    "shuffle": Field(
+                        name: "shuffle",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "vf_coef": Field(
+                        name: "vf_coef",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1.0,
+                        has_default: true,
+                    ),
+                    "entropy_bonus": Field(
+                        name: "entropy_bonus",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "max_grad_norm": Field(
+                        name: "max_grad_norm",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 20.0,
+                        has_default: true,
+                    ),
+                    "epochs": Field(
+                        name: "epochs",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 2,
+                        has_default: true,
+                    ),
+                    "weights_ema": Field(
+                        name: "weights_ema",
+                        type: List(
+                            item_type: Primitive(
+                                type: "float",
+                            ),
+                        ),
+                        default: [],
+                        has_default: true,
+                    ),
+                    "batches_per_update": Field(
+                        name: "batches_per_update",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: -1,
+                        has_default: true,
+                    ),
+                    "bs": Field(
+                        name: "bs",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: -1,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: None,
+            has_default: false,
+        ),
+        "eval": Field(
+            name: "eval",
+            type: Struct(
+                name: "EvalConfig",
+                fields: {
+                    "eval_envs": Field(
+                        name: "eval_envs",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 256,
+                        has_default: true,
+                    ),
+                    "eval_timesteps": Field(
+                        name: "eval_timesteps",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 360,
+                        has_default: true,
+                    ),
+                    "eval_frequency": Field(
+                        name: "eval_frequency",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 100000,
+                        has_default: true,
+                    ),
+                    "model_save_frequency": Field(
+                        name: "model_save_frequency",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "eval_symmetric": Field(
+                        name: "eval_symmetric",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "full_eval_frequency": Field(
+                        name: "full_eval_frequency",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 5,
+                        has_default: true,
+                    ),
+                    "extra_checkpoint_steps": Field(
+                        name: "extra_checkpoint_steps",
+                        type: List(
+                            item_type: Primitive(
+                                type: "int",
+                            ),
+                        ),
+                        default: [],
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: None,
+            has_default: false,
+        ),
+        "ppo": Field(
+            name: "ppo",
+            type: Struct(
+                name: "PPOConfig",
+                fields: {
+                    "steps": Field(
+                        name: "steps",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10000000.0,
+                        has_default: true,
+                    ),
+                    "num_envs": Field(
+                        name: "num_envs",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 64,
+                        has_default: true,
+                    ),
+                    "num_self_play": Field(
+                        name: "num_self_play",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 32,
+                        has_default: true,
+                    ),
+                    "num_vs_replicator": Field(
+                        name: "num_vs_replicator",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "num_vs_aggro_replicator": Field(
+                        name: "num_vs_aggro_replicator",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "num_vs_destroyer": Field(
+                        name: "num_vs_destroyer",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "seq_rosteps": Field(
+                        name: "seq_rosteps",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 256,
+                        has_default: true,
+                    ),
+                    "gamma": Field(
+                        name: "gamma",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.99,
+                        has_default: true,
+                    ),
+                    "lamb": Field(
+                        name: "lamb",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.95,
+                        has_default: true,
+                    ),
+                    "norm_advs": Field(
+                        name: "norm_advs",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "rewscale": Field(
+                        name: "rewscale",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1.0,
+                        has_default: true,
+                    ),
+                    "ppo": Field(
+                        name: "ppo",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "cliprange": Field(
+                        name: "cliprange",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.2,
+                        has_default: true,
+                    ),
+                    "clip_vf": Field(
+                        name: "clip_vf",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "split_reward": Field(
+                        name: "split_reward",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "liveness_penalty": Field(
+                        name: "liveness_penalty",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "build_variety_bonus": Field(
+                        name: "build_variety_bonus",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "win_bonus": Field(
+                        name: "win_bonus",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "loss_penalty": Field(
+                        name: "loss_penalty",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "partial_score": Field(
+                        name: "partial_score",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1.0,
+                        has_default: true,
+                    ),
+                    "attac": Field(
+                        name: "attac",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "protec": Field(
+                        name: "protec",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "rewnorm": Field(
+                        name: "rewnorm",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "rewnorm_emaw": Field(
+                        name: "rewnorm_emaw",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.97,
+                        has_default: true,
+                    ),
+                    "max_army_size_score": Field(
+                        name: "max_army_size_score",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 9999999,
+                        has_default: true,
+                    ),
+                    "max_enemy_army_size_score": Field(
+                        name: "max_enemy_army_size_score",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 9999999,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: None,
+            has_default: false,
+        ),
+        "task": Field(
+            name: "task",
+            type: Struct(
+                name: "TaskConfig",
+                fields: {
+                    "objective": Field(
+                        name: "objective",
+                        type: Enum(
+                            name: "Objective",
+                            variants: {
+                                "ALLIED_WEALTH": "ALLIED_WEALTH",
+                                "DISTANCE_TO_CRYSTAL": "DISTANCE_TO_CRYSTAL",
+                                "DISTANCE_TO_ORIGIN": "DISTANCE_TO_ORIGIN",
+                                "DISTANCE_TO_1000_500": "DISTANCE_TO_1000_500",
+                                "ARENA_TINY": "ARENA_TINY",
+                                "ARENA_TINY_2V2": "ARENA_TINY_2V2",
+                                "ARENA_MEDIUM": "ARENA_MEDIUM",
+                                "ARENA_MEDIUM_LARGE_MS": "ARENA_MEDIUM_LARGE_MS",
+                                "ARENA": "ARENA",
+                                "STANDARD": "STANDARD",
+                                "ENHANCED": "ENHANCED",
+                                "SMOL_STANDARD": "SMOL_STANDARD",
+                                "MICRO_PRACTICE": "MICRO_PRACTICE",
+                                "SCOUT": "SCOUT",
+                            },
+                        ),
+                        default: "ARENA_TINY_2V2",
+                        has_default: true,
+                    ),
+                    "action_delay": Field(
+                        name: "action_delay",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "use_action_masks": Field(
+                        name: "use_action_masks",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "task_hardness": Field(
+                        name: "task_hardness",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "max_game_length": Field(
+                        name: "max_game_length",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "randomize": Field(
+                        name: "randomize",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "symmetric_map": Field(
+                        name: "symmetric_map",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "symmetry_increase": Field(
+                        name: "symmetry_increase",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.00000002,
+                        has_default: true,
+                    ),
+                    "mix_mp": Field(
+                        name: "mix_mp",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "rule_rng_fraction": Field(
+                        name: "rule_rng_fraction",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "rule_rng_amount": Field(
+                        name: "rule_rng_amount",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1.0,
+                        has_default: true,
+                    ),
+                    "rule_cost_rng": Field(
+                        name: "rule_cost_rng",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "adr": Field(
+                        name: "adr",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "mothership_damage_scale": Field(
+                        name: "mothership_damage_scale",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 4.0,
+                        has_default: true,
+                    ),
+                    "enforce_unit_cap": Field(
+                        name: "enforce_unit_cap",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "unit_cap": Field(
+                        name: "unit_cap",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 20,
+                        has_default: true,
+                    ),
+                    "build_variety_bonus": Field(
+                        name: "build_variety_bonus",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "cost_variance": Field(
+                        name: "cost_variance",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: None,
+            has_default: false,
+        ),
+        "adr": Field(
+            name: "adr",
+            type: Struct(
+                name: "AdrConfig",
+                fields: {
+                    "hstepsize": Field(
+                        name: "hstepsize",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.000003,
+                        has_default: true,
+                    ),
+                    "average_cost_target": Field(
+                        name: "average_cost_target",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1.0,
+                        has_default: true,
+                    ),
+                    "cost_variance": Field(
+                        name: "cost_variance",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.5,
+                        has_default: true,
+                    ),
+                    "variety": Field(
+                        name: "variety",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.7,
+                        has_default: true,
+                    ),
+                    "stepsize": Field(
+                        name: "stepsize",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.003,
+                        has_default: true,
+                    ),
+                    "warmup": Field(
+                        name: "warmup",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 100,
+                        has_default: true,
+                    ),
+                    "initial_hardness": Field(
+                        name: "initial_hardness",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "linear_hardness": Field(
+                        name: "linear_hardness",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "max_hardness": Field(
+                        name: "max_hardness",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 150,
+                        has_default: true,
+                    ),
+                    "hardness_offset": Field(
+                        name: "hardness_offset",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 1000000.0,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: None,
+            has_default: false,
+        ),
+        "policy": Field(
+            name: "policy",
+            type: Struct(
+                name: "PolicyConfig",
+                fields: {
+                    "d_agent": Field(
+                        name: "d_agent",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 256,
+                        has_default: true,
+                    ),
+                    "d_item": Field(
+                        name: "d_item",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 128,
+                        has_default: true,
+                    ),
+                    "dff_ratio": Field(
+                        name: "dff_ratio",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 2,
+                        has_default: true,
+                    ),
+                    "nhead": Field(
+                        name: "nhead",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 8,
+                        has_default: true,
+                    ),
+                    "item_item_attn_layers": Field(
+                        name: "item_item_attn_layers",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "dropout": Field(
+                        name: "dropout",
+                        type: Primitive(
+                            type: "float",
+                        ),
+                        default: 0.0,
+                        has_default: true,
+                    ),
+                    "nearby_map": Field(
+                        name: "nearby_map",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "mc_kernel_size": Field(
+                        name: "mc_kernel_size",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 3,
+                        has_default: true,
+                    ),
+                    "map_embed_offset": Field(
+                        name: "map_embed_offset",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "item_ff": Field(
+                        name: "item_ff",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "agents": Field(
+                        name: "agents",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 1,
+                        has_default: true,
+                    ),
+                    "nally": Field(
+                        name: "nally",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 1,
+                        has_default: true,
+                    ),
+                    "nenemy": Field(
+                        name: "nenemy",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "nmineral": Field(
+                        name: "nmineral",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "ntile": Field(
+                        name: "ntile",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "nconstant": Field(
+                        name: "nconstant",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 0,
+                        has_default: true,
+                    ),
+                    "ally_enemy_same": Field(
+                        name: "ally_enemy_same",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "norm": Field(
+                        name: "norm",
+                        type: Primitive(
+                            type: "str",
+                        ),
+                        default: "layernorm",
+                        has_default: true,
+                    ),
+                    "zero_init_vf": Field(
+                        name: "zero_init_vf",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "small_init_pi": Field(
+                        name: "small_init_pi",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: PolicyConfig(
+                d_agent: 256,
+                d_item: 128,
+                dff_ratio: 2,
+                nhead: 8,
+                item_item_attn_layers: 0,
+                dropout: 0.0,
+                nearby_map: false,
+                mc_kernel_size: 3,
+                map_embed_offset: false,
+                item_ff: true,
+                agents: 1,
+                nally: 1,
+                nenemy: 0,
+                nmineral: 10,
+                ntile: 0,
+                nconstant: 0,
+                ally_enemy_same: false,
+                norm: "layernorm",
+                zero_init_vf: true,
+                small_init_pi: false,
+            ),
+            has_default: true,
+        ),
+        "obs": Field(
+            name: "obs",
+            type: Struct(
+                name: "ObsConfig",
+                fields: {
+                    "allies": Field(
+                        name: "allies",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "obs_enemies": Field(
+                        name: "obs_enemies",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "obs_minerals": Field(
+                        name: "obs_minerals",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "obs_map_tiles": Field(
+                        name: "obs_map_tiles",
+                        type: Primitive(
+                            type: "int",
+                        ),
+                        default: 10,
+                        has_default: true,
+                    ),
+                    "obs_keep_abspos": Field(
+                        name: "obs_keep_abspos",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "use_privileged": Field(
+                        name: "use_privileged",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "feat_map_size": Field(
+                        name: "feat_map_size",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "feat_last_seen": Field(
+                        name: "feat_last_seen",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "feat_is_visible": Field(
+                        name: "feat_is_visible",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "feat_abstime": Field(
+                        name: "feat_abstime",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "feat_mineral_claims": Field(
+                        name: "feat_mineral_claims",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "harvest_action": Field(
+                        name: "harvest_action",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "lock_build_action": Field(
+                        name: "lock_build_action",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "feat_dist_to_wall": Field(
+                        name: "feat_dist_to_wall",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: false,
+                        has_default: true,
+                    ),
+                    "feat_unit_count": Field(
+                        name: "feat_unit_count",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                    "feat_construction_progress": Field(
+                        name: "feat_construction_progress",
+                        type: Primitive(
+                            type: "bool",
+                        ),
+                        default: true,
+                        has_default: true,
+                    ),
+                },
+            ),
+            default: ObsConfig(
+                allies: 10,
+                obs_enemies: 10,
+                obs_minerals: 10,
+                obs_map_tiles: 10,
+                obs_keep_abspos: false,
+                use_privileged: true,
+                feat_map_size: true,
+                feat_last_seen: false,
+                feat_is_visible: true,
+                feat_abstime: true,
+                feat_mineral_claims: false,
+                harvest_action: false,
+                lock_build_action: false,
+                feat_dist_to_wall: false,
+                feat_unit_count: true,
+                feat_construction_progress: true,
+            ),
+            has_default: true,
+        ),
+        "wandb": Field(
+            name: "wandb",
+            type: Primitive(
+                type: "bool",
+            ),
+            default: true,
+            has_default: true,
+        ),
+        "trial": Field(
+            name: "trial",
+            type: Option(
+                type: Primitive(
+                    type: "int",
+                ),
+            ),
+            default: None,
+            has_default: true,
+        ),
+    },
+)

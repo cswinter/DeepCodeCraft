@@ -4,6 +4,7 @@ from typing import (
     Optional,
 )
 from dataclasses import dataclass, field
+from hyperstate import schema_evolution_cli
 
 
 class Objective(Enum):
@@ -435,3 +436,7 @@ class Config:
     def validate(self):
         assert self.rosteps % self.optimizer.batch_size == 0
         assert self.eval.eval_envs % 4 == 0
+
+
+if __name__ == "__main__":
+    schema_evolution_cli(Config)
