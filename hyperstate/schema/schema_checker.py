@@ -46,13 +46,18 @@ class SchemaChecker:
         for change in self.changes:
             change.emit_diagnostic()
 
-        print()
-        click.echo(click.style("Proposed mitigations", fg="white", bold=True,))
-        if self.proposed_fixes:
-            print("0: [")
-            for mitigation in self.proposed_fixes:
-                print(f"    {mitigation},")
-            print("]")
+        if self.severity() == Severity.INFO:
+            click.secho("Schema compatible", fg="green")
+        else:
+            click.secho("Schema incompatible", fg="red")
+            print()
+            click.secho("Proposed mitigations", fg="cyan", bold=True)
+            if self.proposed_fixes:
+                click.secho("- add rewrite rules:", fg="white", bold=True)
+                print("    0: [")
+                for mitigation in self.proposed_fixes:
+                    print(f"        {mitigation},")
+                print("    ]")
 
     def _find_changes(self, old: Type, new: Type, path: typing.List[str]):
         if old.__class__ != new.__class__:

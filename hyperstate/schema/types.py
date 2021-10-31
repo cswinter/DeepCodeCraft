@@ -8,6 +8,8 @@ import dataclasses
 
 import pyron
 
+from hyperstate.schema.versioned import Versioned
+
 T = TypeVar("T")
 
 
@@ -50,6 +52,7 @@ class Enum(Type):
 class Struct(Type):
     name: str
     fields: typing.Dict[str, Field]
+    version: typing.Optional[int] = 0
 
     def __repr__(self) -> str:
         return f"{self.name}({', '.join(f'{k}={v}' for k, v in self.fields.items())})"
@@ -91,7 +94,11 @@ def materialize_type(clz: typing.Type[Any]) -> Type:
             fields[name] = Field(
                 name, materialize_type(field.type), default, has_default
             )
-        return Struct(clz.__name__, fields)
+        return Struct(
+            clz.__name__,
+            fields,
+            clz.latest_version() if issubclass(clz, Versioned) else None,
+        )
     elif is_optional(clz):
         return Option(materialize_type(clz.__args__[0]))
     elif isinstance(clz, EnumMeta):
@@ -127,7 +134,7 @@ def schema_from_namedtuple(schema: Any) -> Type:
                 field.default,
                 field.has_default,
             )
-        return Struct(schema.name, fields)
+        return Struct(schema.name, fields, schema.version)
     elif clz_name == "Option":
         return Option(schema_from_namedtuple(schema.type))
     elif clz_name == "Enum":
