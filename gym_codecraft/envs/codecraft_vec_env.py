@@ -572,8 +572,8 @@ def map_enhanced(
 
 
 def map_mp(randomize: bool, hardness: int, require_default_mothership: bool):
-    map_width = np.random.randint(2, 7) * 500
-    map_height = np.random.randint(2, 7) * 500
+    map_width = np.random.randint(2, 5) * 750
+    map_height = np.random.randint(2, 5) * 750
     player1_drones = []
     player2_drones = []
 

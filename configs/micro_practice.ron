@@ -1,0 +1,38 @@
+Config(
+    version: 2,
+    task: (
+        objective: "MICRO_PRACTICE",
+        symmetric_map: 0.0,
+    ),
+    ppo: (
+        steps: 40e6,
+        gamma: 0.997,
+        seq_rosteps: 64,
+        num_envs: 256,
+        num_self_play: 128,
+    ),
+    policy: (
+        agents: 8,
+        nenemy: 8,
+        nally: 8,
+        nmineral: 1,
+    ),
+    obs: (
+        allies: 8,
+        obs_enemies: 8,
+        obs_minerals: 1,
+        obs_map_tiles: 0,
+    ),
+    optimizer: (
+        batch_size: 2048,
+        micro_batch_size: 2048,
+        entropy_bonus: 0.001,
+    ),
+    eval: (
+        envs: 256,
+        frequency: 1e6,
+        steps: 500,
+        symmetric: false,
+    ),
+    adr: {},
+)
