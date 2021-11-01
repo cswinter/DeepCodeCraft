@@ -3,6 +3,7 @@ Config(
     task: (
         objective: "MICRO_PRACTICE",
         symmetric_map: 0.0,
+        mothership_damage_scale: 0.0,
     ),
     ppo: (
         steps: 40e6,

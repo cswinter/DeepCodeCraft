@@ -536,7 +536,7 @@ Struct(
                         type: Primitive(
                             type: "float",
                         ),
-                        default: 4.0,
+                        default: 0.0,
                         has_default: true,
                     ),
                     "enforce_unit_cap": Field(
@@ -1035,5 +1035,5 @@ Struct(
             has_default: true,
         ),
     },
-    version: 2,
+    version: 3,
 )

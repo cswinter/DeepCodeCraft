@@ -6,7 +6,7 @@ from typing import (
 )
 from dataclasses import dataclass, field
 from hyperstate import schema_evolution_cli
-from hyperstate.schema.rewrite_rule import DeleteField, RenameField, RewriteRule
+from hyperstate.schema.rewrite_rule import ChangeDefault, DeleteField, RenameField, RewriteRule
 from hyperstate.schema.versioned import Versioned
 
 
@@ -386,7 +386,7 @@ class TaskConfig:
     # Automatically adjust environment rules
     adr: bool = False
     # Amount by which task difficulty/map size is increased for each processed frame
-    mothership_damage_scale: float = 4.0
+    mothership_damage_scale: float = 0.0
     enforce_unit_cap: bool = False
     unit_cap: int = 20
 
@@ -437,7 +437,7 @@ class Config(Versioned):
 
     @classmethod
     def latest_version(clz) -> int:
-        return 2
+        return 3
 
     @classmethod
     def upgrade_rules(clz) -> Dict[int, RewriteRule]:
@@ -464,6 +464,11 @@ class Config(Versioned):
                 RenameField(
                     old_field=("eval", "eval_symmetric"),
                     new_field=("eval", "symmetric"),
+                ),
+            ],
+            2: [
+                ChangeDefault(
+                    field=("task", "mothership_damage_scale"), new_default=0.0
                 ),
             ],
         }
