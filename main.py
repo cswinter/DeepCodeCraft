@@ -707,7 +707,9 @@ def eval(
             hardness = 1
         elif objective == envs.Objective.MICRO_PRACTICE:
             opponents = {
-                "beta": {"model_file": "mp/ethereal-bee-40M.pt"},
+                "arena_medium": {
+                    "model_file": "arena_medium/arena_medium-5f06842-0-10m"
+                }
             }
         else:
             raise Exception(f"No eval opponents configured for {objective}")
