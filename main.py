@@ -267,7 +267,7 @@ class Trainer(HyperState[Config, State]):
                 obs, action_masks, privileged_obs = env.reset()
 
             if state.step >= next_eval:
-                if config.eval.eval_envs > 0:
+                if config.eval.envs > 0:
                     next_full_eval -= 1
                     if next_full_eval == 0:
                         emas = [None] + self.ema
@@ -277,7 +277,7 @@ class Trainer(HyperState[Config, State]):
                     for policy_ema in emas:
                         eval(
                             policy=self.state.policy,
-                            num_envs=config.eval.eval_envs,
+                            num_envs=config.eval.envs,
                             device=device,
                             objective=config.task.objective,
                             eval_steps=config.eval.steps,
@@ -617,11 +617,11 @@ class Trainer(HyperState[Config, State]):
         if env is not None:
             env.close()
 
-        if config.eval.eval_envs > 0:
+        if config.eval.envs > 0:
             for policy_ema in [None] + self.ema:
                 eval(
                     policy=self.state.policy,
-                    num_envs=config.eval.eval_envs,
+                    num_envs=config.eval.envs,
                     device=device,
                     objective=config.task.objective,
                     eval_steps=5 * config.eval.steps,
@@ -868,6 +868,7 @@ def eval(
                     f"eval_games{postfix}": len(scores),
                     f"eval_elimination_rate{postfix}": eliminations.mean().item(),
                     f"evalu_duration_secs{postfix}": time.time() - start_time,
+                    f"eval_duration_secs{postfix}": time.time() - start_time,
                 },
                 step=curr_step,
             )
