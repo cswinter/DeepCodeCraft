@@ -123,24 +123,24 @@ Struct(
             type: Struct(
                 name: "EvalConfig",
                 fields: {
-                    "eval_envs": Field(
-                        name: "eval_envs",
+                    "envs": Field(
+                        name: "envs",
                         type: Primitive(
                             type: "int",
                         ),
                         default: 256,
                         has_default: true,
                     ),
-                    "eval_timesteps": Field(
-                        name: "eval_timesteps",
+                    "steps": Field(
+                        name: "steps",
                         type: Primitive(
                             type: "int",
                         ),
                         default: 360,
                         has_default: true,
                     ),
-                    "eval_frequency": Field(
-                        name: "eval_frequency",
+                    "frequency": Field(
+                        name: "frequency",
                         type: Primitive(
                             type: "int",
                         ),
@@ -155,8 +155,8 @@ Struct(
                         default: 10,
                         has_default: true,
                     ),
-                    "eval_symmetric": Field(
-                        name: "eval_symmetric",
+                    "symmetric": Field(
+                        name: "symmetric",
                         type: Primitive(
                             type: "bool",
                         ),
@@ -1035,5 +1035,5 @@ Struct(
             has_default: true,
         ),
     },
-    version: 1,
+    version: 2,
 )

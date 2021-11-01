@@ -6,7 +6,7 @@ from typing import (
 )
 from dataclasses import dataclass, field
 from hyperstate import schema_evolution_cli
-from hyperstate.schema.rewrite_rule import DeleteField, RewriteRule
+from hyperstate.schema.rewrite_rule import DeleteField, RenameField, RewriteRule
 from hyperstate.schema.versioned import Versioned
 
 
@@ -301,12 +301,11 @@ class ObsConfig:
 
 @dataclass
 class EvalConfig:
-    # TODO: remove `eval_` prefix
-    eval_envs: int = 256
-    eval_timesteps: int = 360
-    eval_frequency: int = int(1e5)
+    envs: int = 256
+    steps: int = 360
+    frequency: int = int(1e5)
     model_save_frequency: int = 10
-    eval_symmetric: bool = True
+    symmetric: bool = True
     full_eval_frequency: int = 5
     extra_checkpoint_steps: List[int] = field(default_factory=list)
 
@@ -438,7 +437,7 @@ class Config(Versioned):
 
     @classmethod
     def latest_version(clz) -> int:
-        return 1
+        return 2
 
     @classmethod
     def upgrade_rules(clz) -> Dict[int, RewriteRule]:
@@ -450,7 +449,23 @@ class Config(Versioned):
             0: [
                 DeleteField(field=("optimizer", "batches_per_update")),
                 DeleteField(field=("optimizer", "bs")),
-            ]
+            ],
+            1: [
+                RenameField(
+                    old_field=("eval", "eval_envs"), new_field=("eval", "envs")
+                ),
+                RenameField(
+                    old_field=("eval", "eval_timesteps"), new_field=("eval", "steps")
+                ),
+                RenameField(
+                    old_field=("eval", "eval_frequency"),
+                    new_field=("eval", "frequency"),
+                ),
+                RenameField(
+                    old_field=("eval", "eval_symmetric"),
+                    new_field=("eval", "symmetric"),
+                ),
+            ],
         }
 
 

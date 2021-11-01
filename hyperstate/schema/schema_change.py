@@ -64,8 +64,16 @@ class FieldAdded(SchemaChange):
     has_default: bool = False
     default: Any = None
 
+    def severity(self) -> Severity:
+        if self.has_default:
+            return Severity.INFO
+        else:
+            return Severity.WARN
+
     def proposed_fix(self) -> typing.Optional[AddDefault]:
-        if isinstance(self.type, Option):
+        if self.has_default:
+            return None
+        elif isinstance(self.type, Option):
             return AddDefault(self.field, None)
         elif isinstance(self.type, List):
             return AddDefault(self.field, [])
@@ -90,10 +98,10 @@ class FieldRemoved(SchemaChange):
 
 @dataclass(eq=True, frozen=True)
 class FieldRenamed(SchemaChange):
-    new_name: str
+    new_name: Sequence[str]
 
     def diagnostic(self) -> str:
-        return f"field renamed to {self.new_name}"
+        return f"field renamed to {'.'.join(self.new_name)}"
 
     def proposed_fix(self) -> RewriteRule:
         return RenameField(self.field, self.new_name)

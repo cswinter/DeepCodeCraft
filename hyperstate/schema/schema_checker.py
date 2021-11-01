@@ -29,7 +29,8 @@ class SchemaChecker:
     def __init__(self, old: Type, config_clz: typing.Type[Versioned]):
         self.config_clz = config_clz
         self.new = materialize_type(config_clz)
-        self.old = config_clz._apply_schema_upgrades(old)
+        config_clz._apply_schema_upgrades(old)
+        self.old = old
         self.changes: List[SchemaChange] = []
         self.proposed_fixes = []
         self._find_changes(old, self.new, [])
@@ -63,7 +64,7 @@ class SchemaChecker:
             click.secho("Proposed mitigations", fg="white", bold=True)
             if self.proposed_fixes:
                 click.secho("- add upgrade rules:", fg="white", bold=True)
-                print("    0: [")
+                print(f"    {self.old.version}: [")
                 for mitigation in self.proposed_fixes:
                     print(f"        {mitigation},")
                 print("    ],")
@@ -83,15 +84,14 @@ class SchemaChecker:
         elif isinstance(old, types.Struct):
             for name, field in new.fields.items():
                 if name not in old.fields:
-                    if not field.has_default:
-                        self.changes.append(
-                            FieldAdded(
-                                tuple(path + [name]),
-                                field.type,
-                                field.has_default,
-                                field.default,
-                            )
+                    self.changes.append(
+                        FieldAdded(
+                            tuple(path + [name]),
+                            field.type,
+                            field.has_default,
+                            field.default,
                         )
+                    )
                 else:
                     self._find_changes(old.fields[name].type, field.type, path + [name])
                     if old.fields[name].has_default != field.has_default:
@@ -221,7 +221,7 @@ def _upgrade_schema(filename: str, config_clz: typing.Type[Versioned]):
     schema = load_schema(filename)
     checker = SchemaChecker(schema, config_clz)
     if checker.severity() >= Severity.WARN:
-        print(checker.report())
+        checker.print_report()
     else:
         _dump_schema(filename, config_clz)
         click.secho("Schema updated", fg="green")

@@ -135,7 +135,12 @@ class Trainer(HyperState[Config, State]):
         allow_unversioned: bool = False,
     ):
         super().__init__(
-            Config, State, initial_config, checkpoint_dir, overrides=config_overrides, default_version=0 if allow_unversioned else None,
+            Config,
+            State,
+            initial_config,
+            checkpoint_dir,
+            overrides=config_overrides,
+            default_version=0 if allow_unversioned else None,
         )
 
         assert (
@@ -275,14 +280,14 @@ class Trainer(HyperState[Config, State]):
                             num_envs=config.eval.eval_envs,
                             device=device,
                             objective=config.task.objective,
-                            eval_steps=config.eval.eval_timesteps,
+                            eval_steps=config.eval.steps,
                             curr_step=state.step,
-                            symmetric=config.eval.eval_symmetric,
+                            symmetric=config.eval.symmetric,
                             rank=self.rank,
                             parallelism=self.parallelism,
                             policy_ema=policy_ema,
                         )
-                next_eval += config.eval.eval_frequency
+                next_eval += config.eval.frequency
                 next_model_save -= 1
                 if next_model_save == 0 and self.rank == 0:
                     # TODO: hyperstate
@@ -619,10 +624,10 @@ class Trainer(HyperState[Config, State]):
                     num_envs=config.eval.eval_envs,
                     device=device,
                     objective=config.task.objective,
-                    eval_steps=5 * config.eval.eval_timesteps,
+                    eval_steps=5 * config.eval.steps,
                     curr_step=state.step,
-                    symmetric=config.eval.eval_symmetric,
-                    printerval=config.eval.eval_timesteps,
+                    symmetric=config.eval.symmetric,
+                    printerval=config.eval.steps,
                     rank=self.rank,
                     parallelism=self.parallelism,
                     policy_ema=policy_ema,

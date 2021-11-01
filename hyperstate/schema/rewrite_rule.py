@@ -131,7 +131,7 @@ def _remove_schema(schema: types.Type, path: List[str]) -> Optional[types.Field]
         return None
     field = schema.fields[path[-1]]
     del schema.fields[path[-1]]
-    return field.type
+    return field
 
 
 def _insert_schema(schema: types.Type, path: List[str], field: types.Field) -> None:
