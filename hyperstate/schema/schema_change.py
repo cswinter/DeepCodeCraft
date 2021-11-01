@@ -67,8 +67,7 @@ class FieldAdded(SchemaChange):
     def severity(self) -> Severity:
         if self.has_default:
             return Severity.INFO
-        else:
-            return Severity.WARN
+        return super().severity()
 
     def proposed_fix(self) -> typing.Optional[AddDefault]:
         if self.has_default:

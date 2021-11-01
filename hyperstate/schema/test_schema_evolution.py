@@ -65,7 +65,13 @@ class ConfigV3(Versioned):
 
 
 def test_config_v1_to_v2():
-    check_schema(ConfigV1, ConfigV2Info, [], [], Severity.INFO)
+    check_schema(
+        ConfigV1,
+        ConfigV2Info,
+        [FieldAdded(field=("optimizer",), type=Primitive("str"), has_default=True, default="sgd")],
+        [],
+        Severity.INFO,
+    )
     check_schema(
         ConfigV1,
         ConfigV2Warn,
