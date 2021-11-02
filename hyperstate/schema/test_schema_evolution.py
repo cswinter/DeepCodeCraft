@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import tempfile
 import pyron
-from hyperstate.hyperstate import _parse, asdict, from_dict
+from hyperstate.hyperstate import asdict, _parse
+from hyperstate.serde import from_dict
 from hyperstate.schema.rewrite_rule import (
     AddDefault,
     ChangeDefault,

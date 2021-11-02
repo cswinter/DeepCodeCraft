@@ -1,11 +1,11 @@
+from collections import namedtuple
 import os
 import shutil
 from abc import ABC, abstractmethod
-from collections import namedtuple
-from enum import EnumMeta
 from pathlib import Path
 import tempfile
 from typing import (
+    Callable,
     Generic,
     List,
     Any,
@@ -20,6 +20,12 @@ import inspect
 from dataclasses import dataclass, field, is_dataclass
 
 from hyperstate.schema.versioned import Versioned
+from hyperstate.serde import (
+    Deserializer,
+    Serializer,
+    _asdict,
+    from_dict,
+)
 from .lazy import LazyField
 
 import torch
@@ -148,15 +154,6 @@ def _apply_schedules(state, config, schedules: Dict[str, Any]):
             _apply_schedules(state, getattr(config, field_name), schedule)
 
 
-def _qualified_name(clz):
-    if clz.__module__ == "builtin":
-        return clz.__name__
-    elif not hasattr(clz, "__module__") or not hasattr(clz, "__name__"):
-        return repr(clz)
-    else:
-        return f"{clz.__module__}.{clz.__name__}"
-
-
 def checkpoint(state, target_path: Path):
     builder, blobs = _checkpoint(state, target_path)
     with open(target_path / "state.ron", "w") as f:
@@ -165,102 +162,6 @@ def checkpoint(state, target_path: Path):
     for path, blob in blobs.items():
         with open(target_path / path, "wb") as f:
             f.write(blob)
-
-
-def find_latest_checkpoint(dir: Path) -> Optional[Path]:
-    # TODO: error handling
-    # Check that dir exists
-    if not dir.exists():
-        return None
-    latest = None
-    latest_dir = None
-    for d in dir.iterdir():
-        if d.is_dir() and len(d.name) >= 12:
-            if latest is None or int(d.name[-12:]) > latest:
-                latest = int(d.name[-12:])
-                latest_dir = d
-    return latest_dir
-
-
-def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
-    builder = {}
-    blobs = {}
-    for field_name, field_clz in state.__annotations__.items():
-        value = getattr(state, field_name)
-        if is_optional(field_clz):
-            if value is None:
-                builder[field_name] = value
-                continue
-            field_clz = field_clz.__args__[0]
-        if is_dataclass(field_clz):
-            value, _blobs = _checkpoint(value, target_path)
-            value = namedtuple(field_clz.__name__, value.keys())(**value)
-            for path, blob in _blobs:
-                blobs[os.path.join(field_name, path)] = blob
-        elif field_clz in [int, float, str, bool]:
-            pass
-        elif hasattr(field_clz, "__args__") and (
-            (len(field_clz.__args__) == 1 and field_clz == List[field_clz.__args__])
-            or (len(field_clz.__args__) == 2 and field_clz == Dict[field_clz.__args__])
-        ):
-            # TODO: recurse
-            pass
-        elif isinstance(field_clz, EnumMeta):
-            value = value.name
-        elif issubclass(field_clz, LazyField):
-            import dill
-
-            blobs[field_name] = dill.dumps(value.state_dict())
-            value = "<BLOB>"
-            # TODO: make msgpack work with pytorch tensors
-            # state_dict = _dict_to_cpu(value.state_dict())
-            # blobs[field_name] = msgpack.packb(state_dict, default=msgpack_numpy.encode)
-            # value = "<blob:msgpack>"
-        else:
-            raise TypeError(f"Unexpected type {field_clz}")
-        builder[field_name] = value
-    return builder, blobs
-
-
-def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = False):
-    if schedules is None:
-        schedules = {}
-    result = {}
-    if isinstance(x, Versioned):
-        result["version"] = x.__class__.version()
-    for field_name, field in x.__dataclass_fields__.items():
-        field_clz = field.type
-        if field_name in schedules and isinstance(schedules[field_name], Schedule):
-            result[field_name] = schedules[field_name].unparsed
-            continue
-        value = getattr(x, field_name)
-
-        if is_optional(field_clz):
-            if value is None:
-                result[field_name] = value
-                continue
-            field_clz = field_clz.__args__[0]
-        if is_dataclass(field_clz):
-            attrs = asdict(value, schedules.get(field_name), named_tuples)
-            if named_tuples:
-                result[field_name] = namedtuple(field_clz.__name__, attrs.keys())(
-                    **attrs
-                )
-            else:
-                result[field_name] = attrs
-        elif field_clz in [int, float, str, bool]:
-            result[field_name] = value
-        elif hasattr(field_clz, "__origin__") and (
-            (field_clz.__origin__ is list and field_clz == List[field_clz.__args__])
-            or (field_clz.__origin__ is dict and field_clz == Dict[field_clz.__args__])
-        ):
-            # TODO: recurse
-            result[field_name] = value
-        elif isinstance(field_clz, EnumMeta):
-            result[field_name] = value.name
-        else:
-            raise TypeError(f"Unexpected type {field_clz}")
-    return result
 
 
 def _load_file_and_schedules(
@@ -322,10 +223,19 @@ def _parse(
     return value, schedules.schedules
 
 
-class Deserializer(ABC):
-    @abstractmethod
-    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
-        pass
+def find_latest_checkpoint(dir: Path) -> Optional[Path]:
+    # TODO: error handling
+    # Check that dir exists
+    if not dir.exists():
+        return None
+    latest = None
+    latest_dir = None
+    for d in dir.iterdir():
+        if d.is_dir() and len(d.name) >= 12:
+            if latest is None or int(d.name[-12:]) > latest:
+                latest = int(d.name[-12:])
+                latest_dir = d
+    return latest_dir
 
 
 class ScheduleDeserializer(Deserializer):
@@ -367,90 +277,56 @@ class LazyDeserializer(Deserializer, Generic[C]):
         return None, False
 
 
-def from_dict(
-    clz: Type[T],
-    value: Any,
-    deserializers: Optional[List[Deserializer]] = None,
-    path: str = "",
-) -> T:
-    if deserializers is None:
-        deserializers = []
-    if is_optional(clz):
-        if value is None:
-            return None
-        else:
-            clz = clz.__args__[0]
-    for deserializer in deserializers:
-        _value, ok = deserializer.deserialize(clz, value, path)
-        if ok:
-            return _value
-    if inspect.isclass(clz) and isinstance(value, clz):
-        return value
-    elif clz == float and isinstance(value, int):
-        return int(value)
-    elif clz == int and isinstance(value, float) and int(value) == value:
-        return int(value)
-    elif clz == float and isinstance(value, str):
-        return float(value)
-    elif clz == int and isinstance(value, str):
-        f = float(value)
-        if int(f) == f:
-            return int(f)
-        else:
-            raise ValueError(f"Expected {path} to be an int, got {value}")
-    elif (
-        hasattr(clz, "__args__")
-        and len(clz.__args__) == 1
-        and clz == List[clz.__args__]
-        and isinstance(value, list)
-    ):
-        # TODO: recurse
-        return value
-    elif (
-        hasattr(clz, "__args__")
-        and len(clz.__args__) == 2
-        and clz == Dict[clz.__args__]
-        and isinstance(value, dict)
-    ):
-        # TODO: recurse
-        return value
-    elif is_dataclass(clz):
-        # TODO: better error
-        assert isinstance(value, dict), f"{value} is not a dict"
-        kwargs = {}
-        for field_name, v in value.items():
-            field = clz.__dataclass_fields__.get(field_name)
-            if field is None:
-                raise TypeError(
-                    f"{clz.__module__}.{clz.__name__} has no attribute {field_name}."
+@dataclass
+class VersionedSerializer(Serializer):
+    def serialize(
+        self,
+        value: Any,
+        path: str,
+        named_tuples: bool,
+        recurse: Callable[[Any, str], Any],
+    ) -> Tuple[Any, bool]:
+        if isinstance(value, Versioned):
+            attrs = {
+                field_name: recurse(
+                    getattr(value, field_name),
+                    path if path == "" else f"{path}.{field_name}",
                 )
-            kwargs[field_name] = from_dict(
-                field.type,
-                v,
-                deserializers,
-                f"{path}.{field_name}" if path else field_name,
-            )
-        try:
-            instance = clz(**kwargs)
-            return instance
-        except TypeError as e:
-            raise TypeError(f"Failed to initialize {path}: {e}")
-    elif isinstance(clz, EnumMeta):
-        return clz(value)
-    raise TypeError(
-        f"Failed to deserialize {path}: {value} is not a {_qualified_name(clz)}"
+                for field_name in value.__dataclass_fields__
+            }
+            attrs["version"] = value.__class__.version()
+            if named_tuples:
+                return namedtuple(value.__class__.__name__, attrs.keys())(**attrs), True
+            else:
+                return attrs, True
+        return None, False
+
+
+@dataclass
+class ScheduleSerializer(Serializer):
+    schedules: Dict[str, Schedule]
+
+    def serialize(
+        self,
+        value: Any,
+        path: str,
+        named_tuples: bool,
+        recurse: Callable[[Any, str], Any],
+    ) -> Tuple[Any, bool]:
+        if path in self.schedules:
+            return self.schedules[path].unparsed, True
+        return None, False
+
+
+def asdict(
+    x,
+    schedules: Optional[Dict[str, Any]] = None,
+    named_tuples: bool = False,
+    path: str = "",
+) -> Any:
+    return _asdict(
+        x, named_tuples, [ScheduleSerializer(schedules or {}), VersionedSerializer()]
     )
-
-
-# TODO: gah
-def _parse_int(s: str):
-    try:
-        f = float(s)
-        i = int(f)
-
-        return i if f == i else None
-    except:
-        return None
 
 
 def _dict_to_cpu(x: Any) -> Dict[str, Any]:
@@ -464,10 +340,40 @@ def _dict_to_cpu(x: Any) -> Dict[str, Any]:
         return x
 
 
-def is_optional(clz):
-    return (
-        hasattr(clz, "__origin__")
-        and clz.__origin__ is Union  # type: ignore
-        and clz.__args__.__len__() == 2
-        and clz.__args__[1] is type(None)
-    )
+@dataclass
+class LazySerializer(Serializer):
+    blobs: Dict[str, bytes] = field(default_factory=dict)
+
+    def serialize(
+        self,
+        value: Any,
+        path: str,
+        named_tuples: bool,
+        recurse: Callable[[Any, str], Any],
+    ) -> Tuple[Any, bool]:
+        if isinstance(value, LazyField):
+            import dill
+
+            self.blobs[path] = dill.dumps(value.state_dict())
+            return "<BLOB>", True
+            # TODO: make msgpack work with pytorch tensors
+            # state_dict = _dict_to_cpu(value.state_dict())
+            # blobs[field_name] = msgpack.packb(state_dict, default=msgpack_numpy.encode)
+            # value = "<blob:msgpack>"
+        return None, False
+
+
+def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
+    lazy_serializer = LazySerializer()
+    state_dict = _asdict(state, named_tuples=True, serializers=[lazy_serializer])
+    return state_dict, lazy_serializer.blobs
+
+
+def _parse_int(s: str):
+    try:
+        f = float(s)
+        i = int(f)
+
+        return i if f == i else None
+    except:
+        return None
