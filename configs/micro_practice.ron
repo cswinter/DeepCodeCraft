@@ -6,7 +6,7 @@ Config(
         mothership_damage_scale: 0.0,
     ),
     ppo: (
-        steps: 40e6,
+        steps: 20e6,
         gamma: 0.997,
         seq_rosteps: 64,
         num_envs: 256,
@@ -27,7 +27,8 @@ Config(
     optimizer: (
         batch_size: 2048,
         micro_batch_size: 2048,
-        entropy_bonus: 0.001,
+        lr: "step: 0.0003@0 lin 0.0@20e6",
+        entropy_bonus: "step: 0.001@0 lin 0.0@20e6",
     ),
     eval: (
         envs: 256,
