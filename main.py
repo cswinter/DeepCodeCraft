@@ -701,9 +701,7 @@ def eval(
             hardness = 1
         elif objective == envs.Objective.MICRO_PRACTICE:
             opponents = {
-                "arena_medium": {
-                    "model_file": "arena_medium/arena_medium-5f06842-0-10m"
-                }
+                "normal": {"model_file": "micro_practice/micro_practice-2e496c6-4"}
             }
         else:
             raise Exception(f"No eval opponents configured for {objective}")
