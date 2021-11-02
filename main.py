@@ -132,15 +132,9 @@ class Trainer(HyperState[Config, State]):
         parallelism: int = 1,
         checkpoint_dir: Optional[str] = None,
         config_overrides: Optional[List[str]] = None,
-        allow_unversioned: bool = False,
     ):
         super().__init__(
-            Config,
-            State,
-            initial_config,
-            checkpoint_dir,
-            overrides=config_overrides,
-            default_version=0 if allow_unversioned else None,
+            Config, State, initial_config, checkpoint_dir, overrides=config_overrides,
         )
 
         assert (
@@ -865,8 +859,12 @@ def eval(
             wandb.log(
                 {
                     f"eval_mean_score{postfix}": scores.mean().item(),
-                    f"eval_max_score{postfix}": scores.max().item(),
-                    f"eval_min_score{postfix}": scores.min().item(),
+                    f"eval_max_score{postfix}": scores.max().item()
+                    if len(scores) > 0
+                    else 0,
+                    f"eval_min_score{postfix}": scores.min().item()
+                    if len(scores) > 0
+                    else 0,
                     f"eval_games{postfix}": len(scores),
                     f"eval_elimination_rate{postfix}": eliminations.mean().item(),
                     f"evalu_duration_secs{postfix}": time.time() - start_time,
@@ -1044,7 +1042,7 @@ def load_policy(
 def load_hs_policy(path, device):
     if not path.startswith("/"):
         path = os.path.join(EVAL_MODELS_PATH, path)
-    return Trainer(path, allow_unversioned=True).state.policy
+    return Trainer(path).state.policy
 
 
 def explained_variance(ypred, y):

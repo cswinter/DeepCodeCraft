@@ -40,7 +40,6 @@ class HyperState(ABC, Generic[C, S]):
         initial_config: str,
         checkpoint_dir: Optional[str] = None,
         overrides: Optional[List[str]] = None,
-        default_version: Optional[int] = None,
     ) -> None:
         """
         :param config_clz: The type of the config object.
@@ -76,7 +75,7 @@ class HyperState(ABC, Generic[C, S]):
                 config_clz,
                 config_path,
                 overrides=overrides,
-                default_version=default_version,
+                allow_missing_version=state_path is not None,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load config from {config_path}: {e}") from e
@@ -92,12 +91,8 @@ class HyperState(ABC, Generic[C, S]):
         if state_path is None:
             self.state = self.initial_state()
         else:
-            self.state = load_file(
-                state_clz,
-                state_path,
-                overrides=[],
-                config=config,
-                default_version=default_version,
+            self.state, _ = _load_file_and_schedules(
+                state_clz, state_path, overrides=[], config=config,
             )
 
         if checkpoint_dir is not None:
@@ -105,7 +100,7 @@ class HyperState(ABC, Generic[C, S]):
         else:
             self.checkpoint_dir = None
 
-        apply_schedules(self.state, config, self.schedules)
+        _apply_schedules(self.state, config, self.schedules)
 
     @abstractmethod
     def initial_state(self, config: C) -> S:
@@ -127,7 +122,7 @@ class HyperState(ABC, Generic[C, S]):
             shutil.move(str(p), target_dir)
 
     def step(self):
-        apply_schedules(self.state, self.config, self.schedules)
+        _apply_schedules(self.state, self.config, self.schedules)
         if self.checkpoint_dir is not None:
             val = getattr(self.state, self.checkpoint_key())
             assert isinstance(
@@ -144,16 +139,16 @@ class HyperState(ABC, Generic[C, S]):
             # TODO: persistent checkpoints
 
 
-def apply_schedules(state, config, schedules: Dict[str, Any]):
+def _apply_schedules(state, config, schedules: Dict[str, Any]):
     for field_name, schedule in schedules.items():
         if isinstance(schedule, Schedule):
             schedule.update_value(config, state)
         else:
             assert isinstance(schedule, dict)
-            apply_schedules(state, getattr(config, field_name), schedule)
+            _apply_schedules(state, getattr(config, field_name), schedule)
 
 
-def qualified_name(clz):
+def _qualified_name(clz):
     if clz.__module__ == "builtin":
         return clz.__name__
     elif not hasattr(clz, "__module__") or not hasattr(clz, "__name__"):
@@ -231,6 +226,8 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
     if schedules is None:
         schedules = {}
     result = {}
+    if isinstance(x, Versioned):
+        result["version"] = x.__class__.version()
     for field_name, field in x.__dataclass_fields__.items():
         field_clz = field.type
         if field_name in schedules and isinstance(schedules[field_name], Schedule):
@@ -266,22 +263,12 @@ def asdict(x, schedules: Optional[Dict[str, Any]] = None, named_tuples: bool = F
     return result
 
 
-def load_file(
-    clz: Type[T],
-    path: str,
-    overrides: List[str],
-    config: Optional[Any],
-    default_version: Optional[int] = None,
-) -> T:
-    return _load_file_and_schedules(clz, path, overrides, config, default_version)[0]
-
-
 def _load_file_and_schedules(
     clz: Type[T],
     path: str,
     overrides: List[str],
     config: Optional[Any] = None,
-    default_version: Optional[int] = None,
+    allow_missing_version: bool = False,
 ) -> T:
     path = Path(path)
     if not is_dataclass(clz):
@@ -307,7 +294,9 @@ def _load_file_and_schedules(
         else:
             val = str_val
         _values[fpath[-1]] = val
-    return _parse(clz, state_dict, path.absolute().parent, config, default_version)
+    return _parse(
+        clz, state_dict, path.absolute().parent, config, allow_missing_version
+    )
 
 
 def _parse(
@@ -315,16 +304,19 @@ def _parse(
     values: Dict[str, Any],
     path: Path,
     config: Optional[Any] = None,
-    default_version: Optional[int] = None,
+    allow_missing_version: bool = False,
 ) -> Tuple[T, Dict[str, Any]]:
     schedules = ScheduleDeserializer()
     lazy = LazyDeserializer(config, path)
     if issubclass(clz, Versioned):
-        version = values.get("version", default_version)
+        version = values.pop("version", None)
         if version is None:
-            raise ValueError(f"Config is missing version field.")
+            if allow_missing_version:
+                version = 0
+            else:
+                raise ValueError(f"Config files are required to set `version` field.")
         values = clz._apply_upgrades(values, version)
-    value = from_dict(clz, values, DeserializerList([schedules, lazy]))
+    value = from_dict(clz, values, [schedules, lazy])
     if len(lazy.lazy_fields) > 0:
         value._unloaded_lazy_fields = lazy.lazy_fields
     return value, schedules.schedules
@@ -334,18 +326,6 @@ class Deserializer(ABC):
     @abstractmethod
     def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
         pass
-
-
-@dataclass
-class DeserializerList(Deserializer):
-    deserializers: List[Deserializer]
-
-    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
-        for deserializer in self.deserializers:
-            instance, match = deserializer.deserialize(clz, value, path)
-            if match:
-                return instance, True
-        return None, False
 
 
 class ScheduleDeserializer(Deserializer):
@@ -390,17 +370,19 @@ class LazyDeserializer(Deserializer, Generic[C]):
 def from_dict(
     clz: Type[T],
     value: Any,
-    deserializer: Optional[Deserializer] = None,
+    deserializers: Optional[List[Deserializer]] = None,
     path: str = "",
 ) -> T:
+    if deserializers is None:
+        deserializers = []
     if is_optional(clz):
         if value is None:
             return None
         else:
             clz = clz.__args__[0]
-    if deserializer is not None:
-        _value, match = deserializer.deserialize(clz, value, path)
-        if match:
+    for deserializer in deserializers:
+        _value, ok = deserializer.deserialize(clz, value, path)
+        if ok:
             return _value
     if inspect.isclass(clz) and isinstance(value, clz):
         return value
@@ -445,7 +427,7 @@ def from_dict(
             kwargs[field_name] = from_dict(
                 field.type,
                 v,
-                deserializer,
+                deserializers,
                 f"{path}.{field_name}" if path else field_name,
             )
         try:
@@ -456,7 +438,7 @@ def from_dict(
     elif isinstance(clz, EnumMeta):
         return clz(value)
     raise TypeError(
-        f"Failed to deserialize {path}: {value} is not a {qualified_name(clz)}"
+        f"Failed to deserialize {path}: {value} is not a {_qualified_name(clz)}"
     )
 
 

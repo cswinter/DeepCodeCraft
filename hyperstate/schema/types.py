@@ -94,10 +94,9 @@ def materialize_type(clz: typing.Type[Any]) -> Type:
                 name, materialize_type(field.type), default, has_default
             )
         from hyperstate.schema.versioned import Versioned
+
         return Struct(
-            clz.__name__,
-            fields,
-            clz.latest_version() if issubclass(clz, Versioned) else None,
+            clz.__name__, fields, clz.version() if issubclass(clz, Versioned) else None,
         )
     elif is_optional(clz):
         return Option(materialize_type(clz.__args__[0]))

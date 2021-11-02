@@ -26,10 +26,16 @@ import click
 
 
 class SchemaChecker:
-    def __init__(self, old: Type, config_clz: typing.Type[Versioned]):
+    def __init__(
+        self,
+        old: Type,
+        config_clz: typing.Type[Versioned],
+        perform_upgrade: bool = True,
+    ):
         self.config_clz = config_clz
         self.new = materialize_type(config_clz)
-        config_clz._apply_schema_upgrades(old)
+        if perform_upgrade:
+            config_clz._apply_schema_upgrades(old)
         self.old = old
         self.changes: List[SchemaChange] = []
         self.proposed_fixes = []

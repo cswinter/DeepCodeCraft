@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 import tempfile
-import pytest
-from hyperstate.hyperstate import asdict, from_dict
+import pyron
+from hyperstate.hyperstate import _parse, asdict, from_dict
 from hyperstate.schema.rewrite_rule import (
     AddDefault,
     ChangeDefault,
@@ -32,7 +33,7 @@ class ConfigV1(Versioned):
     epochs: int
 
     @classmethod
-    def latest_version(clz) -> int:
+    def version(clz) -> int:
         return 1
 
 
@@ -50,6 +51,10 @@ class ConfigV2Warn(ConfigV1):
 class ConfigV2Info(ConfigV1):
     optimizer: str = "sgd"
 
+    @classmethod
+    def version(clz) -> int:
+        return 2
+
 
 @dataclass
 class ConfigV3(Versioned):
@@ -60,15 +65,31 @@ class ConfigV3(Versioned):
     optimizer: str = "adam"
 
     @classmethod
-    def latest_version(clz) -> int:
+    def version(clz) -> int:
         return 3
+
+    @classmethod
+    def upgrade_rules(clz) -> Dict[int, List[RewriteRule]]:
+        return {
+            2: [
+                ChangeDefault(field=("optimizer",), new_default="adam"),
+                RenameField(old_field=("learning_rate",), new_field=("lr",)),
+            ],
+        }
 
 
 def test_config_v1_to_v2():
     check_schema(
         ConfigV1,
         ConfigV2Info,
-        [FieldAdded(field=("optimizer",), type=Primitive("str"), has_default=True, default="sgd")],
+        [
+            FieldAdded(
+                field=("optimizer",),
+                type=Primitive("str"),
+                has_default=True,
+                default="sgd",
+            )
+        ],
         [],
         Severity.INFO,
     )
@@ -94,25 +115,15 @@ def test_config_v1_to_v2():
         Severity.ERROR,
     )
     automatic_upgrade(
-        ConfigV1(version=0, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
         ConfigV2Warn(
-            version=1,
-            steps=1,
-            learning_rate=0.1,
-            batch_size=32,
-            epochs=10,
-            optimizer=None,
+            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer=None,
         ),
     )
     automatic_upgrade(
-        ConfigV1(version=1, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV1(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
         ConfigV2Info(
-            version=2,
-            steps=1,
-            learning_rate=0.1,
-            batch_size=32,
-            epochs=10,
-            optimizer="sgd",
+            steps=1, learning_rate=0.1, batch_size=32, epochs=10, optimizer="sgd",
         ),
     )
 
@@ -132,10 +143,18 @@ def test_config_v2_to_v3():
         Severity.WARN,
     )
     automatic_upgrade(
-        ConfigV2Info(version=2, steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
-        ConfigV3(
-            version=3, steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",
-        ),
+        ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
+        ConfigV3(steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",),
+    )
+
+
+def test_serde_upgrade():
+    config_v2 = ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10)
+    serialized = pyron.to_string(asdict(config_v2, named_tuples=True))
+    state_dict = pyron.load(serialized)
+    config_v3, _ = _parse(ConfigV3, state_dict, Path())
+    assert config_v3 == ConfigV3(
+        steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd"
     )
 
 
@@ -148,7 +167,7 @@ def check_schema(
     print_report: bool = False,
 ):
     with tempfile.TemporaryFile() as f:
-        checker = SchemaChecker(materialize_type(old), new)
+        checker = SchemaChecker(materialize_type(old), new, perform_upgrade=False)
         if print_report:
             checker.print_report()
         assert checker.changes == expected_changes
@@ -158,11 +177,11 @@ def check_schema(
 
 def automatic_upgrade(old: Any, new: Any):
     autofixes = SchemaChecker(
-        materialize_type(old.__class__), new.__class__
+        materialize_type(old.__class__), new.__class__, perform_upgrade=False
     ).proposed_fixes
     old_state_dict = asdict(old)
     for fix in autofixes:
         old_state_dict = fix.apply(old_state_dict)
-    old_state_dict["version"] = new.version
+    del old_state_dict["version"]
     assert from_dict(new.__class__, old_state_dict) == new
 

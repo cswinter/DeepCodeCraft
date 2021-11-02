@@ -6,7 +6,12 @@ from typing import (
 )
 from dataclasses import dataclass, field
 from hyperstate import schema_evolution_cli
-from hyperstate.schema.rewrite_rule import ChangeDefault, DeleteField, RenameField, RewriteRule
+from hyperstate.schema.rewrite_rule import (
+    ChangeDefault,
+    DeleteField,
+    RenameField,
+    RewriteRule,
+)
 from hyperstate.schema.versioned import Versioned
 
 
@@ -436,8 +441,8 @@ class Config(Versioned):
         assert self.eval.eval_envs % 4 == 0
 
     @classmethod
-    def latest_version(clz) -> int:
-        return 3
+    def version(clz) -> int:
+        return 4
 
     @classmethod
     def upgrade_rules(clz) -> Dict[int, RewriteRule]:
@@ -471,6 +476,7 @@ class Config(Versioned):
                     field=("task", "mothership_damage_scale"), new_default=0.0
                 ),
             ],
+            3: [DeleteField(field=("version",)),],
         }
 
 
