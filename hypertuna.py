@@ -15,7 +15,7 @@ import numpy as np
 from enum import Enum
 
 from config import Config
-from hyperstate.hyperstate import _load_file_and_schedules
+from hyperstate.hyperstate import _typed_load
 
 
 class SamplingStrategy(Enum):
@@ -135,7 +135,7 @@ class HyperOptimizer:
         self.best_config = None
         self.priority = priority
 
-        hpconfig, schedules = _load_file_and_schedules(Config, base_config_path, [])
+        hpconfig, schedules = _typed_load(Config, base_config_path, [])
         params_with_center = []
         for name, range in params:
             path = hyper_params[name].path

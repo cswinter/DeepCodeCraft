@@ -432,6 +432,11 @@ class Config(Versioned):
     wandb: bool = True
     trial: Optional[int] = None
 
+    def __post_init__(self):
+        self.obs.feat_rule_msdm = self.task.rule_rng_fraction > 0 or self.task.adr
+        self.obs.feat_rule_costs = self.task.rule_cost_rng > 0 or self.task.adr
+        self.obs.num_builds = len(self.task.objective.builds())
+
     @property
     def rosteps(self):
         return self.ppo.num_envs * self.ppo.seq_rosteps

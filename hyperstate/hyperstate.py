@@ -22,9 +22,12 @@ from dataclasses import dataclass, field, is_dataclass
 from hyperstate.schema.versioned import Versioned
 from hyperstate.serde import (
     Deserializer,
+    Deserializer,
     Serializer,
-    _asdict,
+    asdict,
+    dump,
     from_dict,
+    load,
 )
 from .lazy import LazyField
 
@@ -43,8 +46,8 @@ class HyperState(ABC, Generic[C, S]):
         self,
         config_clz: Type[C],
         state_clz: Type[S],
-        initial_config: str,
-        checkpoint_dir: Optional[str] = None,
+        initial_config: Union[str, Path],
+        checkpoint_dir: Optional[Union[str, Path]] = None,
         overrides: Optional[List[str]] = None,
     ) -> None:
         """
@@ -57,59 +60,48 @@ class HyperState(ABC, Generic[C, S]):
         self.config_clz = config_clz
         self.state_clz = state_clz
         self._last_checkpoint: Optional[Path] = None
-
-        if overrides is None:
-            overrides = []
+        if isinstance(initial_config, str):
+            initial_config = Path(initial_config)
+        if isinstance(checkpoint_dir, str):
+            checkpoint_dir = Path(checkpoint_dir)
 
         checkpoint = None
         if checkpoint_dir is not None:
+            self.checkpoint_dir = Path(checkpoint_dir) 
             checkpoint = find_latest_checkpoint(checkpoint_dir)
             if checkpoint is not None:
                 print(f"Resuming from checkpoint {checkpoint}")
                 initial_config = checkpoint
-
-        path = Path(initial_config)
-        if os.path.isdir(path):
-            config_path = path / "config.ron"
-            state_path = path / "state.ron"
         else:
-            config_path = path
+            self.checkpoint_dir = None
+
+        if os.path.isdir(initial_config):
+            config_path = initial_config / "config.ron"
+            state_path = initial_config / "state.ron"
+        else:
+            config_path = initial_config
             state_path = None
 
         try:
-            config, schedules = _load_file_and_schedules(
+            self.config, self.schedules = _typed_load(
                 config_clz,
                 config_path,
-                overrides=overrides,
+                overrides=overrides or [],
                 allow_missing_version=state_path is not None,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load config from {config_path}: {e}") from e
-        self.config: C = config
-        self.schedules = schedules
-
-        # TODO: hack
-        config = self.config
-        config.obs.feat_rule_msdm = config.task.rule_rng_fraction > 0 or config.task.adr
-        config.obs.feat_rule_costs = config.task.rule_cost_rng > 0 or config.task.adr
-        config.obs.num_builds = len(config.task.objective.builds())
-
-        if state_path is None:
-            self.state = self.initial_state()
-        else:
-            self.state, _ = _load_file_and_schedules(
-                state_clz, state_path, overrides=[], config=config,
+        try:
+            self.state = (
+                self.initial_state()
+                if state_path is None
+                else typed_load(state_clz, state_path)
             )
-
-        if checkpoint_dir is not None:
-            self.checkpoint_dir = Path(checkpoint_dir)
-        else:
-            self.checkpoint_dir = None
-
-        _apply_schedules(self.state, config, self.schedules)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load state from {state_path}: {e}") from e
 
     @abstractmethod
-    def initial_state(self, config: C) -> S:
+    def initial_state(self) -> S:
         pass
 
     def checkpoint_key(self):
@@ -119,12 +111,8 @@ class HyperState(ABC, Generic[C, S]):
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "checkpoint"
             p.mkdir()
-            with open(p / "config.ron", "w") as f:
-                serialized = pyron.to_string(
-                    asdict(self.config, schedules=self.schedules, named_tuples=True)
-                )
-                f.write(serialized)
-            checkpoint(self.state, p)
+            _typed_dump(self.config, p / "config.ron", self.schedules)
+            _typed_dump(self.state, p / "state.ron")
             shutil.move(str(p), target_dir)
 
     def step(self):
@@ -154,73 +142,50 @@ def _apply_schedules(state, config, schedules: Dict[str, Any]):
             _apply_schedules(state, getattr(config, field_name), schedule)
 
 
-def checkpoint(state, target_path: Path):
-    builder, blobs = _checkpoint(state, target_path)
-    with open(target_path / "state.ron", "w") as f:
-        serialized = pyron.to_string(builder)
-        f.write(serialized)
-    for path, blob in blobs.items():
-        with open(target_path / path, "wb") as f:
+def _typed_dump(
+    obj, path: Optional[Path], schedules: Optional[Dict[str, Any]] = None
+) -> None:
+    serializers = []
+    lazy_serializer = LazySerializer()
+    serializers = [lazy_serializer, VersionedSerializer()]
+    if schedules is not None:
+        serializers.append(ScheduleSerializer(schedules))
+    result = dump(obj, path, serializers=serializers)
+    for blobpath, blob in lazy_serializer.blobs.items():
+        with open(path / blobpath, "wb") as f:
             f.write(blob)
+    return result
 
 
-def _load_file_and_schedules(
+def typed_dump(obj, path: Optional[Path] = None) -> Union[None, str]:
+    return _typed_dump(obj, path)
+
+
+def _typed_load(
     clz: Type[T],
-    path: str,
-    overrides: List[str],
-    config: Optional[Any] = None,
-    allow_missing_version: bool = False,
-) -> T:
-    path = Path(path)
-    if not is_dataclass(clz):
-        raise TypeError(f"{clz.__module__}.{clz.__name__} must be a dataclass")
-    with open(path, "r") as f:
-        content = f.read()
-        state_dict = pyron.load(content)
-    for override in overrides:
-        key, str_val = override.split("=")
-        fpath = key.split(".")
-        _values = state_dict
-        _clz = clz
-        for segment in fpath[:-1]:
-            _values = _values[segment]
-            _clz = _clz.__annotations__[segment]
-        # TODO: missing types
-        if (_clz == int or _clz == float) and "@" in str_val:
-            val = str_val
-        elif _clz == int:
-            val = _parse_int(str_val)
-        elif clz == float or _clz == bool:
-            val = _clz(str_val)
-        else:
-            val = str_val
-        _values[fpath[-1]] = val
-    return _parse(
-        clz, state_dict, path.absolute().parent, config, allow_missing_version
-    )
-
-
-def _parse(
-    clz: Type[T],
-    values: Dict[str, Any],
-    path: Path,
+    source: Union[str, Path],
+    overrides: Optional[List[str]] = None,
     config: Optional[Any] = None,
     allow_missing_version: bool = False,
 ) -> Tuple[T, Dict[str, Any]]:
     schedules = ScheduleDeserializer()
-    lazy = LazyDeserializer(config, path)
-    if issubclass(clz, Versioned):
-        version = values.pop("version", None)
-        if version is None:
-            if allow_missing_version:
-                version = 0
-            else:
-                raise ValueError(f"Config files are required to set `version` field.")
-        values = clz._apply_upgrades(values, version)
-    value = from_dict(clz, values, [schedules, lazy])
-    if len(lazy.lazy_fields) > 0:
+    deserializers = [VersionedDeserializer(allow_missing_version), schedules]
+    lazy = None
+    if isinstance(source, Path):
+        lazy = LazyDeserializer(config, source.absolute().parent)
+        deserializers.append(lazy)
+    if overrides is not None:
+        deserializers.append(OverridesDeserializer(overrides))
+    value = load(clz, source, deserializers=deserializers)
+    if lazy is not None and len(lazy.lazy_fields) > 0:
         value._unloaded_lazy_fields = lazy.lazy_fields
     return value, schedules.schedules
+
+
+def typed_load(
+    clz: Type[T], source: Union[str, Path], overrides: Optional[List[str]] = None,
+) -> T:
+    return _typed_load(clz, source, overrides)[0]
 
 
 def find_latest_checkpoint(dir: Path) -> Optional[Path]:
@@ -242,7 +207,13 @@ class ScheduleDeserializer(Deserializer):
     def __init__(self):
         self.schedules = {}
 
-    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+    def deserialize(
+        self,
+        clz: Type[T],
+        value: Any,
+        path: str,
+        recurse: Callable[[Type[Any], Any, str, bool], Any],
+    ) -> Tuple[T, bool]:
         if (clz == int or clz == float) and isinstance(value, str) and "@" in value:
             schedule = _parse_schedule(value)
             field_name = path.split(".")[-1]
@@ -259,12 +230,66 @@ class ScheduleDeserializer(Deserializer):
 
 
 @dataclass
+class VersionedDeserializer(Deserializer):
+    allow_missing_version: bool = False
+
+    def deserialize(
+        self,
+        clz: Type[T],
+        value: Any,
+        path: str,
+        recurse: Callable[[Type[Any], Any, str, bool], Any],
+    ) -> Tuple[T, bool]:
+        if issubclass(clz, Versioned):
+            version = value.pop("version", None)
+            if version is None:
+                if self.allow_missing_version:
+                    version = 0
+                else:
+                    raise ValueError(f"Versioned config file missing `version` field.")
+            value = clz._apply_upgrades(state_dict=value, version=version)
+            return recurse(clz, value, path, False), True
+        return None, False
+
+
+@dataclass
+class OverridesDeserializer(Deserializer):
+    overrides: List[str]
+    applied_overrides: bool = False
+
+    def deserialize(
+        self,
+        clz: Type[T],
+        value: Any,
+        path: str,
+        recurse: Callable[[Type[Any], Any, str, bool], Any],
+    ) -> Tuple[T, bool]:
+        if self.applied_overrides:
+            return None, False
+        for override in self.overrides:
+            key, str_val = override.split("=")
+            val = pyron.load(str_val)
+            fpath = key.split(".")
+            for segment in fpath[:-1]:
+                state_dict = state_dict[segment]
+            state_dict[fpath[-1]] = val
+        self.applied_overrides = True
+        return recurse(clz, value, path, False), True
+
+
+@dataclass
 class LazyDeserializer(Deserializer, Generic[C]):
     config: C
     path: Path
     lazy_fields: Dict[str, Tuple[C, str, bool]] = field(default_factory=dict)
 
-    def deserialize(self, clz: Type[T], value: Any, path: str) -> Tuple[T, bool]:
+    def deserialize(
+        self,
+        clz: Type[T],
+        value: Any,
+        path: str,
+        recurse: Callable[[Type[Any], Any, str, bool], Any],
+    ) -> Tuple[T, bool]:
         if inspect.isclass(clz) and issubclass(clz, LazyField):
             assert value == "<BLOB>" or value == "<blob:msgpack>"
             filepath = path.replace(".", "/").replace("[", "/").replace("]", "")
@@ -311,22 +336,11 @@ class ScheduleSerializer(Serializer):
         value: Any,
         path: str,
         named_tuples: bool,
-        recurse: Callable[[Any, str], Any],
+        recurse: Callable[[Any, str, bool], Any],
     ) -> Tuple[Any, bool]:
         if path in self.schedules:
             return self.schedules[path].unparsed, True
         return None, False
-
-
-def asdict(
-    x,
-    schedules: Optional[Dict[str, Any]] = None,
-    named_tuples: bool = False,
-    path: str = "",
-) -> Any:
-    return _asdict(
-        x, named_tuples, [ScheduleSerializer(schedules or {}), VersionedSerializer()]
-    )
 
 
 def _dict_to_cpu(x: Any) -> Dict[str, Any]:
@@ -361,19 +375,3 @@ class LazySerializer(Serializer):
             # blobs[field_name] = msgpack.packb(state_dict, default=msgpack_numpy.encode)
             # value = "<blob:msgpack>"
         return None, False
-
-
-def _checkpoint(state, target_path) -> Tuple[Any, Dict[str, bytes]]:
-    lazy_serializer = LazySerializer()
-    state_dict = _asdict(state, named_tuples=True, serializers=[lazy_serializer])
-    return state_dict, lazy_serializer.blobs
-
-
-def _parse_int(s: str):
-    try:
-        f = float(s)
-        i = int(f)
-
-        return i if f == i else None
-    except:
-        return None

@@ -26,6 +26,10 @@ class Versioned(ABC):
 
     @classmethod
     def _apply_upgrades(clz, state_dict: Any, version: int) -> Any:
+        for version in clz.upgrade_rules().keys():
+            assert (
+                version < clz.version()
+            ), f"{clz.__name__}.upgrade_rules() keys must be less than {clz.__name__}.version()"
         for i in range(version, clz.version()):
             for rule in clz.upgrade_rules().get(i, []):
                 state_dict = rule.apply(state_dict)

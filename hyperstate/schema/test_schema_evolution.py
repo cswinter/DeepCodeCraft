@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import tempfile
 import pyron
-from hyperstate.hyperstate import asdict, _parse
+from yaml import serialize
+from hyperstate.hyperstate import typed_dump, typed_load
 from hyperstate.serde import from_dict
 from hyperstate.schema.rewrite_rule import (
     AddDefault,
@@ -42,10 +43,18 @@ class ConfigV1(Versioned):
 class ConfigV2Error(ConfigV1):
     optimizer: str
 
+    @classmethod
+    def version(clz) -> int:
+        return 2
+
 
 @dataclass
 class ConfigV2Warn(ConfigV1):
     optimizer: Optional[str]
+
+    @classmethod
+    def version(clz) -> int:
+        return 2
 
 
 @dataclass
@@ -151,9 +160,8 @@ def test_config_v2_to_v3():
 
 def test_serde_upgrade():
     config_v2 = ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10)
-    serialized = pyron.to_string(asdict(config_v2, named_tuples=True))
-    state_dict = pyron.load(serialized)
-    config_v3, _ = _parse(ConfigV3, state_dict, Path())
+    serialized = typed_dump(config_v2)
+    config_v3 = typed_load(ConfigV3, serialized)
     assert config_v3 == ConfigV3(
         steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd"
     )
@@ -180,9 +188,18 @@ def automatic_upgrade(old: Any, new: Any):
     autofixes = SchemaChecker(
         materialize_type(old.__class__), new.__class__, perform_upgrade=False
     ).proposed_fixes
-    old_state_dict = asdict(old)
-    for fix in autofixes:
-        old_state_dict = fix.apply(old_state_dict)
-    del old_state_dict["version"]
-    assert from_dict(new.__class__, old_state_dict) == new
+
+    @dataclass
+    class NewWithUpgradeRules(new.__class__):
+        @classmethod
+        def upgrade_rules(clz) -> Dict[int, List[RewriteRule]]:
+            return {
+                old.version(): autofixes,
+            }
+
+    serialized = typed_dump(old)
+    print(serialized)
+    print(NewWithUpgradeRules.upgrade_rules())
+    new_with_upgrade_rules = typed_load(NewWithUpgradeRules, serialized)
+    assert new_with_upgrade_rules == NewWithUpgradeRules(**new.__dict__)
 
