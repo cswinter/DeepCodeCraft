@@ -188,29 +188,35 @@ class SchemaChecker:
             raise ValueError(f"Field {'.'.join(path)} has unsupported type {type(old)}")
 
     def _find_renames(self):
+        # TODO: O(n^3). can be implemented in O(n^2 log n)
         threshold = 0.1
         removeds = [
             change for change in self.changes if isinstance(change, FieldRemoved)
         ]
         addeds = [change for change in self.changes if isinstance(change, FieldAdded)]
-        for removed in removeds:
+        while True:
             best_similarity = threshold
-            best_match: Optional[FieldAdded] = None
-            for added in addeds:
-                if (
-                    removed.type == added.type
-                    and removed.has_default == added.has_default
-                    and removed.default == added.default
-                ):
-                    similarity = name_similarity(removed.field[-1], added.field[-1])
-                    if similarity > best_similarity:
-                        best_similarity = similarity
-                        best_match = added
-            if best_match is not None:
-                self.changes.remove(removed)
-                self.changes.remove(best_match)
-                addeds.remove(best_match)
-                self.changes.append(FieldRenamed(removed.field, best_match.field))
+            best_match: Optional[Tuple[EnumVariantRemoved, EnumVariantAdded]] = None
+            for removed in removeds:
+                for added in addeds:
+                    if (
+                        removed.type == added.type
+                        and removed.has_default == added.has_default
+                        and removed.default == added.default
+                    ):
+                        similarity = name_similarity(removed.field[-1], added.field[-1])
+                        if similarity > best_similarity:
+                            best_similarity = similarity
+                            best_match = (removed, added)
+
+            if best_match is None:
+                break
+            removed, added = best_match
+            self.changes.remove(removed)
+            self.changes.remove(added)
+            removeds.remove(removed)
+            addeds.remove(added)
+            self.changes.append(FieldRenamed(removed.field, added.field))
         removeds = [
             change for change in self.changes if isinstance(change, EnumVariantRemoved)
         ]
@@ -226,30 +232,29 @@ class SchemaChecker:
                     if similarity > best_similarity:
                         best_similarity = similarity
                         best_match = (removed, added)
-            if best_match is not None:
-                removed, added = best_match
-                self.changes.remove(removed)
-                self.changes.remove(added)
-                removeds.remove(removed)
-                addeds.remove(added)
-                if removed.variant_value != added.variant_value:
-                    self.changes.append(
-                        EnumVariantValueChanged(
-                            removed.field,
-                            added.enum_name,
-                            removed.variant,
-                            removed.variant_value,
-                            added.variant_value,
-                        )
-                    )
-                else:
-                    self.changes.append(
-                        EnumVariantRenamed(
-                            added.field, added.enum_name, removed.variant, added.variant
-                        )
-                    )
-            else:
+            if best_match is None:
                 break
+            removed, added = best_match
+            self.changes.remove(removed)
+            self.changes.remove(added)
+            removeds.remove(removed)
+            addeds.remove(added)
+            if removed.variant_value != added.variant_value:
+                self.changes.append(
+                    EnumVariantValueChanged(
+                        removed.field,
+                        added.enum_name,
+                        removed.variant,
+                        removed.variant_value,
+                        added.variant_value,
+                    )
+                )
+            else:
+                self.changes.append(
+                    EnumVariantRenamed(
+                        added.field, added.enum_name, removed.variant, added.variant
+                    )
+                )
 
     def _all_new(self, struct: types.Struct, path: typing.List[str]):
         for name, field in struct.fields.items():
@@ -282,6 +287,7 @@ class SchemaChecker:
 
 def name_similarity(field1: str, field2: str):
     # Special cases
+    # TODO: fold these into tweaked levenshtein with different costs for different edits
     if field1 == field2:
         return 1.1
     if field1.replace("_", "") == field2.replace("_", ""):
