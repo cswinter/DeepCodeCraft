@@ -1,11 +1,13 @@
-from typing import List, Optional, Type, Any
+from typing import List, Optional, Tuple, Type, Any
 import typing
 from dataclasses import is_dataclass
 
 from hyperstate.schema.schema_change import (
     DefaultValueChanged,
     DefaultValueRemoved,
+    EnumVariantAdded,
     EnumVariantRemoved,
+    EnumVariantRenamed,
     EnumVariantValueChanged,
     FieldAdded,
     FieldRemoved,
@@ -88,75 +90,109 @@ class SchemaChecker:
         elif isinstance(old, types.Struct):
             for name, field in new.fields.items():
                 if name not in old.fields:
-                    self.changes.append(
-                        FieldAdded(
-                            tuple(path + [name]),
-                            field.type,
-                            field.has_default,
-                            field.default,
+                    if isinstance(field.type, types.Struct):
+                        self._all_new(field.type, path + [name])
+                    else:
+                        self.changes.append(
+                            FieldAdded(
+                                tuple(path + [name]),
+                                field.type,
+                                field.default,
+                                field.has_default,
+                            )
                         )
-                    )
                 else:
-                    self._find_changes(old.fields[name].type, field.type, path + [name])
-                    if old.fields[name].has_default != field.has_default:
-                        if not field.has_default:
-                            self.changes.append(
-                                DefaultValueRemoved(
-                                    tuple(path + [name]), old.fields[name].default
-                                )
-                            )
-                    elif (
-                        old.fields[name].has_default
-                        and old.fields[name].default != field.default
+                    oldfield = old.fields[name]
+                    if isinstance(field.type, types.Struct) and not isinstance(
+                        oldfield.type, types.Struct
                     ):
-                        if is_dataclass(field.default):
-                            # TODO: perform comparison against namedtuple
-                            pass
-                        else:
-                            self.changes.append(
-                                DefaultValueChanged(
-                                    tuple(path + [name]),
-                                    old.fields[name].default,
-                                    field.default,
-                                )
+                        self.changes.append(
+                            FieldRemoved(
+                                tuple(path + [name]),
+                                oldfield.type,
+                                oldfield.default,
+                                oldfield.has_default,
                             )
+                        )
+                        self._all_new(field.type, path + [name])
+                    elif isinstance(oldfield.type, types.Struct) and not isinstance(
+                        field.type, types.Struct
+                    ):
+                        self.changes.append(
+                            FieldAdded(
+                                tuple(path + [name]),
+                                field.type,
+                                field.default,
+                                field.has_default,
+                            )
+                        )
+                        self._all_gone(oldfield.type, path + [name])
+                    else:
+                        self._find_changes(oldfield.type, field.type, path + [name])
+                        if oldfield.has_default != field.has_default:
+                            if not field.has_default:
+                                self.changes.append(
+                                    DefaultValueRemoved(
+                                        tuple(path + [name]), oldfield.default
+                                    )
+                                )
+                        elif oldfield.has_default and oldfield.default != field.default:
+                            if is_dataclass(field.default):
+                                # TODO: perform comparison against namedtuple
+                                pass
+                            else:
+                                self.changes.append(
+                                    DefaultValueChanged(
+                                        tuple(path + [name]),
+                                        oldfield.default,
+                                        field.default,
+                                    )
+                                )
             # Check for removed fields
             for name, field in old.fields.items():
                 if name not in new.fields:
-                    self.changes.append(
-                        FieldRemoved(
-                            tuple(path + [name],),
-                            field.type,
-                            field.has_default,
-                            field.default,
+                    if isinstance(field.type, types.Struct):
+                        self._all_gone(field.type, path + [name])
+                    else:
+                        self.changes.append(
+                            FieldRemoved(
+                                tuple(path + [name],),
+                                field.type,
+                                field.default,
+                                field.has_default,
+                            )
                         )
-                    )
 
         elif isinstance(old, types.Option):
             self._find_changes(old.type, new.type, path + ["?"])
         elif isinstance(old, types.Enum):
+            assert isinstance(new, types.Enum)
             for name, value in new.variants.items():
                 if name not in old.variants:
-                    pass
+                    self.changes.append(
+                        EnumVariantAdded(tuple(path), new.name, name, value,)
+                    )
                 else:
                     if old.variants[name] != value:
                         self.changes.append(
                             EnumVariantValueChanged(
-                                tuple(path), old.variants[name], value,
+                                tuple(path), new.name, name, old.variants[name], value,
                             )
                         )
             for name, value in old.variants.items():
                 if name not in new.variants:
-                    self.changes.append(EnumVariantRemoved(tuple(path), value))
+                    self.changes.append(
+                        EnumVariantRemoved(tuple(path), new.name, name, value)
+                    )
         else:
-            raise ValueError(f"Unsupported type: {old}")
+            raise ValueError(f"Field {'.'.join(path)} has unsupported type {type(old)}")
 
     def _find_renames(self):
         threshold = 0.1
         removeds = [
             change for change in self.changes if isinstance(change, FieldRemoved)
         ]
-        addeds = {change for change in self.changes if isinstance(change, FieldAdded)}
+        addeds = [change for change in self.changes if isinstance(change, FieldAdded)]
         for removed in removeds:
             best_similarity = threshold
             best_match: Optional[FieldAdded] = None
@@ -166,9 +202,7 @@ class SchemaChecker:
                     and removed.has_default == added.has_default
                     and removed.default == added.default
                 ):
-                    similarity = field_name_similarity(
-                        removed.field[-1], added.field[-1]
-                    )
+                    similarity = name_similarity(removed.field[-1], added.field[-1])
                     if similarity > best_similarity:
                         best_similarity = similarity
                         best_match = added
@@ -177,9 +211,76 @@ class SchemaChecker:
                 self.changes.remove(best_match)
                 addeds.remove(best_match)
                 self.changes.append(FieldRenamed(removed.field, best_match.field))
+        removeds = [
+            change for change in self.changes if isinstance(change, EnumVariantRemoved)
+        ]
+        addeds = [
+            change for change in self.changes if isinstance(change, EnumVariantAdded)
+        ]
+        while True:
+            best_similarity = threshold
+            best_match: Optional[Tuple[EnumVariantRemoved, EnumVariantAdded]] = None
+            for removed in removeds:
+                for added in addeds:
+                    similarity = name_similarity(removed.variant, added.variant)
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = (removed, added)
+            if best_match is not None:
+                removed, added = best_match
+                self.changes.remove(removed)
+                self.changes.remove(added)
+                removeds.remove(removed)
+                addeds.remove(added)
+                if removed.variant_value != added.variant_value:
+                    self.changes.append(
+                        EnumVariantValueChanged(
+                            removed.field,
+                            added.enum_name,
+                            removed.variant,
+                            removed.variant_value,
+                            added.variant_value,
+                        )
+                    )
+                else:
+                    self.changes.append(
+                        EnumVariantRenamed(
+                            added.field, added.enum_name, removed.variant, added.variant
+                        )
+                    )
+            else:
+                break
+
+    def _all_new(self, struct: types.Struct, path: typing.List[str]):
+        for name, field in struct.fields.items():
+            if isinstance(field.type, types.Struct):
+                self._all_new(field.type, path + [name])
+            else:
+                self.changes.append(
+                    FieldAdded(
+                        tuple(path + [name]),
+                        field.type,
+                        field.default,
+                        field.has_default,
+                    )
+                )
+
+    def _all_gone(self, struct: types.Struct, path: typing.List[str]):
+        for name, field in struct.fields.items():
+            if isinstance(field.type, types.Struct):
+                self._all_gone(field.type, path + [name])
+            else:
+                self.changes.append(
+                    FieldRemoved(
+                        tuple(path + [name]),
+                        field.type,
+                        field.default,
+                        field.has_default,
+                    )
+                )
 
 
-def field_name_similarity(field1: str, field2: str):
+def name_similarity(field1: str, field2: str):
     # Special cases
     if field1 == field2:
         return 1.1
@@ -189,7 +290,7 @@ def field_name_similarity(field1: str, field2: str):
         [word[0:1] for word in field2.split("_")]
     ) or field2 == "".join([word[0:1] for word in field1.split("_")]):
         return 1.0
-    return levenshtein(field1, field2) / max(len(field1), len(field2))
+    return 1 - levenshtein(field1, field2) / max(len(field1), len(field2))
 
 
 def levenshtein(s1, s2):
@@ -208,7 +309,12 @@ def levenshtein(s1, s2):
                 previous_row[j + 1] + 1
             )  # j+1 instead of j since previous_row and current_row are one character longer
             deletions = current_row[j] + 1  # than s2
-            substitutions = previous_row[j] + (c1 != c2)
+            substitution_cost = 1
+            if c1 == c2:
+                substitution_cost = 0
+            elif c1.lower() == c2.lower():
+                substitution_cost = 0.25
+            substitutions = previous_row[j] + substitution_cost
             current_row.append(min(insertions, deletions, substitutions))
         previous_row = current_row
 

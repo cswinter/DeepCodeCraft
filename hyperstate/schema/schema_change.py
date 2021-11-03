@@ -61,8 +61,8 @@ class SchemaChange(ABC):
 @dataclass(eq=True, frozen=True)
 class FieldAdded(SchemaChange):
     type: Type
-    has_default: bool = False
     default: Any = None
+    has_default: bool = False
 
     def severity(self) -> Severity:
         if self.has_default:
@@ -85,8 +85,8 @@ class FieldAdded(SchemaChange):
 @dataclass(eq=True, frozen=True)
 class FieldRemoved(SchemaChange):
     type: Type
-    has_default: bool = False
     default: Any = None
+    has_default: bool = False
 
     def diagnostic(self) -> str:
         return "field removed"
@@ -177,7 +177,7 @@ class EnumVariantValueChanged(SchemaChange):
         return MapFieldValue(
             self.field,
             lambda x: x if x != self.old_value else self.new_value,
-            rendered=f"lambda x: x if x != {self.old_value} else {self.new_value}",
+            rendered=f"lambda x: x if x != {self.old_value.__repr__()} else {self.new_value.__repr__()}",
         )
 
 
@@ -185,6 +185,33 @@ class EnumVariantValueChanged(SchemaChange):
 class EnumVariantRemoved(SchemaChange):
     enum_name: str
     variant: str
+    variant_value: typing.Union[str, int]
 
     def diagnostic(self) -> str:
         return f"variant {self.variant} of {self.enum_name} removed"
+
+
+@dataclass(eq=True, frozen=True)
+class EnumVariantAdded(SchemaChange):
+    enum_name: str
+    variant: str
+    variant_value: typing.Union[str, int]
+
+    def severity(self) -> Severity:
+        return Severity.INFO
+
+    def diagnostic(self) -> str:
+        return f"variant {self.variant} of {self.enum_name} added"
+
+
+@dataclass(eq=True, frozen=True)
+class EnumVariantRenamed(SchemaChange):
+    enum_name: str
+    old_variant_name: str
+    new_variant_name: str
+
+    def severity(self) -> Severity:
+        return Severity.INFO
+
+    def diagnostic(self) -> str:
+        return f"variant {self.new_variant_name} of {self.enum_name} renamed to {self.new_variant_name}"

@@ -14,7 +14,7 @@ from typing import (
     Union,
 )
 import inspect
-from dataclasses import is_dataclass
+from dataclasses import MISSING, is_dataclass
 
 import pyron
 
@@ -149,7 +149,9 @@ def from_dict(
             # TODO: better error
             assert isinstance(value, dict), f"{value} is not a dict"
             kwargs = {}
+            remaining_fields = set(clz.__dataclass_fields__.keys())
             for field_name, v in value.items():
+                remaining_fields.remove(field_name)
                 field = clz.__dataclass_fields__.get(field_name)
                 if field is None:
                     raise TypeError(
@@ -161,6 +163,14 @@ def from_dict(
                     deserializers,
                     f"{path}.{field_name}" if path else field_name,
                 )
+            for field_name in remaining_fields:
+                field = clz.__dataclass_fields__.get(field_name)
+                if (
+                    field.default is MISSING
+                    and field.default_factory is MISSING
+                    and is_dataclass(field.type)
+                ):
+                    kwargs[field_name] = field.type()
             try:
                 instance = clz(**kwargs)
                 return instance

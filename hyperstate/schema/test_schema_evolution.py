@@ -1,17 +1,24 @@
 from dataclasses import dataclass
-from pathlib import Path
+import enum
 from typing import Any, Dict, List, Optional
 import tempfile
 from hyperstate.hyperstate import typed_dump, typed_load
 from hyperstate.schema.rewrite_rule import (
     AddDefault,
     ChangeDefault,
+    DeleteField,
+    MapFieldValue,
     RenameField,
     RewriteRule,
 )
 from hyperstate.schema.schema_change import (
     DefaultValueChanged,
+    EnumVariantAdded,
+    EnumVariantRemoved,
+    EnumVariantRenamed,
+    EnumVariantValueChanged,
     FieldAdded,
+    FieldRemoved,
     FieldRenamed,
     SchemaChange,
 )
@@ -20,7 +27,7 @@ from hyperstate.schema.schema_checker import (
     SchemaChecker,
     Severity,
 )
-from hyperstate.schema.types import materialize_type, Type, Primitive, Option
+from hyperstate.schema.types import Enum, materialize_type, Type, Primitive, Option
 from hyperstate.schema.versioned import Versioned
 
 
@@ -83,6 +90,62 @@ class ConfigV3(Versioned):
                 RenameField(old_field=("learning_rate",), new_field=("lr",)),
             ],
         }
+
+
+@dataclass
+class OptimizerConfig:
+    lr: float
+    batch_size: int
+    optimizer: str = "adam"
+
+
+class TaskType(enum.Enum):
+    COINRUN = "CoinRun"
+    STARPILOT = "StarPilot"
+    MAZE = "MAZE"
+
+
+@dataclass
+class TaskConfig:
+    task_type: TaskType = TaskType.COINRUN
+    difficulty: int = 1
+
+
+@dataclass
+class ConfigV4(Versioned):
+    steps: int
+    epochs: int
+    optimizer: OptimizerConfig
+    task: TaskConfig
+
+    @classmethod
+    def version(clz) -> int:
+        return 4
+
+
+class ChangedTaskType(enum.Enum):
+    CR = "CoinRun"
+    StarPilot = "StarPilot"
+    MAZE = "Maze"
+    MINER = "Miner"
+
+
+@dataclass
+class ChangedTaskConfig:
+    task_type: ChangedTaskType = ChangedTaskType.CR
+    difficulty: int = 1
+
+
+@dataclass
+class ConfigV5(Versioned):
+    steps: int
+    epochs: int
+    optimizer: OptimizerConfig
+    task: ChangedTaskConfig
+
+    @classmethod
+    def version(clz) -> int:
+        return 5
 
 
 def test_config_v1_to_v2():
@@ -155,6 +218,137 @@ def test_config_v2_to_v3():
     )
 
 
+def test_config_v3_to_v4():
+    check_schema(
+        ConfigV3,
+        ConfigV4,
+        [
+            FieldAdded(
+                field=("task", "task_type"),
+                type=Enum(
+                    name="TaskType",
+                    variants={
+                        "COINRUN": "CoinRun",
+                        "STARPILOT": "StarPilot",
+                        "MAZE": "MAZE",
+                    },
+                ),
+                default="CoinRun",
+                has_default=True,
+            ),
+            FieldAdded(
+                field=("task", "difficulty"),
+                type=Primitive("int"),
+                default=1,
+                has_default=True,
+            ),
+            FieldRenamed(field=("optimizer",), new_name=("optimizer", "optimizer")),
+            FieldRenamed(field=("lr",), new_name=("optimizer", "lr")),
+            FieldRenamed(field=("batch_size",), new_name=("optimizer", "batch_size")),
+        ],
+        [
+            RenameField(old_field=("optimizer",), new_field=("optimizer", "optimizer")),
+            RenameField(old_field=("lr",), new_field=("optimizer", "lr")),
+            RenameField(
+                old_field=("batch_size",), new_field=("optimizer", "batch_size")
+            ),
+        ],
+        Severity.WARN,
+    )
+    automatic_upgrade(
+        ConfigV3(steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",),
+        ConfigV4(
+            steps=1,
+            epochs=10,
+            optimizer=OptimizerConfig(lr=0.1, batch_size=32, optimizer="sgd"),
+            task=TaskConfig(),
+        ),
+    )
+
+
+def test_config_v4_to_v3():
+    check_schema(
+        ConfigV4,
+        ConfigV3,
+        [
+            FieldRemoved(
+                field=("task", "task_type"),
+                type=Enum(
+                    name="TaskType",
+                    variants={
+                        "COINRUN": "CoinRun",
+                        "STARPILOT": "StarPilot",
+                        "MAZE": "MAZE",
+                    },
+                ),
+                default="CoinRun",
+                has_default=True,
+            ),
+            FieldRemoved(
+                field=("task", "difficulty"),
+                type=Primitive("int"),
+                default=1,
+                has_default=True,
+            ),
+            FieldRenamed(field=("optimizer", "lr"), new_name=("lr",)),
+            FieldRenamed(field=("optimizer", "batch_size"), new_name=("batch_size",)),
+            FieldRenamed(field=("optimizer", "optimizer"), new_name=("optimizer",)),
+        ],
+        [
+            DeleteField(field=("task", "task_type")),
+            DeleteField(field=("task", "difficulty")),
+            RenameField(old_field=("optimizer", "lr"), new_field=("lr",)),
+            RenameField(
+                old_field=("optimizer", "batch_size"), new_field=("batch_size",)
+            ),
+            RenameField(old_field=("optimizer", "optimizer"), new_field=("optimizer",)),
+        ],
+        Severity.WARN,
+    )
+
+
+def test_config_v4_to_v5():
+    check_schema(
+        ConfigV4,
+        ConfigV5,
+        [
+            EnumVariantValueChanged(
+                field=("task", "task_type"),
+                enum_name="ChangedTaskType",
+                variant="MAZE",
+                old_value="MAZE",
+                new_value="Maze",
+            ),
+            EnumVariantAdded(
+                field=("task", "task_type"),
+                enum_name="ChangedTaskType",
+                variant="MINER",
+                variant_value="Miner",
+            ),
+            EnumVariantRenamed(
+                field=("task", "task_type"),
+                enum_name="ChangedTaskType",
+                old_variant_name="STARPILOT",
+                new_variant_name="StarPilot",
+            ),
+            EnumVariantRenamed(
+                field=("task", "task_type"),
+                enum_name="ChangedTaskType",
+                old_variant_name="COINRUN",
+                new_variant_name="CR",
+            ),
+        ],
+        [
+            MapFieldValue(
+                field=("task", "task_type"),
+                map_fn=None,
+                rendered="lambda x: x if x != 'MAZE' else 'Maze'",
+            ),
+        ],
+        Severity.WARN,
+    )
+
+
 def test_serde_upgrade():
     config_v2 = ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10)
     serialized = typed_dump(config_v2)
@@ -176,9 +370,16 @@ def check_schema(
         checker = SchemaChecker(materialize_type(old), new, perform_upgrade=False)
         if print_report:
             checker.print_report()
+        checker.proposed_fixes = [erase_lambdas(fix) for fix in checker.proposed_fixes]
         assert checker.changes == expected_changes
         assert checker.proposed_fixes == expected_fixes
         assert checker.severity() == expected_severity
+
+
+def erase_lambdas(rule: RewriteRule):
+    if isinstance(rule, MapFieldValue):
+        return MapFieldValue(field=rule.field, map_fn=None, rendered=rule.rendered,)
+    return rule
 
 
 def automatic_upgrade(old: Any, new: Any):
@@ -195,8 +396,6 @@ def automatic_upgrade(old: Any, new: Any):
             }
 
     serialized = typed_dump(old)
-    print(serialized)
-    print(NewWithUpgradeRules.upgrade_rules())
     new_with_upgrade_rules = typed_load(NewWithUpgradeRules, serialized)
     assert new_with_upgrade_rules == NewWithUpgradeRules(**new.__dict__)
 
