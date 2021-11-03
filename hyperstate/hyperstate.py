@@ -17,16 +17,14 @@ from typing import (
     Union,
 )
 import inspect
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, field
 
 from hyperstate.schema.versioned import Versioned
 from hyperstate.serde import (
     Deserializer,
     Deserializer,
     Serializer,
-    asdict,
     dump,
-    from_dict,
     load,
 )
 from .lazy import LazyField
@@ -67,7 +65,7 @@ class HyperState(ABC, Generic[C, S]):
 
         checkpoint = None
         if checkpoint_dir is not None:
-            self.checkpoint_dir = Path(checkpoint_dir) 
+            self.checkpoint_dir = Path(checkpoint_dir)
             checkpoint = find_latest_checkpoint(checkpoint_dir)
             if checkpoint is not None:
                 print(f"Resuming from checkpoint {checkpoint}")
