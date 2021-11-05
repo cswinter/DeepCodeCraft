@@ -1,8 +1,9 @@
 Config(
     version: 4,
     optimizer: OptimizerConfig(
-        lr: "step: 0.0003@0 lin 0.0@20e6",
-        entropy_bonus: "step: 0.001@0 lin 0.0@20e6",
+        lr: "step: 0.0003@0 lin 0.0@10e6",
+        vf_coef: 2.5,
+        entropy_bonus: "step: 0.0006@0 lin 0.0@10e6",
     ),
     eval: EvalConfig(
         steps: 500,
@@ -10,10 +11,8 @@ Config(
         symmetric: false,
     ),
     ppo: PPOConfig(
-        steps: 20000000,
         num_envs: 256,
         num_self_play: 128,
-        seq_rosteps: 64,
         gamma: 0.997,
     ),
     task: TaskConfig(
