@@ -1,28 +1,29 @@
 Config(
-    version: 0,
+    version: 4,
+    optimizer: OptimizerConfig(
+        lr: "step: 0.003@0 lin 0.0@200e3",
+        entropy_bonus: "step: 0.01@0 lin 0.0@200e3",
+    ),
+    eval: EvalConfig(
+        frequency: 25000,
+        model_save_frequency: 1,
+        symmetric: false,
+    ),
     ppo: PPOConfig(
-        steps: 200e3,
-        seq_rosteps: 64,
+        steps: 200000,
         num_envs: 128,
         num_self_play: 64,
+        seq_rosteps: 64,
     ),
     task: TaskConfig(
         objective: "ARENA_TINY",
         task_hardness: 1,
     ),
-    eval: EvalConfig(
-        eval_frequency: 25e3,
-        model_save_frequency: 1,
-        eval_envs: 256,
-        eval_timesteps: 360,
-        eval_symmetric: false,
-    ),
-    optimizer: OptimizerConfig(
-        lr: "step: 0.003@0 lin 0.0@200e3",
-        entropy_bonus: "step: 0.01@0 lin 0.0@200e3",
-        vf_coef: 1.0,
-        batch_size: 2048,
-        micro_batch_size: 2048,
+    adr: AdrConfig(),
+    policy: PolicyConfig(
+        d_agent: 128,
+        nenemy: 1,
+        nmineral: 1,
     ),
     obs: ObsConfig(
         allies: 1,
@@ -30,13 +31,4 @@ Config(
         obs_minerals: 1,
         obs_map_tiles: 0,
     ),
-    policy: PolicyConfig(
-        d_agent: 128,
-        agents: 1,
-        nenemy: 1,
-        nally: 1,
-        nmineral: 1,
-        ntile: 0,
-    ),
-    adr: {},
 )

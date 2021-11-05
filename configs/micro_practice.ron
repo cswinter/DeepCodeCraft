@@ -1,40 +1,35 @@
 Config(
-    version: 2,
-    task: (
-        objective: "MICRO_PRACTICE",
-        symmetric_map: 0.0,
-        mothership_damage_scale: 0.0,
+    version: 4,
+    optimizer: OptimizerConfig(
+        lr: "step: 0.0003@0 lin 0.0@20e6",
+        entropy_bonus: "step: 0.001@0 lin 0.0@20e6",
     ),
-    ppo: (
-        steps: 20e6,
-        gamma: 0.997,
-        seq_rosteps: 64,
+    eval: EvalConfig(
+        steps: 500,
+        frequency: 1000000,
+        symmetric: false,
+    ),
+    ppo: PPOConfig(
+        steps: 20000000,
         num_envs: 256,
         num_self_play: 128,
+        seq_rosteps: 64,
+        gamma: 0.997,
     ),
-    policy: (
+    task: TaskConfig(
+        objective: "MICRO_PRACTICE",
+    ),
+    adr: AdrConfig(),
+    policy: PolicyConfig(
         agents: 8,
-        nenemy: 8,
         nally: 8,
+        nenemy: 8,
         nmineral: 1,
     ),
-    obs: (
+    obs: ObsConfig(
         allies: 8,
         obs_enemies: 8,
         obs_minerals: 1,
         obs_map_tiles: 0,
     ),
-    optimizer: (
-        batch_size: 2048,
-        micro_batch_size: 2048,
-        lr: "step: 0.0003@0 lin 0.0@20e6",
-        entropy_bonus: "step: 0.001@0 lin 0.0@20e6",
-    ),
-    eval: (
-        envs: 256,
-        frequency: 1e6,
-        steps: 500,
-        symmetric: false,
-    ),
-    adr: {},
 )

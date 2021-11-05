@@ -1,36 +1,28 @@
 Config(
-  version: 0,
-  ppo: (
-    steps: 500e3,
-    seq_rosteps: 32,
-    num_envs: 128,
-    gamma: 0.99,
-    num_self_play: 0,
-  ),
-  task: (
-    objective: "ALLIED_WEALTH",
-  ),
-  eval: (
-    eval_envs: 0,
-  ),
-  optimizer: (
-    lr: "step: 0.0015@0 cos 0.0001@500e3",
-    batch_size: 512,
-    micro_batch_size: 512,
-  ),
-  adr: {},
-  obs: (
-    allies: 1,
-    obs_minerals: 10,
-    obs_enemies: 0,
-    obs_map_tiles: 0,
-    use_privileged: false,
-  ),
-  policy: (
-    agents: 1,
-    nally: 1,
-    nmineral: 10,
-    nenemy: 0,
-    ntile: 0,
-  ),
+    version: 4,
+    optimizer: OptimizerConfig(
+        lr: "step: 0.0015@0 cos 0.0001@500e3",
+        batch_size: 512,
+        micro_batch_size: 512,
+    ),
+    eval: EvalConfig(
+        envs: 0,
+    ),
+    ppo: PPOConfig(
+        steps: 500000,
+        num_envs: 128,
+        num_self_play: 0,
+        seq_rosteps: 32,
+    ),
+    task: TaskConfig(
+        objective: "ALLIED_WEALTH",
+    ),
+    adr: AdrConfig(),
+    policy: PolicyConfig(),
+    obs: ObsConfig(
+        allies: 1,
+        obs_enemies: 0,
+        obs_map_tiles: 0,
+        use_privileged: false,
+    ),
 )
