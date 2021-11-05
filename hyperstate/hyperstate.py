@@ -1,4 +1,3 @@
-from collections import namedtuple
 import os
 import shutil
 from abc import ABC, abstractmethod
@@ -16,18 +15,20 @@ from typing import (
     Tuple,
     Union,
 )
-import inspect
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from hyperstate.schema.versioned import Versioned
+from hyperstate.schema.versioned import (
+    VersionedSerializer,
+    VersionedDeserializer,
+)
 from hyperstate.serde import (
     Deserializer,
-    Deserializer,
     Serializer,
+    asdict,
     dump,
     load,
 )
-from .lazy import LazyField
+from .lazy import LazyDeserializer, LazySerializer
 
 import torch
 import pyron
@@ -89,14 +90,15 @@ class HyperState(ABC, Generic[C, S]):
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load config from {config_path}: {e}") from e
-        try:
-            self.state = (
-                self.initial_state()
-                if state_path is None
-                else typed_load(state_clz, state_path)
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to load state from {state_path}: {e}") from e
+        if state_path is None:
+            self.state = self.initial_state()
+        else:
+            try:
+                self.state = _typed_load(state_clz, state_path, config=self.config)[0]
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to load state from {state_path}: {e}"
+                ) from e
 
     @abstractmethod
     def initial_state(self) -> S:
@@ -130,6 +132,9 @@ class HyperState(ABC, Generic[C, S]):
             self._last_checkpoint = checkpoint_dir
             # TODO: persistent checkpoints
 
+    def config_dict(self):
+        return asdict(self.config, serializers=[VersionedSerializer()])
+
 
 def _apply_schedules(state, config, schedules: Dict[str, Any]):
     for field_name, schedule in schedules.items():
@@ -149,9 +154,10 @@ def _typed_dump(
     if schedules is not None:
         serializers.append(ScheduleSerializer(schedules))
     result = dump(obj, path, serializers=serializers)
-    for blobpath, blob in lazy_serializer.blobs.items():
-        with open(path / blobpath, "wb") as f:
-            f.write(blob)
+    if path is not None:
+        for blobpath, blob in lazy_serializer.blobs.items():
+            with open(path.parent / blobpath, "wb") as f:
+                f.write(blob)
     return result
 
 
@@ -166,14 +172,17 @@ def _typed_load(
     config: Optional[Any] = None,
     allow_missing_version: bool = False,
 ) -> Tuple[T, Dict[str, Any]]:
+    if overrides is not None:
+        deserializers = [OverridesDeserializer(overrides)]
+    else:
+        deserializers = []
     schedules = ScheduleDeserializer()
-    deserializers = [VersionedDeserializer(allow_missing_version), schedules]
+    deserializers.append(schedules)
+    deserializers.append(VersionedDeserializer(allow_missing_version))
     lazy = None
     if isinstance(source, Path):
         lazy = LazyDeserializer(config, source.absolute().parent)
         deserializers.append(lazy)
-    if overrides is not None:
-        deserializers.append(OverridesDeserializer(overrides))
     value = load(clz, source, deserializers=deserializers)
     if lazy is not None and len(lazy.lazy_fields) > 0:
         value._unloaded_lazy_fields = lazy.lazy_fields
@@ -201,17 +210,33 @@ def find_latest_checkpoint(dir: Path) -> Optional[Path]:
     return latest_dir
 
 
+@dataclass
+class OverridesDeserializer(Deserializer):
+    overrides: List[str]
+    applied_overrides: bool = False
+
+    def deserialize(self, clz: Type[T], value: Any, path: str,) -> Tuple[T, bool, bool]:
+        if self.applied_overrides:
+            return None, False, False
+        for override in self.overrides:
+            key, str_val = override.split("=")
+            val = pyron.load(str_val)
+            fpath = key.split(".")
+            _value = value
+            for segment in fpath[:-1]:
+                if segment not in _value:
+                    _value[segment] = {}
+                _value = _value[segment]
+            _value[fpath[-1]] = val
+        self.applied_overrides = True
+        return value, True, False
+
+
 class ScheduleDeserializer(Deserializer):
     def __init__(self):
         self.schedules = {}
 
-    def deserialize(
-        self,
-        clz: Type[T],
-        value: Any,
-        path: str,
-        recurse: Callable[[Type[Any], Any, str, bool], Any],
-    ) -> Tuple[T, bool]:
+    def deserialize(self, clz: Type[T], value: Any, path: str,) -> Tuple[T, bool, bool]:
         if (clz == int or clz == float) and isinstance(value, str) and "@" in value:
             schedule = _parse_schedule(value)
             field_name = path.split(".")[-1]
@@ -223,119 +248,15 @@ class ScheduleDeserializer(Deserializer):
 
             self.schedules[path] = Schedule(update, value)
             value = schedule.get_value(0.0)
-            return clz(value), True
-        return None, False
-
-
-@dataclass
-class VersionedDeserializer(Deserializer):
-    allow_missing_version: bool = False
-
-    def deserialize(
-        self,
-        clz: Type[T],
-        value: Any,
-        path: str,
-        recurse: Callable[[Type[Any], Any, str, bool], Any],
-    ) -> Tuple[T, bool]:
-        if issubclass(clz, Versioned):
-            version = value.pop("version", None)
-            if version is None:
-                if self.allow_missing_version:
-                    version = 0
-                else:
-                    raise ValueError(f"Versioned config file missing `version` field.")
-            value = clz._apply_upgrades(state_dict=value, version=version)
-            return recurse(clz, value, path, False), True
-        return None, False
-
-
-@dataclass
-class OverridesDeserializer(Deserializer):
-    overrides: List[str]
-    applied_overrides: bool = False
-
-    def deserialize(
-        self,
-        clz: Type[T],
-        value: Any,
-        path: str,
-        recurse: Callable[[Type[Any], Any, str, bool], Any],
-    ) -> Tuple[T, bool]:
-        if self.applied_overrides:
-            return None, False
-        for override in self.overrides:
-            key, str_val = override.split("=")
-            val = pyron.load(str_val)
-            fpath = key.split(".")
-            for segment in fpath[:-1]:
-                state_dict = state_dict[segment]
-            state_dict[fpath[-1]] = val
-        self.applied_overrides = True
-        return recurse(clz, value, path, False), True
-
-
-@dataclass
-class LazyDeserializer(Deserializer, Generic[C]):
-    config: C
-    path: Path
-    lazy_fields: Dict[str, Tuple[C, str, bool]] = field(default_factory=dict)
-
-    def deserialize(
-        self,
-        clz: Type[T],
-        value: Any,
-        path: str,
-        recurse: Callable[[Type[Any], Any, str, bool], Any],
-    ) -> Tuple[T, bool]:
-        if inspect.isclass(clz) and issubclass(clz, LazyField):
-            assert value == "<BLOB>" or value == "<blob:msgpack>"
-            filepath = path.replace(".", "/").replace("[", "/").replace("]", "")
-            self.lazy_fields[path] = (
-                self.config,
-                self.path / filepath,
-                value == "<BLOB>",
-            )
-            return None, True
-        return None, False
-
-
-@dataclass
-class VersionedSerializer(Serializer):
-    def serialize(
-        self,
-        value: Any,
-        path: str,
-        named_tuples: bool,
-        recurse: Callable[[Any, str], Any],
-    ) -> Tuple[Any, bool]:
-        if isinstance(value, Versioned):
-            attrs = {
-                field_name: recurse(
-                    getattr(value, field_name),
-                    path if path == "" else f"{path}.{field_name}",
-                )
-                for field_name in value.__dataclass_fields__
-            }
-            attrs["version"] = value.__class__.version()
-            if named_tuples:
-                return namedtuple(value.__class__.__name__, attrs.keys())(**attrs), True
-            else:
-                return attrs, True
-        return None, False
+            return clz(value), True, False
+        return None, False, False
 
 
 @dataclass
 class ScheduleSerializer(Serializer):
     schedules: Dict[str, Schedule]
 
-    def serialize(
-        self,
-        value: Any,
-        path: str,
-        named_tuples: bool,
-        recurse: Callable[[Any, str, bool], Any],
-    ) -> Tuple[Any, bool]:
+    def serialize(self, value: Any, path: str, namedtuples: bool) -> Tuple[Any, bool]:
         if path in self.schedules:
             return self.schedules[path].unparsed, True
         return None, False
@@ -350,26 +271,3 @@ def _dict_to_cpu(x: Any) -> Dict[str, Any]:
         return [_dict_to_cpu(v) for v in x]
     else:
         return x
-
-
-@dataclass
-class LazySerializer(Serializer):
-    blobs: Dict[str, bytes] = field(default_factory=dict)
-
-    def serialize(
-        self,
-        value: Any,
-        path: str,
-        named_tuples: bool,
-        recurse: Callable[[Any, str], Any],
-    ) -> Tuple[Any, bool]:
-        if isinstance(value, LazyField):
-            import dill
-
-            self.blobs[path] = dill.dumps(value.state_dict())
-            return "<BLOB>", True
-            # TODO: make msgpack work with pytorch tensors
-            # state_dict = _dict_to_cpu(value.state_dict())
-            # blobs[field_name] = msgpack.packb(state_dict, default=msgpack_numpy.encode)
-            # value = "<blob:msgpack>"
-        return None, False

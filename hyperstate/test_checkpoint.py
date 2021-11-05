@@ -3,7 +3,10 @@ import tempfile
 import textwrap
 import os
 
+import numpy as np
+
 from hyperstate.hyperstate import HyperState
+from hyperstate.lazy import Lazy, Serializable
 
 
 @dataclass(frozen=True, eq=True)
@@ -22,9 +25,25 @@ class Config:
     ppo: PPO
 
 
+class Params(Serializable):
+    def __init__(self):
+        self.params = np.zeros(64)
+
+    @classmethod
+    def serialize(clz, obj):
+        return obj.params
+
+    @classmethod
+    def deserialize(clz, state_dict, config, state):
+        result = Params()
+        result.params = state_dict
+        return result
+
+
 @dataclass
-class State:
+class State(Lazy):
     step: int
+    params: Params
 
 
 class HS(HyperState[Config, State]):
@@ -32,7 +51,7 @@ class HS(HyperState[Config, State]):
         super().__init__(Config, State, initial_config, checkpoint_dir)
 
     def initial_state(self) -> State:
-        return State(step=0)
+        return State(step=0, params=Params())
 
 
 def test_checkpoint():
@@ -57,11 +76,13 @@ def test_checkpoint():
         os.mkdir(checkpoint_dir)
         hs = HS(tmpdir + "/config.ron", checkpoint_dir)
         hs.state.step = 10
+        hs.state.params.params += 0.1
         hs.step()
 
         # Restore from checkpoint
         hs2 = HS(tmpdir + "/config.ron", checkpoint_dir)
         assert hs2.state.step == 10
+        assert (hs2.state.params.params == hs.state.params.params).all()
         assert hs2.config == Config(
             lr=0.01,
             steps=100,

@@ -21,7 +21,7 @@ import wandb
 
 import hyperstate
 from config import Config, ObsConfig as HSObsConfig, OptimizerConfig, TaskConfig
-from hyperstate import HyperState, lazy
+from hyperstate import HyperState, blob, Serializable
 
 from adr import ADR, ADRState, normalize, spec_key
 from gym_codecraft import envs
@@ -48,34 +48,26 @@ else:
     EVAL_MODELS_PATH = "/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models"
 
 
+class SerializableOptimizer(Serializable):
+    def serialize(self):
+        return self.state_dict()
+
+    @classmethod
+    def deserialize(clz, state_dict: Any, config: Config, state: "State") -> Optimizer:
+        optimizer = create_optimizer(config.optimizer, state.policy)
+        optimizer.load_state_dict(state_dict)
+        return optimizer
+
+
 @dataclass
 class State(hyperstate.Lazy):
     step: int
     iteration: int
     epoch: int
     adr: ADRState
-    policy: lazy(TransformerPolicy8HS)
-    optimizer: lazy(Optimizer)
-    ema: List[lazy(ExponentialMovingAverage)]
-
-    def _load_policy(self, config: Config, state_dict: Any) -> TransformerPolicy8HS:
-        policy = TransformerPolicy8HS(
-            config.policy,
-            config.obs,
-            config.task.objective.naction() + config.obs.extra_actions(),
-        )
-        policy.load_state_dict(state_dict)
-        return policy
-
-    def _load_optimizer(self, config: Config, state_dict: Any) -> Optimizer:
-        optimizer = create_optimizer(config.optimizer, self.policy)
-        optimizer.load_state_dict(state_dict)
-        return optimizer
-
-    def _load_ema(
-        self, config: Config, state_dict: Any
-    ) -> List[ExponentialMovingAverage]:
-        return []
+    policy: TransformerPolicy8HS
+    optimizer: blob(Optimizer, mixin=SerializableOptimizer)
+    ema: List[ExponentialMovingAverage]
 
 
 def run_codecraft():
@@ -121,6 +113,7 @@ def create_optimizer(
         )
     else:
         raise Exception(f"Invalid optimizer name `{config.optimizer_type}`")
+    optimizer_fn = blob(optimizer_fn, mixin=SerializableOptimizer)
     return optimizer_fn(policy.parameters(), **optimizer_kwargs)
 
 
@@ -586,7 +579,7 @@ class Trainer(HyperState[Config, State]):
                         "hardness": self.adr.state.hardness,
                         "iteration": state.iteration,
                     }
-                    metrics.update(hyperstate.asdict(config))
+                    metrics.update(self.config_dict())
                     for action, count in buildmean.items():
                         metrics[f"build_{spec_key(action)}"] = count
                     for action, fraction in normalize(buildmean).items():
@@ -1286,7 +1279,7 @@ def main():
             "deep-codecraft-vs" if config.task.objective.vs() else "deep-codecraft"
         )
 
-        cfg = hyperstate.asdict(config)
+        cfg = trainer.config_dict()
         cfg["commit"] = subprocess.check_output(
             ["git", "describe", "--tags", "--always", "--dirty"]
         ).decode("UTF-8")[:-1]

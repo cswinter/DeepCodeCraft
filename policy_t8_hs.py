@@ -6,11 +6,12 @@ from torch_scatter import scatter_add, scatter_max
 import torch.distributed as dist
 
 from config import PolicyConfig, ObsConfig, Config
+from hyperstate.lazy import Serializable
 
 import spatial
 
 
-class TransformerPolicy8HS(nn.Module):
+class TransformerPolicy8HS(nn.Module, Serializable):
     def __init__(self, config: PolicyConfig, obs_config: ObsConfig, naction: int):
         super(TransformerPolicy8HS, self).__init__()
         assert (
@@ -220,6 +221,19 @@ class TransformerPolicy8HS(nn.Module):
             self.value_head.bias.data.fill_(0.0)
 
         self.epsilon = 1e-8
+
+    def serialize(self):
+        return self.state_dict()
+
+    @classmethod
+    def deserialize(clz, state_dict, config, state):
+        policy = TransformerPolicy8HS(
+            config.policy,
+            config.obs,
+            config.task.objective.naction() + config.obs.extra_actions(),
+        )
+        policy.load_state_dict(state_dict)
+        return policy
 
     def evaluate(self, observation, action_masks, privileged_obs):
         action_masks = action_masks[:, : self.agents, :]
