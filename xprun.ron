@@ -36,6 +36,9 @@ XpV0(
                 Repo(path: "requirements.txt", cd: true, rm: true),
                 Run("pip install -r requirements.txt"),
 
+                Repo(url: "git@github.com:cswinter/hyperstate.git", rev: "23dee2b", cd: true),
+                Run("pip install -e ."),
+
                 Repo(cd: true),
             ],
         ),

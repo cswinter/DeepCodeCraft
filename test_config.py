@@ -7,12 +7,16 @@ from hyperstate.schema.types import materialize_type, load_schema
 from main import Trainer
 
 
-def test_config():
+def test_schema():
     old = load_schema("config-schema.ron")
     checker = SchemaChecker(old, Config)
     if checker.severity() >= Severity.WARN:
         print(checker.print_report())
     assert checker.severity() == Severity.INFO
+
+
+def test_load_config():
+    Trainer("configs/arena_tiny_2v2.ron")
 
 
 def test_load_old_checkpoint():
