@@ -21,6 +21,8 @@ from hyperstate.schema.schema_change import (
     FieldRemoved,
     FieldRenamed,
     SchemaChange,
+    DefaultValueRemoved,
+    TypeChanged,
 )
 
 from hyperstate.schema.schema_checker import (
@@ -68,84 +70,6 @@ class ConfigV2Info(ConfigV1):
     @classmethod
     def version(clz) -> int:
         return 2
-
-
-@dataclass
-class ConfigV3(Versioned):
-    steps: int
-    lr: float
-    batch_size: int
-    epochs: int
-    optimizer: str = "adam"
-
-    @classmethod
-    def version(clz) -> int:
-        return 3
-
-    @classmethod
-    def upgrade_rules(clz) -> Dict[int, List[RewriteRule]]:
-        return {
-            2: [
-                ChangeDefault(field=("optimizer",), new_default="adam"),
-                RenameField(old_field=("learning_rate",), new_field=("lr",)),
-            ],
-        }
-
-
-@dataclass
-class OptimizerConfig:
-    lr: float
-    batch_size: int
-    optimizer: str = "adam"
-
-
-class TaskType(enum.Enum):
-    COINRUN = "CoinRun"
-    STARPILOT = "StarPilot"
-    MAZE = "MAZE"
-
-
-@dataclass
-class TaskConfig:
-    task_type: TaskType = TaskType.COINRUN
-    difficulty: int = 1
-
-
-@dataclass
-class ConfigV4(Versioned):
-    steps: int
-    epochs: int
-    optimizer: OptimizerConfig
-    task: TaskConfig
-
-    @classmethod
-    def version(clz) -> int:
-        return 4
-
-
-class ChangedTaskType(enum.Enum):
-    CR = "CoinRun"
-    StarPilot = "StarPilot"
-    MAZE = "Maze"
-    MINER = "Miner"
-
-
-@dataclass
-class ChangedTaskConfig:
-    task_type: ChangedTaskType = ChangedTaskType.CR
-    difficulty: int = 1
-
-
-@dataclass
-class ConfigV5(Versioned):
-    steps: int
-    epochs: int
-    optimizer: OptimizerConfig
-    task: ChangedTaskConfig
-
-    @classmethod
-    def version(clz) -> int:
-        return 5
 
 
 def test_config_v1_to_v2():
@@ -198,6 +122,28 @@ def test_config_v1_to_v2():
     )
 
 
+@dataclass
+class ConfigV3(Versioned):
+    steps: int
+    lr: float
+    batch_size: int
+    epochs: int
+    optimizer: str = "adam"
+
+    @classmethod
+    def version(clz) -> int:
+        return 3
+
+    @classmethod
+    def upgrade_rules(clz) -> Dict[int, List[RewriteRule]]:
+        return {
+            2: [
+                ChangeDefault(field=("optimizer",), new_default="adam"),
+                RenameField(old_field=("learning_rate",), new_field=("lr",)),
+            ],
+        }
+
+
 def test_config_v2_to_v3():
     check_schema(
         ConfigV2Info,
@@ -216,6 +162,37 @@ def test_config_v2_to_v3():
         ConfigV2Info(steps=1, learning_rate=0.1, batch_size=32, epochs=10,),
         ConfigV3(steps=1, lr=0.1, batch_size=32, epochs=10, optimizer="sgd",),
     )
+
+
+@dataclass
+class OptimizerConfig:
+    lr: float
+    batch_size: int
+    optimizer: str = "adam"
+
+
+class TaskType(enum.Enum):
+    COINRUN = "CoinRun"
+    STARPILOT = "StarPilot"
+    MAZE = "MAZE"
+
+
+@dataclass
+class TaskConfig:
+    task_type: TaskType = TaskType.COINRUN
+    difficulty: int = 1
+
+
+@dataclass
+class ConfigV4(Versioned):
+    steps: int
+    epochs: int
+    optimizer: OptimizerConfig
+    task: TaskConfig
+
+    @classmethod
+    def version(clz) -> int:
+        return 4
 
 
 def test_config_v3_to_v4():
@@ -307,6 +284,31 @@ def test_config_v4_to_v3():
     )
 
 
+class ChangedTaskType(enum.Enum):
+    CR = "CoinRun"
+    StarPilot = "StarPilot"
+    MAZE = "Maze"
+    MINER = "Miner"
+
+
+@dataclass
+class ChangedTaskConfig:
+    task_type: ChangedTaskType = ChangedTaskType.CR
+    difficulty: int = 1
+
+
+@dataclass
+class ConfigV5(Versioned):
+    epochs: int
+    optimizer: OptimizerConfig
+    task: ChangedTaskConfig
+    steps: int = 10
+
+    @classmethod
+    def version(clz) -> int:
+        return 5
+
+
 def test_config_v4_to_v5():
     check_schema(
         ConfigV4,
@@ -346,6 +348,64 @@ def test_config_v4_to_v5():
             ),
         ],
         Severity.WARN,
+    )
+    automatic_upgrade(
+        ConfigV4(
+            epochs=10,
+            optimizer=OptimizerConfig(lr=0.1, batch_size=32, optimizer="sgd"),
+            task=TaskConfig(task_type=TaskType.MAZE, difficulty=1),
+            steps=10,
+        ),
+        ConfigV5(
+            epochs=10,
+            optimizer=OptimizerConfig(lr=0.1, batch_size=32, optimizer="sgd"),
+            task=ChangedTaskConfig(task_type=ChangedTaskType.MAZE, difficulty=1),
+            steps=10,
+        ),
+    )
+
+
+class TaskTypeV6(enum.Enum):
+    CR = "CoinRun"
+    MAZE = "Maze"
+    MINER = "Miner"
+
+
+@dataclass
+class TaskConfigV6:
+    task_type: TaskTypeV6 = ChangedTaskType.CR
+    difficulty: int = 1
+
+
+@dataclass
+class ConfigV6(Versioned):
+    steps: float
+    epochs: str
+    optimizer: OptimizerConfig
+    task: TaskConfigV6
+
+    @classmethod
+    def version(clz) -> int:
+        return 6
+
+
+def test_config_v5_to_v6():
+    check_schema(
+        ConfigV5,
+        ConfigV6,
+        [
+            TypeChanged(field=("steps",), old=Primitive("int"), new=Primitive("float")),
+            DefaultValueRemoved(field=("steps",), old=10),
+            TypeChanged(field=("epochs",), old=Primitive("int"), new=Primitive("str")),
+            EnumVariantRemoved(
+                field=("task", "task_type"),
+                enum_name="TaskTypeV6",
+                variant="StarPilot",
+                variant_value="StarPilot",
+            ),
+        ],
+        [AddDefault(field=("steps",), default=10),],
+        Severity.ERROR,
     )
 
 

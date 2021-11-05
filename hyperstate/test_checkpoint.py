@@ -29,9 +29,8 @@ class Params(Serializable):
     def __init__(self):
         self.params = np.zeros(64)
 
-    @classmethod
-    def serialize(clz, obj):
-        return obj.params
+    def serialize(self):
+        return self.params
 
     @classmethod
     def deserialize(clz, state_dict, config, state):
