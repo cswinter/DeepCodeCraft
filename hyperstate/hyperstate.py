@@ -15,7 +15,7 @@ from typing import (
     Tuple,
     Union,
 )
-from dataclasses import dataclass
+from dataclasses import MISSING, dataclass
 
 from hyperstate.schema.versioned import (
     VersionedSerializer,
@@ -146,13 +146,18 @@ def _apply_schedules(state, config, schedules: Dict[str, Any]):
 
 
 def _typed_dump(
-    obj, path: Optional[Path], schedules: Optional[Dict[str, Any]] = None
+    obj,
+    path: Optional[Path] = None,
+    schedules: Optional[Dict[str, Any]] = None,
+    elide_defaults: bool = False,
 ) -> None:
     serializers = []
     lazy_serializer = LazySerializer()
     serializers = [lazy_serializer, VersionedSerializer()]
     if schedules is not None:
         serializers.append(ScheduleSerializer(schedules))
+    if elide_defaults:
+        serializers.append(ElideDefaults())
     result = dump(obj, path, serializers=serializers)
     if path is not None:
         for blobpath, blob in lazy_serializer.blobs.items():
@@ -161,8 +166,10 @@ def _typed_dump(
     return result
 
 
-def typed_dump(obj, path: Optional[Path] = None) -> Union[None, str]:
-    return _typed_dump(obj, path)
+def typed_dump(
+    obj, path: Optional[Path] = None, elide_defaults: bool = False
+) -> Union[None, str]:
+    return _typed_dump(obj, path, elide_defaults=elide_defaults)
 
 
 def _typed_load(
@@ -271,3 +278,19 @@ def _dict_to_cpu(x: Any) -> Dict[str, Any]:
         return [_dict_to_cpu(v) for v in x]
     else:
         return x
+
+
+@dataclass
+class ElideDefaults(Serializer):
+    def serialize(self, value: Any, path: str, named_tuples: bool,) -> Tuple[Any, bool]:
+        return None, False
+
+    def modify_dataclass_attrs(self, value: Any, attrs: Dict[str, Any], path: str):
+        for name, field in value.__class__.__dataclass_fields__.items():
+            if field.default is not MISSING and attrs[name] == field.default:
+                del attrs[name]
+            elif (
+                field.default_factory is not MISSING
+                and attrs[name] == field.default_factory()
+            ):
+                del attrs[name]

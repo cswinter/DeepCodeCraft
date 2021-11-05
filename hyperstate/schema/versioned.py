@@ -73,4 +73,9 @@ class VersionedSerializer(Serializer):
 
     def modify_dataclass_attrs(self, value: Any, attrs: Dict[str, Any], path: str):
         if isinstance(value, Versioned):
+            # Insert version as first element so it shows up at start of config file
+            _attrs = dict(attrs)
+            attrs.clear()
             attrs["version"] = value.__class__.version()
+            for k, v in _attrs.items():
+                attrs[k] = v

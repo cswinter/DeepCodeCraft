@@ -1,7 +1,13 @@
 from typing import List, Optional, Tuple, Type, Any
 import typing
 from dataclasses import is_dataclass
+from pathlib import Path
+import difflib
 
+import pyron
+import click
+
+from hyperstate.hyperstate import _typed_dump, _typed_load
 from hyperstate.schema.schema_change import (
     DefaultValueChanged,
     DefaultValueRemoved,
@@ -17,12 +23,8 @@ from hyperstate.schema.schema_change import (
     TypeChanged,
 )
 from hyperstate.schema.versioned import Versioned
-
 from .types import Type, load_schema, materialize_type
 from . import types
-
-import pyron
-import click
 
 
 class SchemaChecker:
@@ -343,6 +345,35 @@ def _upgrade_schema(filename: str, config_clz: typing.Type[Versioned]):
         click.secho("Schema updated", fg="green")
 
 
+def _upgrade_config(
+    filename: str,
+    config_clz: typing.Type[Versioned],
+    elide_defaults: bool,
+    dry_run: bool,
+):
+    click.secho(filename, fg="cyan")
+    config, schedules = _typed_load(config_clz, Path(filename))
+    upgraded_config = _typed_dump(
+        config, elide_defaults=elide_defaults, schedules=schedules
+    )
+    if dry_run:
+        original_config = open(filename).read()
+        diff = difflib.unified_diff(
+            original_config.splitlines(), upgraded_config.splitlines(),
+        )
+        for line in list(diff)[3:]:
+            if line.startswith("+"):
+                click.secho(line, fg="green")
+            elif line.startswith("-"):
+                click.secho(line, fg="red")
+            elif line.startswith("^"):
+                click.secho(line, fg="blue")
+            else:
+                click.echo(line)
+    else:
+        open(filename, "w").write(upgraded_config)
+
+
 CONFIG_CLZ: typing.Type[Any] = None
 
 
@@ -370,6 +401,15 @@ def check_schema(filename: str):
     global CONFIG_CLZ
     old = load_schema(filename)
     SchemaChecker(old, CONFIG_CLZ).print_report()
+
+
+@cli.command()
+@click.argument("files", nargs=-1, type=click.Path())
+@click.option("--include-defaults", is_flag=True)
+@click.option("--dry-run", is_flag=True)
+def upgrade_config(files: typing.List[str], include_defaults: bool, dry_run: bool):
+    for file in files:
+        _upgrade_config(file, CONFIG_CLZ, not include_defaults, dry_run)
 
 
 def schema_evolution_cli(config_clz: typing.Type[Any]):
