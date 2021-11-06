@@ -1,0 +1,35 @@
+Config(
+    version: 4,
+    optimizer: OptimizerConfig(
+        lr: "step: 0.0003@0 lin 0.0@20e6",
+        vf_coef: 2.5,
+        entropy_bonus: "step: 0.0006@0 lin 0.0@20e6",
+    ),
+    eval: EvalConfig(
+        steps: 500,
+        frequency: 1000000,
+        symmetric: false,
+    ),
+    ppo: PPOConfig(
+        steps: 20e6,
+        num_envs: 256,
+        num_self_play: 128,
+        gamma: 0.997,
+    ),
+    task: TaskConfig(
+        objective: "MICRO_PRACTICE",
+    ),
+    adr: AdrConfig(),
+    policy: PolicyConfig(
+        agents: 8,
+        nally: 8,
+        nenemy: 8,
+        nmineral: 1,
+    ),
+    obs: ObsConfig(
+        allies: 8,
+        obs_enemies: 8,
+        obs_minerals: 1,
+        obs_map_tiles: 0,
+    ),
+)
