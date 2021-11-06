@@ -669,7 +669,7 @@ def eval(
             }
         elif objective == envs.Objective.ARENA:
             opponents = {
-                "beta": {"model_file": "arena/glad-breeze-25M.pt"},
+                "easy": {"model_file": "arena/211106-035618-bfadb7a"},
             }
         elif objective == envs.Objective.STANDARD:
             opponents = {
