@@ -66,19 +66,19 @@ class Objective(Enum):
     def extra_builds(self):
         # [storageModules, missileBatteries, constructors, engines, shieldGenerators]
         if self == Objective.ARENA:
-            return [(1, 0, 1, 0, 0), (0, 2, 0, 0, 0), (0, 1, 0, 0, 1)]
+            return [(1, 0, 1, 0, 0, 0), (0, 2, 0, 0, 0, 0), (0, 1, 0, 0, 1, 0)]
         elif self == Objective.SMOL_STANDARD or self == Objective.STANDARD:
             return [
-                (1, 0, 1, 0, 0),
-                (0, 2, 0, 0, 0),
-                (0, 1, 0, 0, 1),
-                (0, 3, 0, 0, 1),
-                (0, 2, 0, 0, 2),
-                (2, 1, 1, 0, 0),
-                (2, 0, 2, 0, 0),
-                (2, 0, 1, 1, 0),
-                (0, 2, 0, 1, 1),
-                (1, 0, 0, 0, 0),
+                (1, 0, 1, 0, 0, 0),
+                (0, 2, 0, 0, 0, 0),
+                (0, 1, 0, 0, 1, 0),
+                (0, 3, 0, 0, 1, 0),
+                (0, 2, 0, 0, 2, 0),
+                (2, 1, 1, 0, 0, 0),
+                (2, 0, 2, 0, 0, 0),
+                (2, 0, 1, 1, 0, 0),
+                (0, 2, 0, 1, 1, 0),
+                (1, 0, 0, 0, 0, 0),
             ]
         elif self == Objective.ENHANCED:
             return [
@@ -450,7 +450,7 @@ class Config(Versioned):
         return 4
 
     @classmethod
-    def upgrade_rules(clz) -> Dict[int, RewriteRule]:
+    def upgrade_rules(clz) -> Dict[int, List[RewriteRule]]:
         """
         Returns a list of rewrite rules that can be applied to the given version
         to make it compatible with the next version.

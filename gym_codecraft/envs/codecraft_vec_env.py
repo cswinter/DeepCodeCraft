@@ -257,16 +257,16 @@ def map_arena(randomize: bool, hardness: int, require_default_mothership: bool):
         map_height = 1500
         mineral_count = 2
     elif hardness == 1:
-        map_width = 2000
-        map_height = 2000
+        map_width = 2250
+        map_height = 2250
         mineral_count = 4
     elif hardness == 2:
-        map_width = 2500
-        map_height = 2500
+        map_width = 3000
+        map_height = 2250
         mineral_count = 6
     else:
-        map_width = 3500
-        map_height = 2500
+        map_width = 3750
+        map_height = 2250
         mineral_count = 6
 
     angle = 2 * np.pi * np.random.rand()
