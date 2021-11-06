@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
+from pathlib import Path
 import argparse
 import optuna
 import xprun
@@ -79,6 +80,9 @@ hyper_params = {
     "entropy_bonus": HyperParam(
         path="optimizer.entropy_bonus", sampling_strategy=SamplingStrategy.SCHEDULE,
     ),
+    "variety": HyperParam(
+        path="adr.variety", sampling_strategy=SamplingStrategy.SCHEDULE,
+    ),
     "batch_size": HyperParam(
         path="optimizer.batch_size",
         sampling_strategy=SamplingStrategy.POWER_OF_TWO,
@@ -135,7 +139,7 @@ class HyperOptimizer:
         self.best_config = None
         self.priority = priority
 
-        hpconfig, schedules = _typed_load(Config, base_config_path, [])
+        hpconfig, schedules = _typed_load(Config, Path(base_config_path), [])
         params_with_center = []
         for name, range in params:
             path = hyper_params[name].path

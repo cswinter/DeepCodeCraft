@@ -1,9 +1,9 @@
 Config(
     version: 4,
     optimizer: OptimizerConfig(
-        lr: "step: 0.0005@0 cos 0.00005@25e6",
+        lr: "step: 0.0005@0 lin 0.0@25e6",
         batch_size: 4096,
-        entropy_bonus: "step: 0.5@0 lin 0.15@10e6 0.0@25e6",
+        entropy_bonus: "step: 0.5@0 lin 0.0@25e6",
     ),
     eval: EvalConfig(
         envs: 256,
@@ -28,17 +28,19 @@ Config(
         linear_hardness: true,
         max_hardness: 1.0,
         hardness_offset: 1000000000000000.0,
+        variety: "step: 0.7@0 lin 0.0@25e6",
     ),
     policy: PolicyConfig(
         agents: 8,
         nally: 8,
         nenemy: 8,
         nmineral: 8,
+        ntile: 2,
     ),
     obs: ObsConfig(
         allies: 8,
         obs_enemies: 8,
         obs_minerals: 8,
-        obs_map_tiles: 0,
+        obs_map_tiles: 2,
     ),
 )
