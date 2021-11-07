@@ -127,7 +127,7 @@ class Trainer(HyperState[Config, State]):
         config_overrides: Optional[List[str]] = None,
     ):
         super().__init__(
-            Config, State, initial_config, checkpoint_dir, overrides=config_overrides,
+            Config, State, Path(initial_config), checkpoint_dir, overrides=config_overrides,
         )
 
         assert (
