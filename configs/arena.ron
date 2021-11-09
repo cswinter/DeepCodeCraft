@@ -24,9 +24,9 @@ Config(
         task_hardness: 4,
     ),
     adr: AdrConfig(
-        initial_hardness: 1.0,
+        initial_hardness: 4.0,
         linear_hardness: true,
-        max_hardness: 1.0,
+        max_hardness: 4.0,
         hardness_offset: 1000000000000000.0,
         variety: "step: 0.7@0 lin 0.0@25e6",
     ),
