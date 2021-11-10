@@ -126,9 +126,7 @@ class Trainer(HyperState[Config, State]):
         checkpoint_dir: Optional[str] = None,
         config_overrides: Optional[List[str]] = None,
     ):
-        super().__init__(
-            Config, State, Path(initial_config), checkpoint_dir, overrides=config_overrides,
-        )
+        super().__init__(Config, State, initial_config, checkpoint_dir, overrides=config_overrides)
 
         assert (
             self.config.optimizer.batch_size
