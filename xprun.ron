@@ -9,6 +9,7 @@ XpV0(
             replicas: 1,
             gpu: 1,
             gpu_mem: "5GB",
+            cpu_mem: "20GB",
             volumes: {
                 "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
             },
@@ -47,7 +48,7 @@ XpV0(
             //command: ["sbt", "run"],
             tty: true,
             env: {
-                "SBT_OPTS": "-Xmx15G",
+                "SBT_OPTS": "-Xmx10G",
             },
             build: [
                 From("hseeberger/scala-sbt:8u222_1.3.5_2.13.1"),

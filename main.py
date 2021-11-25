@@ -68,6 +68,7 @@ class State(hyperstate.Lazy):
     policy: TransformerPolicy8HS
     optimizer: blob(Optimizer, mixin=SerializableOptimizer)
     ema: List[ExponentialMovingAverage]
+    next_eval_step: Optional[int] = 0
 
 
 def run_codecraft():
@@ -191,7 +192,6 @@ class Trainer(HyperState[Config, State]):
         if self.rank == 0:
             wandb.watch(self.state.policy)
 
-        next_eval = state.step
         next_full_eval = 1
         eprewmean = 0
         eplenmean = 0
@@ -251,7 +251,7 @@ class Trainer(HyperState[Config, State]):
                 env.hardness = self.adr.state.hardness
                 obs, action_masks, privileged_obs = env.reset()
 
-            if state.step >= next_eval:
+            if state.step >= state.next_eval_step:
                 if config.eval.envs > 0:
                     next_full_eval -= 1
                     if next_full_eval == 0:
@@ -272,7 +272,7 @@ class Trainer(HyperState[Config, State]):
                             parallelism=self.parallelism,
                             policy_ema=policy_ema,
                         )
-                next_eval += config.eval.frequency
+                state.next_eval_step += config.eval.frequency
                 next_model_save -= 1
                 if next_model_save == 0 and self.rank == 0:
                     # TODO: hyperstate
