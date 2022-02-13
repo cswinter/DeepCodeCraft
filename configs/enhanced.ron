@@ -29,7 +29,6 @@ Config(
         mothership_damage_scale: 0.0,
     ),
     adr: AdrConfig(
-        warmup: 0,
         variety: "step: 0.3@0 lin 0.15@150e6 0.1@200e6 0.01@250e6",
         cost_variance: "step: 2.0@0 lin 1.0@20e6 0.1@200e6",
         hstepsize: 2.5e-6,
