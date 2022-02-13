@@ -1270,6 +1270,7 @@ def main():
     config = trainer.config
     # TODO: make better
     if rank > 0:
+        trainer.checkpoint_dir = None
         config.checkpoint_dir = None
 
     if config.wandb and rank == 0:
