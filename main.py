@@ -675,7 +675,7 @@ def eval(
                 "radiant-sun-35": {"model_file": "standard/radiant-sun-35M.pt"},
             }
             scripted_opponents = ["destroyer", "replicator"]
-            hardness = 5
+            hardness = 100
         elif objective == envs.Objective.ENHANCED:
             opponents = {
                 "logical-dust-250": {"model_file": "enhanced/logical-dust-250m.pt"},

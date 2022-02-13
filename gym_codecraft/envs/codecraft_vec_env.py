@@ -459,73 +459,22 @@ def map_smol_standard(randomize: bool, hardness: int, require_default_mothership
 def map_standard(
     randomize: bool, hardness: Union[int, float], require_default_mothership: bool
 ):
-    # special case conditions for eval that was previously used to get comparable results
-    is_eval = isinstance(hardness, int) and hardness <= 5
     if randomize:
-        if is_eval:
-            hardness = np.random.randint(0, hardness + 1)
-        else:
-            area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
-    minerals = None
-
-    if randomize and not is_eval:
-        eligible = [
-            (x, y)
-            for y in range(1, 20)
-            for x in range(y, y * 2 + 1)
-            if x * y <= area <= x * y * 2
-        ]
-        x, y = eligible[np.random.randint(0, len(eligible))]
-        map_width = 500 * x
-        map_height = 500 * y
-        mineral_count = int(3 * math.sqrt(area))
+        area = math.sqrt(np.random.uniform(1, (3 + hardness) ** 2))
     else:
-        assert isinstance(hardness, int)
-        if hardness == 0:
-            # AREA: 4. density: 1/2
-            map_width = 1000
-            map_height = 1000
-            mineral_count = 2
-        elif hardness == 1:
-            # AREA: 12, density: 1/4
-            map_width = 2000
-            map_height = 1500
-            mineral_count = 3
-        elif hardness == 2:
-            # AREA: 24, density: 1/4
-            map_width = 3000
-            map_height = 2000
-            mineral_count = 6
-        elif hardness == 3:
-            # AREA: 40, density: 1/5
-            map_width = 4000
-            map_height = 2500
-            mineral_count = 8
-        elif hardness == 4:
-            # AREA: 60, density: 1/6
-            map_width = 5000
-            map_height = 3000
-            mineral_count = 10
-        else:
-            # AREA: 96
-            # Resources: 2 + 2 + ~3 + ~3 + 3 + 3 + 5 + 7 + 10 = 50
-            # Density: ~1/2 (but much sparser?)
-            # Actually resource generation code is complicated and nonlinear, smaller minerals are overweighted no idea what actual densities are.
-            map_width = 6000
-            map_height = 4000
-            minerals = [
-                (10, 10),
-                (10, 10),
-                (7, 20),
-                (7, 20),
-                (5, 30),
-                (5, 30),
-                (5, 50),
-                (5, 70),
-                (5, 100),
-            ]
-    if minerals is None:
-        minerals = mineral_count * [(1, 50)]
+        area = hardness
+
+    eligible = [
+        (x, y)
+        for y in range(1, 20)
+        for x in range(y, y * 2 + 1)
+        if area // 2 <= x * y <= area
+    ]
+    x, y = eligible[np.random.randint(0, len(eligible))]
+    map_width = 750 * x
+    map_height = 750 * y
+    mineral_count = 2 + np.random.randint(0, math.ceil(math.sqrt(x * y) / 5) + 2)
+    minerals = [(1, np.random.randint(100, 1000)) for _ in range(mineral_count)]
 
     player1, player2 = standard_starting_drones(
         map_height, map_width, randomize and not require_default_mothership
