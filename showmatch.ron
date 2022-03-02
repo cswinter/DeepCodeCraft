@@ -2,9 +2,10 @@ XpV0(
     project: "dcc",
     containers: {
         "showmatch": (
-            command: ["python", "showmatch.py", "--task=ARENA_TINY_2V2", "--num_envs=8", "--create_game_delay=2.0"],
+            command: ["python", "showmatch.py", "--task=ENHANCED", "--num_envs=8", "--create_game_delay=2.0"],
             gpu: 1,
             gpu_mem: "11GB",
+            cpu_mem: "4GB",
             volumes: {
                 "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
             },
@@ -30,18 +31,22 @@ XpV0(
                 Run("pip install target/wheels/pyron-0.1.0-cp38-cp38-manylinux_2_24_x86_64.whl"),
 
                 Repo(path: "requirements.txt", cd: true, rm: true),
-                Run("cat requirements.txt"),
                 Run("pip install -r requirements.txt"),
+
+                Repo(url: "git@github.com:cswinter/hyperstate.git", rev: "77893bf", cd: true),
+                Run("pip install -e ."),
 
                 Repo(cd: true),
             ],
         ),
         "codecraftserver": (
-            command: ["sbt", "run"],
-            env: {
-                "SBT_OPTS": "-Xmx15G",
-            },
+            command: ["server-0.1.0-SNAPSHOT/bin/server", "-Dplay.http.secret.key=ad31779d4ee49d5ad5162bf1429c32e2e9933f3b"],
+            cpu: 4,
+            cpu_mem: "20GiB",
             tty: true,
+            env: {
+                "SBT_OPTS": "-Xmx10G",
+            },
             build: [
                 From("hseeberger/scala-sbt:8u222_1.3.5_2.13.1"),
 
