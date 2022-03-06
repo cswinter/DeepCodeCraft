@@ -18,9 +18,9 @@ XpV0(
                 Run("pip install maturin"),
 
                 // build xprun from source
-                Repo(url: "git@github.com:cswinter/xprun.git", rev: "eb59b24", cd: true),
+                Repo(url: "git@github.com:cswinter/xprun.git", rev: "f08602b", cd: true),
                 Run("maturin build --cargo-extra-args=--features=python"),
-                Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_*_x86_64.whl"),
+                Run("pip install target/wheels/xprun-0.1.*-cp38-cp38-manylinux_2_*_x86_64.whl"),
 
                 // build pyron from source
                 Repo(url: "git@github.com:cswinter/pyron.git", rev: "23825de", cd: true),

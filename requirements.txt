@@ -14,3 +14,4 @@ optuna==2.9.1
 git+https://github.com/fadel/pytorch_ema@3950a7b5c4b88f46fd14f620277bad21898597a9
 msgpack==1.0.2
 msgpack-numpy==0.4.7.1
+kubernetes==23.3

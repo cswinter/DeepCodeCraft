@@ -1214,12 +1214,13 @@ def profile_fp(hps: HyperParams) -> None:
 
 def init_process(xp_info: xprun.XpInfo, backend="gloo"):
     """ Initialize the distributed environment. """
-    rank = xp_info.replica_index
-    world_size = xp_info.replicas
-    # TODO: move this into xprun lib
-    os.environ["MASTER_ADDR"] = f"xprun.{xp_info.id}.{xp_info.replica_name}-0"
+    os.environ["MASTER_ADDR"] = xp_info.address_of("trainer")
     os.environ["MASTER_PORT"] = "29500"
-    dist.init_process_group(backend, rank=rank, world_size=world_size)
+    dist.init_process_group(
+        backend,
+        rank=xp_info.replica_index,
+        world_size=xp_info.replicas,
+    )
 
 
 def main():
