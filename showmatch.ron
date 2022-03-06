@@ -6,9 +6,6 @@ XpV0(
             gpu: 1,
             gpu_mem: "11GB",
             cpu_mem: "4GB",
-            volumes: {
-                "/mnt/a/Dropbox/artifacts/xprun": "/mnt/xprun",
-            },
             build: [
                 From("nvcr.io/nvidia/pytorch:21.03-py3"),
 
@@ -23,12 +20,12 @@ XpV0(
                 // build xprun from source
                 Repo(url: "git@github.com:cswinter/xprun.git", rev: "eb59b24", cd: true),
                 Run("maturin build --cargo-extra-args=--features=python"),
-                Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_27_x86_64.whl"),
+                Run("pip install target/wheels/xprun-0.1.0-cp38-cp38-manylinux_2_*_x86_64.whl"),
 
                 // build pyron from source
                 Repo(url: "git@github.com:cswinter/pyron.git", rev: "23825de", cd: true),
                 Run("maturin build"),
-                Run("pip install target/wheels/pyron-0.1.0-cp38-cp38-manylinux_2_24_x86_64.whl"),
+                Run("pip install target/wheels/pyron-0.1.0-cp38-cp38-manylinux_2_*_x86_64.whl"),
 
                 Repo(path: "requirements.txt", cd: true, rm: true),
                 Run("pip install -r requirements.txt"),
