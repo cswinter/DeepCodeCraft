@@ -43,7 +43,7 @@ LOG_ROOT_DIR = "/home/clemens/Dropbox/artifacts/DeepCodeCraft"
 if "EVAL_MODELS_PATH" in os.environ:
     EVAL_MODELS_PATH = os.environ["EVAL_MODELS_PATH"]
 elif "XPRUN_ID" in os.environ:
-    EVAL_MODELS_PATH = "/mnt/xprun/common/DeepCodeCraft/golden-models"
+    EVAL_MODELS_PATH = "/xprun/data/common/DeepCodeCraft/golden-models"
 else:
     EVAL_MODELS_PATH = "/home/clemens/Dropbox/artifacts/DeepCodeCraft/golden-models"
 
@@ -1242,7 +1242,7 @@ def main():
         if xp_info is not None:
             # TODO: move this into xprun library
             out_dir = os.path.join(
-                "/mnt/xprun",
+                "/xprun/data",
                 xp_info.xp_def.project,
                 xp_info.sanitized_name + "-" + xp_info.id,
             )
