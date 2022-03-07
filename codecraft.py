@@ -1,3 +1,4 @@
+from functools import lru_cache
 import requests
 import logging
 import time
@@ -383,6 +384,7 @@ def dist2(x1, y1, x2, y2):
     return dx * dx + dy * dy
 
 
+@lru_cache
 def get_hostname() -> str:
     xprun_id = os.getenv("XPRUN_ID")
     if xprun_id:

@@ -189,7 +189,7 @@ class Trainer(HyperState[Config, State]):
 
         if self.parallelism > 1:
             sync_parameters(self.state.policy)
-        if self.rank == 0:
+        if self.rank == 0 and self.config.wandb:
             wandb.watch(self.state.policy)
 
         next_full_eval = 1
@@ -271,6 +271,7 @@ class Trainer(HyperState[Config, State]):
                             rank=self.rank,
                             parallelism=self.parallelism,
                             policy_ema=policy_ema,
+                            track=self.config.wandb,
                         )
                 state.next_eval_step += config.eval.frequency
                 next_model_save -= 1
@@ -616,6 +617,7 @@ class Trainer(HyperState[Config, State]):
                     rank=self.rank,
                     parallelism=self.parallelism,
                     policy_ema=policy_ema,
+                    track=self.config.wandb,
                 )
 
     def local_num_envs(self):
@@ -639,6 +641,7 @@ def eval(
     parallelism=1,
     policy_ema=None,
     create_game_delay=0.0,
+    track: bool = False
 ):
     start_time = time.time()
     if parallelism > 1:
@@ -844,7 +847,7 @@ def eval(
         if parallelism > 1:
             scores = allcat(scores, rank, parallelism)
             eliminations = allcat(eliminations, rank, parallelism)
-        if rank == 0:
+        if rank == 0 and track:
             wandb.log(
                 {
                     f"eval_mean_score{postfix}": scores.mean().item(),
@@ -867,7 +870,7 @@ def eval(
             if parallelism > 1:
                 scores = allcat(scores, rank, parallelism)
                 eliminations = allcat(eliminations, rank, parallelism)
-            if rank == 0:
+            if rank == 0 and track:
                 wandb.log(
                     {
                         f"eval_mean_score_vs_{opp_name}{postfix}": scores.mean().item(),
