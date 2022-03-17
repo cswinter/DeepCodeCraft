@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "trainer": (
-            command: ["python", "main.py"],
+            command: ["python", "-u", "main.py"],
             env_secrets: {
                 "WANDB_API_KEY": "wandb-api-key",
             },

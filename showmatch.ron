@@ -2,7 +2,7 @@ XpV0(
     project: "dcc",
     containers: {
         "showmatch": (
-            command: ["python", "showmatch.py", "--task=ENHANCED", "--num_envs=8", "--create_game_delay=2.0"],
+            command: ["python", "-u", "showmatch.py", "--task=ENHANCED", "--num_envs=8", "--create_game_delay=2.0"],
             gpu: 1,
             gpu_mem: "11GB",
             cpu_mem: "4GB",
