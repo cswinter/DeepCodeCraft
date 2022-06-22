@@ -1,6 +1,6 @@
 logger==1.4
 matplotlib
-numpy==1.16.3
+numpy==1.22.0
 orjson==3.0.2
 requests==2.22.0
 torch==1.6.0
